@@ -26,21 +26,21 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import javax.servlet.ServletContext;
-
 import org.apache.wicket.Session;
 import org.apache.wicket.core.request.mapper.MountedMapper;
+import org.apache.wicket.markup.head.CssHeaderItem;
+import org.apache.wicket.markup.head.CssReferenceHeaderItem;
+import org.apache.wicket.markup.head.JavaScriptHeaderItem;
+import org.apache.wicket.markup.head.JavaScriptReferenceHeaderItem;
 import org.apache.wicket.protocol.http.WebApplication;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.Request;
 import org.apache.wicket.request.Response;
-import org.apache.wicket.request.Url;
 import org.apache.wicket.request.mapper.parameter.UrlPathPageParametersEncoder;
 import org.apache.wicket.request.resource.JavaScriptResourceReference;
-import org.apache.wicket.request.resource.ResourceReference;
-import org.apache.wicket.request.resource.UrlResourceReference;
 import org.savapage.common.ConfigDefaults;
 import org.savapage.core.SpException;
+import org.savapage.core.SpInfo;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
@@ -53,6 +53,7 @@ import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.server.cometd.AbstractEventService;
+import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.img.ImageServer;
 import org.savapage.server.ios.WebClipServer;
 import org.savapage.server.pages.AbstractPage;
@@ -65,6 +66,10 @@ import org.savapage.server.webapp.WebAppUserPage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import de.agilecoders.wicket.webjars.WicketWebjars;
+import de.agilecoders.wicket.webjars.request.resource.WebjarsCssResourceReference;
+import de.agilecoders.wicket.webjars.request.resource.WebjarsJavaScriptResourceReference;
+
 /**
  * Application object for your web application. If you want to run this
  * application without deploying, run
@@ -72,10 +77,10 @@ import org.slf4j.LoggerFactory;
  *
  * @author Datraverse B.V.
  */
-public class WebApp extends WebApplication implements ServiceEntryPoint {
+public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
     /**
-     * Used in web.xml
+     * Used in {@code web.xml}.
      */
     public static final String MOUNT_PATH_COMETD = "/cometd";
 
@@ -112,12 +117,13 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     /**
      *
      */
-    private static Properties theServerProps = new Properties();
+    public static final String WEBJARS_PATH_JQUERY_CORE_JS =
+            "jquery/current/jquery.js";
 
     /**
      *
      */
-    private static Properties thePackageProps = new Properties();
+    private static Properties theServerProps = new Properties();
 
     /**
      *
@@ -145,7 +151,12 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     /**
      * The RAW Print Server.
      */
-    private RawPrintServer myRawPrintServer = null;
+    private RawPrintServer rawPrintServer = null;
+
+    /**
+     * The {@link ServerPluginManager}.
+     */
+    private ServerPluginManager pluginManager;
 
     /**
      * Return a localized message string. IMPORTANT: The locale from the
@@ -199,7 +210,7 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
      * @param isAdmin
      *            {@code true} when user is an administrator.
      */
-    public final synchronized void onAuthenticatedUser(final String sessionId,
+    public synchronized void onAuthenticatedUser(final String sessionId,
             final String ipAddr, final String user, final boolean isAdmin) {
 
         /*
@@ -257,8 +268,13 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
         /*
          *
          */
-        final String msgKey =
-                isAdmin ? "pub-admin-login-success" : "pub-user-login-success";
+        final String msgKey;
+
+        if (isAdmin) {
+            msgKey = "pub-admin-login-success";
+        } else {
+            msgKey = "pub-user-login-success";
+        }
 
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
                 localize(msgKey, user, ipAddr));
@@ -304,6 +320,14 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
+     *
+     * @return The {@link ServerPluginManager}.
+     */
+    public ServerPluginManager getPluginManager() {
+        return this.pluginManager;
+    }
+
+    /**
      * @param props
      *            The server properties.
      */
@@ -330,68 +354,34 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
-     * Gets the value of a package property.
-     *
-     * @param key
-     *            The property key.
-     * @return The property value.
-     */
-    public static String getPackageProperty(final String key) {
-        return thePackageProps.getProperty(key);
-    }
-
-    /**
-     * The location of the JavaScript/jQuery library files.
-     *
-     * @return The location including a trailing '/'.
-     */
-    public static String getJsLibLocation() {
-        return thePackageProps.getProperty("jquery.location") + "/";
-    }
-
-    /**
      * The location of the Mobi Pick jQuery library files.
      *
      * @return The location including a trailing '/'.
      */
     public static String getJqMobiPickLocation() {
-        return getJsLibLocation() + "mobipick/"
-                + thePackageProps.getProperty("jquery.mobipick.version") + "/";
-    }
-
-    /**
-     * The location of the jqPlot plug-in files.
-     *
-     * @return The location including a trailing '/'.
-     */
-    public static String getJqPlotPluginLocation() {
-        return getJsLibLocation() + "plugins/";
+        return "mobipick/";
     }
 
     /**
      *
-     * @return The URL string.
+     * @param namePath
+     * @return
      */
-    public static String getJqueryUrlJs() {
-        return getJsLibLocation() + thePackageProps.getProperty("jquery.js");
+    public static JavaScriptReferenceHeaderItem getWebjarsJsRef(
+            final String namePath) {
+        return JavaScriptHeaderItem
+                .forReference(new WebjarsJavaScriptResourceReference(namePath));
     }
 
     /**
      *
-     * @return The URL string.
+     * @param namePath
+     * @return
      */
-    public static String getJqueryMobileUrlJs() {
-        return getJsLibLocation()
-                + thePackageProps.getProperty("jquery.mobile.js");
-    }
-
-    /**
-     *
-     * @return The URL string.
-     */
-    public static String getJqueryMobileUrlCss() {
-        return getJsLibLocation()
-                + thePackageProps.getProperty("jquery.mobile.css");
+    public static CssReferenceHeaderItem
+            getWebjarsCssRef(final String namePath) {
+        return CssHeaderItem.forReference(new WebjarsCssResourceReference(
+                namePath));
     }
 
     /**
@@ -415,6 +405,15 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
         java.io.FileInputStream fis = null;
 
         try {
+
+            /*
+             * Configure so the wicket application maps requests for /webjars
+             * and instances of IWebjarsResourceReference to the
+             * /META-INF/resources/webjars directory of all the JARs in the
+             * CLASSPATH.
+             */
+            WicketWebjars.install(this);
+
             /*
              * Mount a page class to a given path
              *
@@ -461,25 +460,13 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
                             ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
                             ConfigManager.PRINTER_RAW_PORT_DEFAULT));
 
-            myRawPrintServer = new RawPrintServer(iRawPrintPort);
-            myRawPrintServer.start();
+            this.rawPrintServer = new RawPrintServer(iRawPrintPort);
+            this.rawPrintServer.start();
 
-            /*
-             *
-             */
+            //
             IppPrintServer.init();
 
-            /*
-             * Read the properties file for the references to the jQuery
-             * resources to link into the HTML.
-             */
-            ServletContext ctx = getServletContext();
-            thePackageProps.load(ctx
-                    .getResourceAsStream("/WEB-INF/package.properties"));
-
-            /*
-             * After the package props are loaded.
-             */
+            //
             replaceJQueryCore();
 
             /*
@@ -506,6 +493,15 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
              *
              */
             ConfigManager.instance().initScheduler();
+
+            /*
+             * Server plug-in manager.
+             */
+            this.pluginManager =
+                    ServerPluginManager
+                            .create(ConfigManager.getServerExtHome());
+
+            SpInfo.instance().log(this.pluginManager.asLoggingInfo());
 
         } catch (Exception e) {
 
@@ -534,7 +530,7 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
      * @return The home page class for the application.
      */
     @Override
-    public final Class<IppPrintServerHomePage> getHomePage() {
+    public Class<IppPrintServerHomePage> getHomePage() {
         return IppPrintServerHomePage.class;
     }
 
@@ -572,22 +568,19 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
      */
     private void replaceJQueryCore() {
 
-        /*
-         * Note the "/" prefix before the url !!!
-         */
-        final ResourceReference resource =
-                new UrlResourceReference(Url.parse("/" + getJqueryUrlJs()));
+        final JavaScriptReferenceHeaderItem replacement =
+                getWebjarsJsRef(WEBJARS_PATH_JQUERY_CORE_JS);
 
         addResourceReplacement(
                 (JavaScriptResourceReference) getJavaScriptLibrarySettings()
-                        .getJQueryReference(), resource);
+                        .getJQueryReference(), replacement.getReference());
     }
 
     /**
      * @see org.apache.wicket.Application#init()
      */
     @Override
-    public final void init() {
+    public void init() {
 
         super.init();
 
@@ -618,8 +611,7 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     @Override
-    public final Session newSession(final Request request,
-            final Response response) {
+    public Session newSession(final Request request, final Response response) {
 
         final String remoteAddr =
                 ((ServletWebRequest) request).getContainerRequest()
@@ -690,7 +682,7 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     @Override
-    public final void sessionUnbound(final String sessionId) {
+    public void sessionUnbound(final String sessionId) {
 
         super.sessionUnbound(sessionId);
 
@@ -740,7 +732,7 @@ public class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     @Override
-    protected final void onDestroy() {
+    protected void onDestroy() {
     }
 
 }

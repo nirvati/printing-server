@@ -36,7 +36,7 @@ import org.apache.wicket.protocol.http.WebApplication;
 import org.savapage.core.config.ConfigManager;
 
 /**
- * Shows static documentation, like the User Manual (DocBook) and the Third
+ * Delivers static documentation, like the User Manual (DocBook) and the Third
  * Party License Information.
  *
  * <p>
@@ -80,16 +80,20 @@ public final class SpDocsServlet extends HttpServlet {
         try {
 
             final File file = new File(CONTENT_HOME + reqURI);
-
-            istr = new FileInputStream(file);
             bos = new ByteArrayOutputStream();
 
-            final byte[] aByte = new byte[2048];
+            if (file.exists()) {
 
-            int nBytes = istr.read(aByte);
-            while (-1 < nBytes) {
-                bos.write(aByte, 0, nBytes);
-                nBytes = istr.read(aByte);
+                istr = new FileInputStream(file);
+                final byte[] aByte = new byte[2048];
+
+                int nBytes = istr.read(aByte);
+                while (-1 < nBytes) {
+                    bos.write(aByte, 0, nBytes);
+                    nBytes = istr.read(aByte);
+                }
+            } else {
+                bos.write(String.format("%s: not found", reqURI).getBytes());
             }
 
             resp.setStatus(HttpServletResponse.SC_OK);

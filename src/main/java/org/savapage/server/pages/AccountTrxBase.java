@@ -63,7 +63,8 @@ public final class AccountTrxBase extends AbstractAuthPage {
 
     @Override
     protected boolean needMembership() {
-        return isAdminRoleContext();
+        // return isAdminRoleContext();
+        return false;
     }
 
     /**
@@ -126,6 +127,8 @@ public final class AccountTrxBase extends AbstractAuthPage {
                 AccountTrxTypeEnum.ADJUST.toString());
         helper.addModifyLabelAttr("accounttrx-select-type-deposit", "value",
                 AccountTrxTypeEnum.DEPOSIT.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-gateway", "value",
+                AccountTrxTypeEnum.GATEWAY.toString());
         helper.addModifyLabelAttr("accounttrx-select-type-voucher", "value",
                 AccountTrxTypeEnum.VOUCHER.toString());
         helper.addModifyLabelAttr("accounttrx-select-type-printout", "value",

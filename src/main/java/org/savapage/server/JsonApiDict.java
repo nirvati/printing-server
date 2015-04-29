@@ -77,6 +77,7 @@ public class JsonApiDict {
     public static final String REQ_JOB_DELETE = "job-delete";
     public static final String REQ_JOB_EDIT = "job-edit";
     public static final String REQ_JOB_PAGES = "job-pages";
+    public static final String REQ_INBOX_IS_VANILLA = "inbox-is-vanilla";
     public static final String REQ_JQPLOT = "jqplot";
     public static final String REQ_LANGUAGE = "language";
 
@@ -118,6 +119,9 @@ public class JsonApiDict {
     public static final String REQ_PDF_SET_PROPERTIES = "pdf-set-properties";
 
     public static final String REQ_PING = "ping";
+
+    public static final String REQ_USER_PAYMENT_REQUEST =
+            "user-payment-request";
 
     public static final String REQ_POS_DEPOSIT = "pos-deposit";
     public static final String REQ_POS_RECEIPT_DOWNLOAD =
@@ -498,6 +502,8 @@ public class JsonApiDict {
         usr(REQ_JOB_DELETE, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_JOB_EDIT, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_JOB_PAGES, DbClaim.NONE, DbAccess.USER_LOCK);
+        usr(REQ_INBOX_IS_VANILLA, DbClaim.NONE, DbAccess.USER_LOCK);
+
         usr(REQ_JQPLOT, DbClaim.NONE, DbAccess.YES);
         non(REQ_LANGUAGE);
         usr(REQ_LETTERHEAD_ATTACH, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -529,6 +535,8 @@ public class JsonApiDict {
         usr(REQ_PDF_SET_PROPERTIES, DbClaim.READ, DbAccess.YES);
 
         non(REQ_PING);
+
+        usr(REQ_USER_PAYMENT_REQUEST, DbClaim.READ, DbAccess.YES);
 
         adm(REQ_POS_DEPOSIT, DbClaim.NONE, DbAccess.YES);
         adm(REQ_POS_RECEIPT_DOWNLOAD, DbClaim.READ, DbAccess.YES);

@@ -123,8 +123,14 @@ public class About extends AbstractAdminPage {
         add(new Label("current-year", String.valueOf(Calendar.getInstance()
                 .get(Calendar.YEAR))));
 
-        add(new Label("app-copyright-owner",
-                CommunityDictEnum.DATRAVERVE_BV.getWord()));
+        //
+        //
+        labelWrk =
+                new Label("app-copyright-owner-url",
+                        CommunityDictEnum.DATRAVERSE_BV.getWord());
+        labelWrk.add(new AttributeModifier("href",
+                CommunityDictEnum.DATRAVERSE_BV_URL.getWord()));
+        add(labelWrk);
 
         //
         String version;
@@ -297,14 +303,14 @@ public class About extends AbstractAdminPage {
             break;
 
         case WRONG_VERSION:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
+            signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus =
                     localized("membership-status-wrong-version",
                             CommunityDictEnum.MEMBERSHIP.getWord());
             break;
 
         case WRONG_VERSION_WITH_GRACE:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
+            signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus =
                     localized("membership-status-wrong-version-grace-period",
                             CommunityDictEnum.MEMBERSHIP.getWord(),
@@ -314,12 +320,12 @@ public class About extends AbstractAdminPage {
 
         case VALID:
 
+            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
+
             if (memberCard.isVisitorCard()) {
                 txtStatus = CommunityDictEnum.VISITOR.getWord();
-                signalColor = MarkupHelper.CSS_TXT_WARN;
             } else {
                 txtStatus = CommunityDictEnum.FELLOW.getWord();
-                signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
             }
 
             if (memberCard.getExpirationDate() != null) {
@@ -331,14 +337,14 @@ public class About extends AbstractAdminPage {
             break;
 
         case EXCEEDED:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
+            signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus =
                     localized("membership-status-users-exceeded",
                             CommunityDictEnum.MEMBERSHIP.getWord());
             break;
 
         case EXPIRED:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
+            signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus =
                     localized("membership-status-expired",
                             CommunityDictEnum.MEMBERSHIP.getWord());
@@ -349,24 +355,24 @@ public class About extends AbstractAdminPage {
             break;
 
         case VISITOR_EDITION:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus = CommunityDictEnum.VISITOR_EDITION.getWord();
+            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
+            txtStatus = CommunityDictEnum.VISITING_GUEST.getWord();
             break;
 
         case VISITOR:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
+            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
             txtStatus =
                     localized("membership-status-visit",
-                            CommunityDictEnum.VISITOR_EDITION.getWord(),
+                            CommunityDictEnum.VISITING_GUEST.getWord(),
                             memberCard.getDaysLeftInVisitorPeriod(refDate));
             break;
 
         case VISITOR_EXPIRED:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
+            signalColor = MarkupHelper.CSS_TXT_WARN;
 
             txtStatus =
                     localized("membership-status-visit-expired",
-                            CommunityDictEnum.VISITOR_EDITION.getWord(),
+                            CommunityDictEnum.VISITING_GUEST.getWord(),
                             localizedDate(DateUtils.addDays(
                                     new Date(),
                                     memberCard.getDaysLeftInVisitorPeriod(
@@ -480,6 +486,14 @@ public class About extends AbstractAdminPage {
 
         labelWrk = new Label("savapage-helpdesk-url", urlHelpDesk);
         labelWrk.add(new AttributeModifier("href", urlHelpDesk));
+        add(labelWrk);
+
+        //
+        labelWrk =
+                new Label("savapage-source-code-url",
+                        localized("source-code-link"));
+        labelWrk.add(new AttributeModifier("href",
+                CommunityDictEnum.COMMUNITY_SOURCE_CODE_URL.getWord()));
         add(labelWrk);
 
     }

@@ -128,6 +128,7 @@ import org.savapage.core.dto.QuickSearchPosPurchaseItemDto;
 import org.savapage.core.dto.QuickSearchPrinterItemDto;
 import org.savapage.core.dto.QuickSearchUserItemDto;
 import org.savapage.core.dto.UserDto;
+import org.savapage.core.dto.UserPaymentRequestDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
 import org.savapage.core.img.ImageUrl;
@@ -135,6 +136,8 @@ import org.savapage.core.inbox.InboxInfoDto;
 import org.savapage.core.inbox.PageImages;
 import org.savapage.core.inbox.PageImages.PageImage;
 import org.savapage.core.inbox.RangeAtom;
+import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
+import org.savapage.core.ipp.attribute.syntax.IppKeyword;
 import org.savapage.core.jmx.JmxRemoteProperties;
 import org.savapage.core.job.SpJobScheduler;
 import org.savapage.core.job.SpJobType;
@@ -205,6 +208,8 @@ import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.core.util.Messages;
 import org.savapage.core.util.QuickSearchDate;
+import org.savapage.ext.payment.PaymentGatewayException;
+import org.savapage.ext.payment.PaymentGatewayTrx;
 import org.savapage.server.auth.ClientAppUserAuthManager;
 import org.savapage.server.auth.UserAuthToken;
 import org.savapage.server.auth.WebAppUserAuthManager;
@@ -762,6 +767,8 @@ public final class JsonApiServer extends AbstractPage {
 
         } catch (Exception e) {
 
+            LOGGER.error(e.getMessage(), e);
+
             if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
             }
@@ -1139,6 +1146,8 @@ public final class JsonApiServer extends AbstractPage {
                 pdfTemp =
                         generatePdfForExport(
                                 lockedUser,
+                                Integer.parseInt(getParmValue(parameters,
+                                        isGetAction, "jobIndex")),
                                 getParmValue(parameters, isGetAction, "ranges"),
                                 getParmValue(parameters, isGetAction,
                                         "graphics").equals(PARM_VALUE_FALSE),
@@ -1166,6 +1175,8 @@ public final class JsonApiServer extends AbstractPage {
                 requestHandler = handler;
 
             } catch (Exception e) {
+
+                LOGGER.error(e.getMessage(), e);
 
                 if (pdfTemp != null && pdfTemp.exists()) {
                     pdfTemp.delete();
@@ -1351,6 +1362,11 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqSmartSchoolStop();
 
+        case JsonApiDict.REQ_USER_PAYMENT_REQUEST:
+
+            return reqUserPaymentRequest(requestingUser,
+                    getParmValue(parameters, isGetAction, "dto"));
+
         case JsonApiDict.REQ_POS_DEPOSIT:
 
             return reqPosDeposit(requestingUser,
@@ -1396,6 +1412,10 @@ public final class JsonApiServer extends AbstractPage {
             return reqUserPinReset(requestingUser,
                     getParmValue(parameters, isGetAction, "user"),
                     getParmValue(parameters, isGetAction, "pin"));
+
+        case JsonApiDict.REQ_INBOX_IS_VANILLA:
+
+            return reqInboxIsVanilla(requestingUser);
 
         case JsonApiDict.REQ_JOB_DELETE:
 
@@ -1480,6 +1500,7 @@ public final class JsonApiServer extends AbstractPage {
                     getParmValue(parameters, isGetAction, "printer"),
                     getParmValue(parameters, isGetAction, "readerName"),
                     getParmValue(parameters, isGetAction, "jobName"),
+                    getParmValue(parameters, isGetAction, "jobIndex"),
                     getParmValue(parameters, isGetAction, "copies"),
                     getParmValue(parameters, isGetAction, "ranges"),
                     PageScalingEnum.valueOf(getParmValue(parameters,
@@ -1636,6 +1657,7 @@ public final class JsonApiServer extends AbstractPage {
             return reqSend(
                     lockedUser,
                     getParmValue(parameters, isGetAction, "mailto"),
+                    getParmValue(parameters, isGetAction, "jobIndex"),
                     getParmValue(parameters, isGetAction, "ranges"),
                     getParmValue(parameters, isGetAction, "graphics").equals(
                             PARM_VALUE_FALSE));
@@ -1698,11 +1720,14 @@ public final class JsonApiServer extends AbstractPage {
      *
      * @param user
      *            The {@link User}.
-     * @param documentPageRangeFilter
+     * @param vanillaJobIndex
+     *            The zero-based index of the vanilla job.
+     * @param pageRangeFilter
      *            The page range filter. For example: '1,2,5-6'. The page
      *            numbers in page range filter refer to one-based page numbers
-     *            of the integrated {@link InboxInfoDto} document. When
-     *            {@code null}, then the full page range is applied.
+     *            of the integrated {@link InboxInfoDto} document OR for a
+     *            single vanilla job. When {@code null}, then the full page
+     *            range is applied.
      * @param removeGraphics
      *            If <code>true</code> graphics are removed (minified to
      *            one-pixel).
@@ -1717,17 +1742,53 @@ public final class JsonApiServer extends AbstractPage {
      * @throws Exception
      */
     private File generatePdfForExport(final User user,
-            final String documentPageRangeFilter, boolean removeGraphics,
-            final DocLog docLog, final String purpose)
-            throws LetterheadNotFoundException, IOException,
-            PostScriptDrmException {
+            final int vanillaJobIndex, final String pageRangeFilter,
+            final boolean removeGraphics, final DocLog docLog,
+            final String purpose) throws LetterheadNotFoundException,
+            IOException, PostScriptDrmException {
 
         final String pdfFile =
                 OutputProducer.createUniqueTempPdfName(user, purpose);
 
+        final String documentPageRangeFilter;
+
+        if (vanillaJobIndex < 0) {
+
+            documentPageRangeFilter = pageRangeFilter;
+
+        } else {
+            /*
+             * Convert job scope to inbox scope.
+             */
+            final InboxInfoDto jobInfo =
+                    INBOX_SERVICE.readInboxInfo(user.getUserId());
+
+            documentPageRangeFilter =
+                    INBOX_SERVICE.toVanillaJobInboxRange(jobInfo,
+                            vanillaJobIndex, INBOX_SERVICE
+                                    .createSortedRangeArray(pageRangeFilter));
+        }
+
         return OutputProducer.instance().generatePdfForExport(user, pdfFile,
                 documentPageRangeFilter, removeGraphics, docLog);
     }
+
+    /**
+     * Converts a sorted {@link RangeAtom} list with page numbers in job context
+     * to a inbox context range string.
+     * <p>
+     * Note: the jobInfo must be vanilla.
+     * </p>
+     *
+     * @param jobInfo
+     *            The {@link InboxInfoDto}.
+     * @param iVanillaJobIndex
+     *            The zero-based vanilla job index in the jobInfo.
+     * @param sortedRangeArrayJob
+     *            The sorted {@link RangeAtom} list with page numbers in job
+     *            context.
+     * @return The range string.
+     */
 
     /**
      *
@@ -2075,7 +2136,7 @@ public final class JsonApiServer extends AbstractPage {
         if (!API_DICTIONARY.isValidRequest(request)) {
             userData = new HashMap<String, Object>();
             return setApiResult(userData, API_RESULT_CODE_ERROR,
-                    "msg-invalid-request");
+                    "msg-invalid-request", request);
         }
 
         if (!API_DICTIONARY.isAuthenticationNeeded(request)) {
@@ -2133,22 +2194,24 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
-     * @param user
+     * @param lockedUser
      * @param mailto
+     * @param jobIndex
+     * @param ranges
+     * @param removeGraphics
      * @return
-     * @throws IOException
      * @throws LetterheadNotFoundException
-     * @throws Exception
+     * @throws IOException
      * @throws MessagingException
-     * @throws CircuitBreakerException
      * @throws InterruptedException
+     * @throws CircuitBreakerException
      * @throws ParseException
      */
     private Map<String, Object> reqSend(final User lockedUser,
-            final String mailto, final String ranges, boolean removeGraphics)
-            throws LetterheadNotFoundException, IOException,
-            MessagingException, InterruptedException, CircuitBreakerException,
-            ParseException {
+            final String mailto, final String jobIndex, final String ranges,
+            boolean removeGraphics) throws LetterheadNotFoundException,
+            IOException, MessagingException, InterruptedException,
+            CircuitBreakerException, ParseException {
 
         final String user = lockedUser.getUserId();
 
@@ -2164,7 +2227,8 @@ public final class JsonApiServer extends AbstractPage {
              * (1) Generate with existing user lock.
              */
             fileAttach =
-                    generatePdfForExport(lockedUser, ranges, removeGraphics,
+                    generatePdfForExport(lockedUser,
+                            Integer.parseInt(jobIndex), ranges, removeGraphics,
                             docLog, "email");
             /*
              * INVARIANT: Since sending the mail is synchronous, file length is
@@ -2750,10 +2814,21 @@ public final class JsonApiServer extends AbstractPage {
                         .getLocale(), printerName);
 
         if (jsonPrinter == null) {
+
             setApiResult(data, API_RESULT_CODE_ERROR, "msg-printer-out-of-date");
+
         } else {
-            data.put("printer", jsonPrinter);
-            setApiResultOK(data);
+
+            if (jsonPrinter.getMediaSources().isEmpty()) {
+
+                setApiResult(data, API_RESULT_CODE_ERROR,
+                        "msg-printer-no-media-sources-defined", printerName);
+
+            } else {
+                data.put("printer", jsonPrinter);
+                setApiResultOK(data);
+            }
+
         }
         return data;
     }
@@ -2845,9 +2920,10 @@ public final class JsonApiServer extends AbstractPage {
      * @param printerName
      * @param readerName
      * @param jobName
+     * @param jobIndex
      * @param copies
      * @param rangesRaw
-     * @param fitToPage
+     * @param pageScaling
      * @param removeGraphics
      * @param clearInbox
      * @param jsonOptions
@@ -2856,10 +2932,10 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqPrint(final User lockedUser,
             final String printerName, final String readerName,
-            final String jobName, final String copies, final String rangesRaw,
-            final PageScalingEnum pageScaling, final boolean removeGraphics,
-            final boolean clearInbox, final String jsonOptions)
-            throws Exception {
+            final String jobName, final String jobIndex, final String copies,
+            final String rangesRaw, final PageScalingEnum pageScaling,
+            final boolean removeGraphics, final boolean clearInbox,
+            final String jsonOptions) throws Exception {
 
         final DeviceDao deviceDao =
                 ServiceContext.getDaoContext().getDeviceDao();
@@ -2897,9 +2973,11 @@ public final class JsonApiServer extends AbstractPage {
          */
         String ranges = rangesRaw.trim();
 
-        if (!ranges.isEmpty()) {
+        final boolean printEntireInbox = ranges.isEmpty();
+
+        if (!printEntireInbox) {
             /*
-             * remove spaces
+             * Remove inner spaces.
              */
             ranges = ranges.replace(" ", "");
             try {
@@ -2936,15 +3014,27 @@ public final class JsonApiServer extends AbstractPage {
         final JsonNode list = new ObjectMapper().readTree(jsonOptions);
         final Map<String, String> options = new HashMap<String, String>();
 
-        String key = null;
-
         final Iterator<String> iter = list.getFieldNames();
 
+        String keyWlk = null;
+        String valWlk = null;
+
+        boolean isDuplexPrint = false;
+
         while (iter.hasNext()) {
-            key = iter.next();
-            options.put(key, list.get(key).getTextValue());
+
+            keyWlk = iter.next();
+            valWlk = list.get(keyWlk).getTextValue();
+
+            options.put(keyWlk, valWlk);
+
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(key + " = " + list.get(key).getTextValue());
+                LOGGER.trace(keyWlk + " = " + valWlk);
+            }
+
+            if (keyWlk.equals(IppDictJobTemplateAttr.ATTR_SIDES)
+                    && !valWlk.equals(IppKeyword.SIDES_ONE_SIDED)) {
+                isDuplexPrint = true;
             }
         }
 
@@ -2964,8 +3054,26 @@ public final class JsonApiServer extends AbstractPage {
         printReq.setLocale(getSession().getLocale());
         printReq.setIdUser(lockedUser.getId());
 
+        /*
+         * Vanilla jobs?
+         */
+        final boolean chunkVanillaJobs;
+        final Integer printJobIndex = Integer.parseInt(jobIndex);
+        final Integer iVanillaJob;
+
+        if (printJobIndex.intValue() < 0) {
+            iVanillaJob = null;
+            chunkVanillaJobs =
+                    isDuplexPrint && printEntireInbox
+                            && jobs.getJobs().size() > 1
+                            && INBOX_SERVICE.isInboxVanilla(jobs);
+        } else {
+            iVanillaJob = printJobIndex;
+            chunkVanillaJobs = true;
+        }
+
         PROXY_PRINT_SERVICE.chunkProxyPrintRequest(lockedUser, printReq,
-                pageScaling);
+                pageScaling, chunkVanillaJobs, iVanillaJob);
 
         /*
          * Calculate the printing cost.
@@ -3081,7 +3189,7 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         /*
-         * Fast proxy Print via outbox?
+         * Hold Print?
          */
         final ProxyPrintAuthModeEnum authModeEnum =
                 DEVICE_SERVICE.getProxyPrintAuthMode(device.getId());
@@ -4960,6 +5068,66 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
+     * @param requestingUser
+     * @param jsonDto
+     * @return
+     * @throws Exception
+     */
+    private Map<String, Object> reqUserPaymentRequest(
+            final String requestingUser, final String jsonDto)
+            throws IOException {
+
+        final Map<String, Object> userData = new HashMap<String, Object>();
+
+        final UserPaymentRequestDto dto =
+                JsonAbstractBase.create(UserPaymentRequestDto.class, jsonDto);
+
+        /*
+         * INVARIANT: Amount MUST be valid.
+         */
+        final String plainAmount =
+                dto.getAmountMain() + "." + dto.getAmountCents();
+
+        if (!BigDecimalUtil.isValid(plainAmount)) {
+            return setApiResult(userData, API_RESULT_CODE_ERROR,
+                    "msg-amount-invalid");
+        }
+
+        final BigDecimal paymentAmount = BigDecimalUtil.valueOf(plainAmount);
+
+        /*
+         * INVARIANT: Amount MUST be GT zero.
+         */
+        if (paymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return setApiResult(userData, API_RESULT_CODE_ERROR,
+                    "msg-amount-must-be positive");
+        }
+
+        try {
+            final String comment =
+                    localize("msg-payment-gateway-comment",
+                            CommunityDictEnum.SAVAPAGE.getWord(),
+                            requestingUser);
+
+            final PaymentGatewayTrx trx =
+                    WebApp.get()
+                            .getPluginManager()
+                            .getPaymentGatewayPlugin()
+                            .startPayment(requestingUser,
+                                    paymentAmount.doubleValue(), comment);
+
+            setApiResultOK(userData);
+            userData.put("paymentUrl", trx.getPaymentUrl().toExternalForm());
+
+        } catch (PaymentGatewayException e) {
+            createApiResult(userData, API_RESULT_CODE_ERROR, "", e.getMessage());
+        }
+
+        return userData;
+    }
+
+    /**
+     *
      * @param jsonDto
      * @return
      * @throws IOException
@@ -4969,7 +5137,7 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqPosDeposit(final String requestingUser,
             final String jsonDto) throws Exception {
 
-        Map<String, Object> userData = new HashMap<String, Object>();
+        final Map<String, Object> userData = new HashMap<String, Object>();
 
         final PosDepositDto dto =
                 JsonAbstractBase.create(PosDepositDto.class, jsonDto);
@@ -5526,14 +5694,17 @@ public final class JsonApiServer extends AbstractPage {
                 /*
                  * Get the "real" username from the alias.
                  */
-                uid =
-                        UserAliasList.instance().getUserName(
-                                userAuthenticator.asDbUserId(authId));
+                if (allowInternalUsersOnly) {
+                    uid = UserAliasList.instance().getUserName(authId);
+                } else {
+                    uid =
+                            UserAliasList.instance().getUserName(
+                                    userAuthenticator.asDbUserId(authId));
+                    uid = userAuthenticator.asDbUserId(uid);
+                }
                 /*
                  * Read real user from database.
                  */
-                uid = userAuthenticator.asDbUserId(uid);
-
                 userDb = userDao.findActiveUserByUserId(uid);
 
             } else if (authMode == UserAuth.Mode.ID) {
@@ -5668,8 +5839,15 @@ public final class JsonApiServer extends AbstractPage {
 
                 } else {
 
-                    User userAuth = userAuthenticator.authenticate(uid, authPw);
-                    isAuthenticated = (userAuth != null);
+                    final User userAuth;
+
+                    if (allowInternalUsersOnly) {
+                        userAuth = null;
+                        isAuthenticated = false;
+                    } else {
+                        userAuth = userAuthenticator.authenticate(uid, authPw);
+                        isAuthenticated = (userAuth != null);
+                    }
 
                     if (!isAuthenticated) {
                         /*
@@ -6536,14 +6714,14 @@ public final class JsonApiServer extends AbstractPage {
 
         switch (memberCard.getStatus()) {
         case EXCEEDED:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-exceeded-user-limit",
                     CommunityDictEnum.MEMBERSHIP.getWord(),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
                     CommunityDictEnum.MEMBER_CARD.getWord());
             break;
         case EXPIRED:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-expired",
                     CommunityDictEnum.MEMBERSHIP.getWord(),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
@@ -6551,12 +6729,12 @@ public final class JsonApiServer extends AbstractPage {
 
             break;
         case VISITOR:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-visit", daysLeft.toString(),
                     CommunityDictEnum.VISITOR.getWord());
             break;
         case VISITOR_EXPIRED:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-visit-expired",
                     CommunityDictEnum.VISITOR.getWord(),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
@@ -6564,21 +6742,21 @@ public final class JsonApiServer extends AbstractPage {
             break;
         case WRONG_MODULE:
         case WRONG_COMMUNITY:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-wrong-product",
                     CommunityDictEnum.MEMBERSHIP.getWord(),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
                     CommunityDictEnum.MEMBER_CARD.getWord());
             break;
         case WRONG_VERSION:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-version",
                     CommunityDictEnum.MEMBERSHIP.getWord(),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
                     CommunityDictEnum.MEMBER_CARD.getWord());
             break;
         case WRONG_VERSION_WITH_GRACE:
-            setApiResult(userData, API_RESULT_CODE_WARN,
+            setApiResult(userData, API_RESULT_CODE_INFO,
                     "msg-membership-version-grace",
                     CommunityDictEnum.MEMBERSHIP.getWord(),
                     daysLeft.toString(),
@@ -6624,6 +6802,19 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         return userData;
+    }
+
+    /**
+     *
+     * @return
+     */
+    private Map<String, Object> reqInboxIsVanilla(final String user) {
+
+        final boolean isVanilla =
+                INBOX_SERVICE.isInboxVanilla(INBOX_SERVICE.getInboxInfo(user));
+        final Map<String, Object> userData = new HashMap<String, Object>();
+        userData.put("vanilla", Boolean.valueOf(isVanilla));
+        return setApiResultOK(userData);
     }
 
     /**
