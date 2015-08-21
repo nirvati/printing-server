@@ -7,7 +7,7 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 
 <input type="hidden" value="the-user-id" id="sp-accounttrx-hidden-user-id" wicket:id="hidden-user-id"/>
 
-<ul data-role="listview" data-inset="true" data-theme="a">
+<ul data-role="listview" data-inset="true">
 
     <li data-role="list-divider"><wicket:message key="title"/>
         <wicket:enclosure child="select-and-sort-user"> 
@@ -27,7 +27,7 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                 <li>
 
                     <label for="sp-accounttrx-containing-text"><wicket:message key="prompt-comment-containing-text"/></label>
-	                <input type="text" id="sp-accounttrx-containing-text" value="" maxlength="128" 
+	                <input type="text" id="sp-accounttrx-containing-text" value="" maxlength="128" data-clear-btn="true" 
 	                  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>                
 		                
 					<fieldset data-role="controlgroup" data-type="horizontal" class="ui-mini">
@@ -52,11 +52,14 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                         <input type="radio" name="sp-accounttrx-select-type" id="sp-accounttrx-select-type-deposit" 
                             wicket:id="accounttrx-select-type-deposit" value="enum"/> 
 
-                        <!--  
+                        <!--  -->
                         <label for="sp-accounttrx-select-type-gateway"><wicket:message key="type-gateway"/></label>
                         <input type="radio" name="sp-accounttrx-select-type" id="sp-accounttrx-select-type-gateway" 
                             wicket:id="accounttrx-select-type-gateway" value="enum"/> 
-                         -->
+
+                        <label for="sp-accounttrx-select-type-transfer"><wicket:message key="type-transfer"/></label>
+                        <input type="radio" name="sp-accounttrx-select-type" id="sp-accounttrx-select-type-transfer" 
+                            wicket:id="accounttrx-select-type-transfer" value="enum"/> 
 
                         <label for="sp-accounttrx-select-type-voucher"><wicket:message key="type-voucher"/></label>
                         <input type="radio" name="sp-accounttrx-select-type" id="sp-accounttrx-select-type-voucher" 
@@ -112,6 +115,11 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 			
 						<a href="#" id="button-accounttrx-default" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-recycle">
 						     <wicket:message key="button-default"/></a>
+						     
+                        <a href="#" id="button-accounttrx-report" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-grid">
+                            <wicket:message key="button-report"/></a>
+						     
+						     
 				    </div>
                 </li>
             </ul>

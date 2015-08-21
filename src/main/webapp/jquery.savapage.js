@@ -420,10 +420,10 @@
 			 * IE8 caches according to the /api?... URL, so although content differs
 			 * in subsequent calls the same old cached PDF is shown.
 			 */
-			this.getUrl4Pdf = function(ranges, removeGraphics, jobIndex) {
+			this.getUrl4Pdf = function(ranges, removeGraphics, ecoprint, jobIndex) {
 				// number of milliseconds since 1970/01/01
 				var d = new Date();
-				return '/api?request=pdf&user=' + _user.id + '&jobIndex=' + jobIndex + '&ranges=' + ranges + '&graphics=' + ( removeGraphics ? '0' : '1') + '&unique=' + d.getTime().toString();
+				return '/api?request=pdf&user=' + _user.id + '&jobIndex=' + jobIndex + '&ranges=' + ranges + '&removeGraphics=' + removeGraphics + '&ecoprint=' + ecoprint + '&unique=' + d.getTime().toString();
 			};
 
 			/**
@@ -588,15 +588,18 @@
 						data : jsonData
 					}
 				}).done(function(html) {
-					$(jqId).html(html).enhanceWithin();
-					if (panel.onOutput) {
-						panel.onOutput(panel, $.parseJSON($(jqId + ' .json-rsp').text()));
+					var json;					
+					$(jqId).html(html).enhanceWithin();			
+ 					json = $(jqId + ' .json-rsp').text();										
+					if (panel.onOutput && json) {						
+						panel.onOutput(panel, $.parseJSON(json));
 					}
 				}).fail(function() {
 					_ns.PanelCommon.onDisconnected();
 				}).always(function() {
 					$.mobile.loading("hide");
 				});
+				
 			},
 
 			/**
@@ -1152,7 +1155,7 @@
 		 */
 		_ns.PageLanguage = function(_i18n, _view) {
 
-			var _page, _self, _onSelectLanguage;
+			var _page, _self, _onSelectLocale;
 
 			_page = new _ns.Page(_i18n, _view, '#page-language', 'Language');
 			_self = _ns.derive(_page);
@@ -1160,8 +1163,8 @@
 			/**
 			 *
 			 */
-			_self.onSelectLanguage = function(foo) {
-				_onSelectLanguage = foo;
+			_self.onSelectLocale = function(foo) {
+				_onSelectLocale = foo;
 			};
 
 			/**
@@ -1170,12 +1173,7 @@
 			$(_self.id()).on('pagecreate', function(event) {
 
 				$('#language-list').on('click', null, null, function(event) {
-					var str, lang;
-					str = $(event.target).attr('id');
-					lang = str.substr(str.indexOf("#") + 1);
-
-					_onSelectLanguage(lang);
-
+					_onSelectLocale($(event.target).attr('data-language'), $(event.target).attr('data-country'));
 					$('#button-lang-cancel').click();
 					return false;
 				});
@@ -1920,7 +1918,7 @@
 				var res = _api.call({
 					request : 'jqplot',
 					chartType : chartType,
-					isGlobal : ( isGlobal ? '1' : '0')
+					isGlobal : isGlobal
 				});
 				_view.showApiMsg(res);
 				return res.chartData;
@@ -2050,8 +2048,8 @@
 			 * @param page
 			 *            The Wicket class
 			 */
-			this.getUserPageHtml = function(page) {
-				return this.getPageHtml('user/' + page);
+			this.getUserPageHtml = function(page, data) {
+				return this.getPageHtml('user/' + page, data);
 			};
 
 			/**
@@ -2232,7 +2230,6 @@
 			 */
 			this.checkCb = function(sel, isChecked) {
 				$(sel).prop("checked", isChecked).checkboxradio("refresh");
-				//@JQ-1.9.1
 			};
 
 			/**
@@ -2255,9 +2252,7 @@
 			this.checkRadio = function(name, id) {
 				var sel = $('input[name="' + name + '"]');
 				sel.prop('checked', false);
-				//@JQ-1.9.1
 				$('#' + id).prop('checked', true);
-				//@JQ-1.9.1
 				sel.checkboxradio("refresh");
 			};
 

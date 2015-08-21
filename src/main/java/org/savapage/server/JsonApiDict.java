@@ -59,6 +59,11 @@ public class JsonApiDict {
     public static final String REQ_CONSTANTS = "constants";
     public static final String REQ_DB_BACKUP = "db-backup";
     public static final String REQ_DEVICE_DELETE = "device-delete";
+
+    public static final String REQ_DEVICE_NEW_CARD_READER =
+            "device-new-card-reader";
+    public static final String REQ_DEVICE_NEW_TERMINAL = "device-new-terminal";
+
     public static final String REQ_DEVICE_GET = "device-get";
     public static final String REQ_DEVICE_SET = "device-set";
     public static final String REQ_EXIT_EVENT_MONITOR = "exit-event-monitor";
@@ -114,14 +119,22 @@ public class JsonApiDict {
     public static final String REQ_PAGE_DELETE = "page-delete";
     public static final String REQ_PAGE_MOVE = "page-move";
 
+    public static final String REQ_PAYMENT_GATEWAY_ONLINE =
+            "payment-gateway-online";
+
     public static final String REQ_PDF = "pdf";
     public static final String REQ_PDF_GET_PROPERTIES = "pdf-get-properties";
     public static final String REQ_PDF_SET_PROPERTIES = "pdf-set-properties";
 
     public static final String REQ_PING = "ping";
 
-    public static final String REQ_USER_PAYMENT_REQUEST =
-            "user-payment-request";
+    public static final String REQ_USER_CREDIT_TRANSFER =
+            "user-credit-transfer";
+    public static final String REQ_USER_MONEY_TRANSFER_REQUEST =
+            "user-money-transfer-request";
+
+    public static final String REQ_BITCOIN_WALLET_REFRESH =
+            "bitcoin-wallet-refresh";
 
     public static final String REQ_POS_DEPOSIT = "pos-deposit";
     public static final String REQ_POS_RECEIPT_DOWNLOAD =
@@ -478,8 +491,13 @@ public class JsonApiDict {
         put(REQ_CONSTANTS, AuthReq.NONE, DbClaim.READ, DbAccess.YES);
         adm(REQ_DB_BACKUP, DbClaim.NONE, DbAccess.NO);
         adm(REQ_DEVICE_DELETE, DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_DEVICE_NEW_CARD_READER, DbClaim.NONE, DbAccess.NO);
+        adm(REQ_DEVICE_NEW_TERMINAL, DbClaim.NONE, DbAccess.NO);
+
         adm(REQ_DEVICE_GET, DbClaim.NONE, DbAccess.YES);
         adm(REQ_DEVICE_SET, DbClaim.READ, DbAccess.YES);
+
         usr(REQ_EXIT_EVENT_MONITOR, DbClaim.NONE, DbAccess.NO);
         adm(REQ_GCP_GET_DETAILS, DbClaim.READ, DbAccess.YES);
         adm(REQ_GCP_ONLINE, DbClaim.READ, DbAccess.YES);
@@ -536,13 +554,18 @@ public class JsonApiDict {
 
         non(REQ_PING);
 
-        usr(REQ_USER_PAYMENT_REQUEST, DbClaim.READ, DbAccess.YES);
+        usr(REQ_USER_CREDIT_TRANSFER, DbClaim.READ, DbAccess.YES);
+        usr(REQ_USER_MONEY_TRANSFER_REQUEST, DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_BITCOIN_WALLET_REFRESH, DbClaim.NONE, DbAccess.NO);
 
         adm(REQ_POS_DEPOSIT, DbClaim.NONE, DbAccess.YES);
         adm(REQ_POS_RECEIPT_DOWNLOAD, DbClaim.READ, DbAccess.YES);
         usr(REQ_POS_RECEIPT_DOWNLOAD_USER, DbClaim.READ, DbAccess.YES);
         adm(REQ_POS_RECEIPT_SENDMAIL, DbClaim.READ, DbAccess.YES);
         adm(REQ_POS_DEPOSIT_QUICK_SEARCH, DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_PAYMENT_GATEWAY_ONLINE, DbClaim.NONE, DbAccess.NO);
 
         usr(REQ_PRINT_AUTH_CANCEL, DbClaim.NONE, DbAccess.NO);
         usr(REQ_PRINT_FAST_RENEW, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -562,6 +585,7 @@ public class JsonApiDict {
         adm(REQ_REPORT, DbClaim.READ, DbAccess.YES);
         adm(REQ_RESET_ADMIN_PASSWORD, DbClaim.NONE, DbAccess.NO);
         adm(REQ_RESET_JMX_PASSWORD, DbClaim.NONE, DbAccess.NO);
+
         usr(REQ_RESET_USER_PASSWORD, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_RESET_USER_PIN, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_SEND, DbClaim.READ, DbAccess.USER_LOCK);

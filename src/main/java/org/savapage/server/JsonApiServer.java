@@ -23,8 +23,8 @@ package org.savapage.server;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URL;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -76,7 +76,6 @@ import org.apache.wicket.util.time.Duration;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.savapage.core.LetterheadNotFoundException;
-import org.savapage.core.OutputProducer;
 import org.savapage.core.PerformanceLogger;
 import org.savapage.core.PostScriptDrmException;
 import org.savapage.core.SpException;
@@ -108,7 +107,6 @@ import org.savapage.core.dao.helpers.PrintModeEnum;
 import org.savapage.core.dao.helpers.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.ReservedIppQueueEnum;
 import org.savapage.core.dao.helpers.UserAttrEnum;
-import org.savapage.core.dao.helpers.UserPagerReq;
 import org.savapage.core.dao.impl.DaoContextImpl;
 import org.savapage.core.doc.DocContent;
 import org.savapage.core.dto.AbstractDto;
@@ -127,12 +125,13 @@ import org.savapage.core.dto.QuickSearchItemDto;
 import org.savapage.core.dto.QuickSearchPosPurchaseItemDto;
 import org.savapage.core.dto.QuickSearchPrinterItemDto;
 import org.savapage.core.dto.QuickSearchUserItemDto;
+import org.savapage.core.dto.UserCreditTransferDto;
 import org.savapage.core.dto.UserDto;
-import org.savapage.core.dto.UserPaymentRequestDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
-import org.savapage.core.img.ImageUrl;
+import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.inbox.InboxInfoDto;
+import org.savapage.core.inbox.OutputProducer;
 import org.savapage.core.inbox.PageImages;
 import org.savapage.core.inbox.PageImages.PageImage;
 import org.savapage.core.inbox.RangeAtom;
@@ -172,20 +171,24 @@ import org.savapage.core.print.gcp.GcpClient;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.gcp.GcpRegisterPrinterRsp;
 import org.savapage.core.print.imap.ImapListener;
+import org.savapage.core.print.imap.ImapPrinter;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
 import org.savapage.core.print.proxy.ProxyPrintException;
 import org.savapage.core.print.proxy.ProxyPrintInboxReq;
 import org.savapage.core.print.smartschool.SmartSchoolPrintMonitor;
-import org.savapage.core.reports.AbstractJrDesign;
+import org.savapage.core.print.smartschool.SmartSchoolPrinter;
 import org.savapage.core.reports.JrPosDepositReceipt;
-import org.savapage.core.reports.JrUserDataSource;
 import org.savapage.core.reports.JrVoucherPageDesign;
+import org.savapage.core.reports.impl.AccountTrxListReport;
+import org.savapage.core.reports.impl.ReportCreator;
+import org.savapage.core.reports.impl.UserListReport;
 import org.savapage.core.rfid.RfidNumberFormat;
 import org.savapage.core.services.AccountVoucherService;
 import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.DeviceService;
 import org.savapage.core.services.DeviceService.DeviceAttrLookup;
 import org.savapage.core.services.DocLogService;
+import org.savapage.core.services.EmailService;
 import org.savapage.core.services.InboxService;
 import org.savapage.core.services.OutboxService;
 import org.savapage.core.services.PrinterService;
@@ -197,6 +200,7 @@ import org.savapage.core.services.helpers.IppLogger;
 import org.savapage.core.services.helpers.PageScalingEnum;
 import org.savapage.core.services.helpers.ProxyPrintCostParms;
 import org.savapage.core.services.helpers.UserAuth;
+import org.savapage.core.services.helpers.email.EmailMsgParms;
 import org.savapage.core.services.impl.InboxServiceImpl;
 import org.savapage.core.users.IExternalUserAuthenticator;
 import org.savapage.core.users.IUserSource;
@@ -209,12 +213,16 @@ import org.savapage.core.util.MediaUtils;
 import org.savapage.core.util.Messages;
 import org.savapage.core.util.QuickSearchDate;
 import org.savapage.ext.payment.PaymentGatewayException;
+import org.savapage.ext.payment.PaymentGatewayPlugin;
+import org.savapage.ext.payment.PaymentGatewayPlugin.PaymentRequest;
 import org.savapage.ext.payment.PaymentGatewayTrx;
 import org.savapage.server.auth.ClientAppUserAuthManager;
 import org.savapage.server.auth.UserAuthToken;
 import org.savapage.server.auth.WebAppUserAuthManager;
 import org.savapage.server.cometd.AbstractEventService;
 import org.savapage.server.cometd.UserEventService;
+import org.savapage.server.dto.MoneyTransferDto;
+import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.StatsPageTotalPanel;
 import org.savapage.server.webapp.WebAppTypeEnum;
@@ -252,6 +260,12 @@ public final class JsonApiServer extends AbstractPage {
     */
     private static final DeviceService DEVICE_SERVICE = ServiceContext
             .getServiceFactory().getDeviceService();
+
+    /**
+     * .
+     */
+    private static final EmailService EMAIL_SERVICE = ServiceContext
+            .getServiceFactory().getEmailService();
 
     /**
      *
@@ -304,15 +318,6 @@ public final class JsonApiServer extends AbstractPage {
      *
      */
     private static final JsonApiDict API_DICTIONARY = new JsonApiDict();
-
-    /**
-     *
-     */
-    private static final String PARM_VALUE_FALSE = "0";
-    /**
-     *
-     */
-    private static final String PARM_VALUE_TRUE = "1";
 
     /**
      *
@@ -723,7 +728,7 @@ public final class JsonApiServer extends AbstractPage {
 
         final String fileName = ConfigManager.getAppTmpDir() + "/" + baseName;
 
-        final File tempFile = new File(fileName);
+        final File tempPdfFile = new File(fileName);
 
         IRequestHandler requestHandler = null;
 
@@ -733,28 +738,28 @@ public final class JsonApiServer extends AbstractPage {
 
             case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_PRINT:
                 requestHandler =
-                        exportVoucherBatchPrint(tempFile,
+                        exportVoucherBatchPrint(tempPdfFile,
                                 parameters.get(JsonApiDict.PARM_REQ_SUB)
                                         .toString());
                 break;
 
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
                 requestHandler =
-                        exportPosPurchaseReceipt(tempFile,
+                        exportPosPurchaseReceipt(tempPdfFile,
                                 parameters.get(JsonApiDict.PARM_REQ_SUB)
                                         .toLongObject(), requestingUser, false);
                 break;
 
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
                 requestHandler =
-                        exportPosPurchaseReceipt(tempFile,
+                        exportPosPurchaseReceipt(tempPdfFile,
                                 parameters.get(JsonApiDict.PARM_REQ_SUB)
                                         .toLongObject(), requestingUser, true);
                 break;
 
             case JsonApiDict.REQ_REPORT:
                 requestHandler =
-                        exportReport(tempFile,
+                        exportReport(tempPdfFile,
                                 parameters.get(JsonApiDict.PARM_REQ_SUB)
                                         .toString(),
                                 parameters.get(JsonApiDict.PARM_DATA)
@@ -769,8 +774,8 @@ public final class JsonApiServer extends AbstractPage {
 
             LOGGER.error(e.getMessage(), e);
 
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
+            if (tempPdfFile != null && tempPdfFile.exists()) {
+                tempPdfFile.delete();
             }
 
             requestHandler =
@@ -810,6 +815,8 @@ public final class JsonApiServer extends AbstractPage {
             final Long accountTrxDbId, final String requestingUser,
             boolean isUserRequest) throws JRException {
 
+        final Locale reportLocale = ConfigManager.getDefaultLocale();
+
         final PosDepositReceiptDto receipt =
                 ACCOUNTING_SERVICE.createPosDepositReceiptDto(accountTrxDbId);
 
@@ -839,12 +846,12 @@ public final class JsonApiServer extends AbstractPage {
                                 pageSizeDto,
                                 ConfigManager
                                         .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY),
-                                ServiceContext.getLocale()));
+                                reportLocale));
 
         //
         final JasperPrint jasperPrint =
                 JasperFillManager.fillReport(jasperReport, JrPosDepositReceipt
-                        .getParameters(receipt, ServiceContext.getLocale()),
+                        .getParameters(receipt, reportLocale),
                         new JREmptyDataSource());
 
         JasperExportManager.exportReportToPdfFile(jasperPrint,
@@ -870,8 +877,6 @@ public final class JsonApiServer extends AbstractPage {
             boolean isUserRequest) throws JRException, MessagingException,
             IOException, InterruptedException, CircuitBreakerException {
 
-        final OutputProducer outputProducer = OutputProducer.instance();
-
         final File tempPdfFile =
                 new File(OutputProducer.createUniqueTempPdfName(requestingUser,
                         "deposit-receipt"));
@@ -881,14 +886,20 @@ public final class JsonApiServer extends AbstractPage {
                     createPosPurchaseReceipt(tempPdfFile, accountTrxDbId,
                             requestingUser, isUserRequest);
 
-            final String toName = null;
             final String subject =
                     localize("msg-deposit-email-subject",
                             receipt.getReceiptNumber());
             final String body = localize("msg-deposit-email-body");
 
-            outputProducer.sendEmail(toAddress, toName, subject, body,
-                    tempPdfFile, getUserFriendlyFilename(receipt));
+            final EmailMsgParms emailParms = new EmailMsgParms();
+
+            emailParms.setToAddress(toAddress);
+            emailParms.setSubject(subject);
+            emailParms.setBodyFromTemplate(subject, body);
+            emailParms.setFileAttach(tempPdfFile);
+            emailParms.setFileName(getUserFriendlyFilename(receipt));
+
+            EMAIL_SERVICE.writeEmail(emailParms);
 
         } finally {
             if (tempPdfFile != null && tempPdfFile.exists()) {
@@ -981,6 +992,8 @@ public final class JsonApiServer extends AbstractPage {
     private IRequestHandler exportVoucherBatchPrint(final File tempFile,
             final String jsonDto) throws JRException {
 
+        final Locale reportlocale = ConfigManager.getDefaultLocale();
+
         final VoucherBatchPrintDto dto =
                 AbstractDto.create(VoucherBatchPrintDto.class, jsonDto);
 
@@ -989,7 +1002,7 @@ public final class JsonApiServer extends AbstractPage {
                         .getConfigFontFamily(Key.FINANCIAL_VOUCHER_CARD_FONT_FAMILY);
 
         final JasperDesign design =
-                dto.getDesign().createDesign(font, getLocale());
+                dto.getDesign().createDesign(font, reportlocale);
 
         final ConfigManager cm = ConfigManager.instance();
 
@@ -1005,7 +1018,7 @@ public final class JsonApiServer extends AbstractPage {
         JasperPrint jasperPrint =
                 JasperFillManager.fillReport(jasperReport, parameters,
                         JrVoucherPageDesign.createDataSource(dto.getBatchId(),
-                                getLocale()));
+                                reportlocale));
 
         JasperExportManager.exportReportToPdfFile(jasperPrint,
                 tempFile.getAbsolutePath());
@@ -1030,8 +1043,11 @@ public final class JsonApiServer extends AbstractPage {
      * {@link IRequestHandler}.
      * </p>
      *
-     * @param parameters
-     *            The {@link PageParameters}.
+     * @param tempPdfFile
+     *            The temporary PDF {@link File}.
+     * @param reportId
+     *            The unique report ID
+     * @param jsonData
      * @param requestingUser
      * @param isGetAction
      *            {@code true} if this is a GET action, {@code false} when a
@@ -1039,62 +1055,29 @@ public final class JsonApiServer extends AbstractPage {
      * @return
      * @throws JRException
      */
-    private IRequestHandler exportReport(final File tempFile,
+    private IRequestHandler exportReport(final File tempPdfFile,
             final String reportId, final String jsonData,
             final String requestingUser, final boolean isGetAction)
             throws JRException {
 
-        final String REPORT_ID_USERLIST = "UserList";
-
         final Locale locale = getSession().getLocale();
-        final String resourceBundleBaseName =
-                AbstractJrDesign.getResourceBundleBaseName();
 
-        final InputStream istr = AbstractJrDesign.getJrxmlAsStream(reportId);
+        final ReportCreator report;
 
-        final JasperReport jasperReport =
-                JasperCompileManager.compileReport(istr);
-
-        final String fontName =
-                ConfigManager.getConfigFontFamily(
-                        Key.REPORTS_PDF_INTERNAL_FONT_FAMILY).getJrName();
-
-        jasperReport.getDefaultStyle().setFontName(fontName);
-
-        final Map<String, Object> reportParameters = new HashMap<>();
-
-        reportParameters.put("REPORT_LOCALE", locale);
-        reportParameters.put("REPORT_RESOURCE_BUNDLE",
-                ResourceBundle.getBundle(resourceBundleBaseName, locale));
-
-        reportParameters.put("SP_APP_VERSION",
-                ConfigManager.getAppNameVersion());
-        reportParameters.put("SP_REPORT_ACTOR", requestingUser);
-        reportParameters.put("SP_REPORT_IMAGE",
-                AbstractJrDesign.getHeaderImage());
-
-        final UserPagerReq req = UserPagerReq.read(jsonData);
-
-        JrUserDataSource dataSource = null;
-
-        if (reportId.equals(REPORT_ID_USERLIST)) {
-            dataSource = new JrUserDataSource(req, locale);
+        if (reportId.equals(AccountTrxListReport.REPORT_ID)) {
+            report = new AccountTrxListReport(requestingUser, jsonData, locale);
+        } else if (reportId.equals(UserListReport.REPORT_ID)) {
+            report = new UserListReport(requestingUser, jsonData, locale);
         } else {
-            throw new SpException("Report [" + reportId + "] is NOT supported");
+            throw new UnsupportedOperationException("Report [" + reportId
+                    + "] is NOT supported");
         }
 
-        reportParameters
-                .put("SP_DATA_SELECTION", dataSource.getSelectionInfo());
+        report.create(tempPdfFile);
 
-        final JasperPrint jasperPrint =
-                JasperFillManager.fillReport(jasperReport, reportParameters,
-                        dataSource);
-
-        JasperExportManager.exportReportToPdfFile(jasperPrint,
-                tempFile.getAbsolutePath());
-
+        //
         final ResourceStreamRequestHandler handler =
-                new DownloadRequestHandler(tempFile);
+                new DownloadRequestHandler(tempPdfFile);
 
         final String userFriendlyFilename = reportId + ".pdf";
 
@@ -1149,9 +1132,11 @@ public final class JsonApiServer extends AbstractPage {
                                 Integer.parseInt(getParmValue(parameters,
                                         isGetAction, "jobIndex")),
                                 getParmValue(parameters, isGetAction, "ranges"),
-                                getParmValue(parameters, isGetAction,
-                                        "graphics").equals(PARM_VALUE_FALSE),
-                                docLog, "download");
+                                Boolean.parseBoolean(getParmValue(parameters,
+                                        isGetAction, "removeGraphics")),
+                                Boolean.parseBoolean(getParmValue(parameters,
+                                        isGetAction, "ecoprint")), docLog,
+                                "download");
 
                 /*
                  * (2) Write log to database.
@@ -1238,6 +1223,9 @@ public final class JsonApiServer extends AbstractPage {
             return reqVoucherRedeem(requestingUser,
                     getParmValue(parameters, isGetAction, "cardNumber"));
 
+        case JsonApiDict.REQ_BITCOIN_WALLET_REFRESH:
+            return reqBitcoinWalletRefresh();
+
         case JsonApiDict.REQ_CARD_IS_REGISTERED:
             return reqCardIsRegistered(getParmValue(parameters, isGetAction,
                     "card"));
@@ -1268,6 +1256,14 @@ public final class JsonApiServer extends AbstractPage {
             return reqDeviceGet(requestingUser,
                     getParmValue(parameters, isGetAction, "id"));
 
+        case JsonApiDict.REQ_DEVICE_NEW_CARD_READER:
+
+            return reqDeviceNew(DeviceTypeEnum.CARD_READER);
+
+        case JsonApiDict.REQ_DEVICE_NEW_TERMINAL:
+
+            return reqDeviceNew(DeviceTypeEnum.TERMINAL);
+
         case JsonApiDict.REQ_DEVICE_SET:
 
             return reqDeviceSet(requestingUser,
@@ -1280,21 +1276,26 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_LANGUAGE:
 
             String language = getParmValue(parameters, isGetAction, "language");
+            String country = getParmValue(parameters, isGetAction, "country");
 
             if (language == null || language.trim().isEmpty()) {
 
                 language = getSession().getLocale().getLanguage();
+                country = getSession().getLocale().getCountry();
 
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("using default language [" + language
-                            + "] for user [" + requestingUser + "]");
+                    LOGGER.debug(String.format(
+                            "using default language [%s] country [%s] "
+                                    + "for user [%s]", language, country,
+                            requestingUser));
                 }
             } else {
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("language [" + language + "]");
+                    LOGGER.debug(String.format("language [%s] country [%s]",
+                            language, country));
                 }
             }
-            return reqLanguage(language);
+            return reqLanguage(language, country);
 
         case JsonApiDict.REQ_LOGIN:
 
@@ -1346,6 +1347,13 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqPaperCutTest();
 
+        case JsonApiDict.REQ_PAYMENT_GATEWAY_ONLINE:
+
+            return reqPaymentGatewayOnline(Boolean.parseBoolean(getParmValue(
+                    parameters, isGetAction, "bitcoin")),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "online")));
+
         case JsonApiDict.REQ_SMARTSCHOOL_TEST:
 
             return reqSmartSchoolTest();
@@ -1362,9 +1370,16 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqSmartSchoolStop();
 
-        case JsonApiDict.REQ_USER_PAYMENT_REQUEST:
+        case JsonApiDict.REQ_USER_CREDIT_TRANSFER:
 
-            return reqUserPaymentRequest(requestingUser,
+            return apiResultFromBasicRpcResponse(ACCOUNTING_SERVICE
+                    .transferUserCredit(JsonAbstractBase.create(
+                            UserCreditTransferDto.class,
+                            getParmValue(parameters, isGetAction, "dto"))));
+
+        case JsonApiDict.REQ_USER_MONEY_TRANSFER_REQUEST:
+
+            return reqUserMoneyTransfer(requestingUser,
                     getParmValue(parameters, isGetAction, "dto"));
 
         case JsonApiDict.REQ_POS_DEPOSIT:
@@ -1432,19 +1447,18 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_JOB_PAGES:
 
-            return reqInboxJobPages(
-                    requestingUser,
+            return reqInboxJobPages(requestingUser,
                     getParmValue(parameters, isGetAction, "first-detail-page"),
                     getParmValue(parameters, isGetAction, "unique-url-value"),
-                    getParmValue(parameters, isGetAction, "base64").equals(
-                            PARM_VALUE_TRUE));
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "base64")));
 
         case JsonApiDict.REQ_JQPLOT:
 
             return reqJqPlot(
                     getParmValue(parameters, isGetAction, "chartType"),
-                    getParmValue(parameters, isGetAction, "isGlobal").equals(
-                            PARM_VALUE_TRUE), mySessionUser);
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "isGlobal")), mySessionUser);
 
         case JsonApiDict.REQ_OUTBOX_CLEAR:
 
@@ -1495,8 +1509,10 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_PRINTER_PRINT:
 
-            return reqPrint(
-                    lockedUser,
+            System.out
+                    .println(getParmValue(parameters, isGetAction, "ecoprint"));
+
+            return reqPrint(lockedUser,
                     getParmValue(parameters, isGetAction, "printer"),
                     getParmValue(parameters, isGetAction, "readerName"),
                     getParmValue(parameters, isGetAction, "jobName"),
@@ -1505,10 +1521,11 @@ public final class JsonApiServer extends AbstractPage {
                     getParmValue(parameters, isGetAction, "ranges"),
                     PageScalingEnum.valueOf(getParmValue(parameters,
                             isGetAction, "pageScaling")),
-                    getParmValue(parameters, isGetAction, "graphics").equals(
-                            PARM_VALUE_FALSE),
-                    getParmValue(parameters, isGetAction, "clear").equals(
-                            PARM_VALUE_TRUE),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "removeGraphics")),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "ecoprint")), Boolean.parseBoolean(getParmValue(
+                            parameters, isGetAction, "clear")),
                     getParmValue(parameters, isGetAction, "options"));
 
         case JsonApiDict.REQ_PRINT_AUTH_CANCEL:
@@ -1556,20 +1573,18 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_LETTERHEAD_ATTACH:
 
-            INBOX_SERVICE.attachLetterhead(
-                    mySessionUser,
-                    getParmValue(parameters, isGetAction, "id"),
-                    getParmValue(parameters, isGetAction, "pub").equals(
-                            PARM_VALUE_TRUE));
+            INBOX_SERVICE.attachLetterhead(mySessionUser,
+                    getParmValue(parameters, isGetAction, "id"), Boolean
+                            .parseBoolean(getParmValue(parameters, isGetAction,
+                                    "pub")));
             return createApiResultOK();
 
         case JsonApiDict.REQ_LETTERHEAD_DELETE:
 
-            return reqLetterheadDelete(
-                    mySessionUser,
+            return reqLetterheadDelete(mySessionUser,
                     getParmValue(parameters, isGetAction, "id"),
-                    getParmValue(parameters, isGetAction, "pub").equals(
-                            PARM_VALUE_TRUE));
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "pub")));
 
         case JsonApiDict.REQ_LETTERHEAD_DETACH:
 
@@ -1589,12 +1604,10 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_LETTERHEAD_GET:
 
             return setApiResultOK(INBOX_SERVICE.getLetterheadDetails(
-                    mySessionUser,
-                    getParmValue(parameters, isGetAction, "id"),
-                    getParmValue(parameters, isGetAction, "pub").equals(
-                            PARM_VALUE_TRUE),
-                    getParmValue(parameters, isGetAction, "base64").equals(
-                            PARM_VALUE_TRUE)));
+                    mySessionUser, getParmValue(parameters, isGetAction, "id"),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "pub")), Boolean.parseBoolean(getParmValue(
+                            parameters, isGetAction, "base64"))));
 
         case JsonApiDict.REQ_LETTERHEAD_SET:
 
@@ -1608,10 +1621,9 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_GCP_ONLINE:
 
-            return reqGcpOnline(
-                    mySessionUser,
-                    getParmValue(parameters, isGetAction, "online").equals(
-                            PARM_VALUE_TRUE));
+            return reqGcpOnline(mySessionUser,
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "online")));
 
         case JsonApiDict.REQ_GCP_REGISTER:
 
@@ -1622,31 +1634,28 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_GCP_SET_DETAILS:
 
-            return reqGcpSetDetails(
-                    mySessionUser,
-                    getParmValue(parameters, isGetAction, "enabled").equals(
-                            PARM_VALUE_TRUE),
+            return reqGcpSetDetails(mySessionUser,
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "enabled")),
                     getParmValue(parameters, isGetAction, "clientId"),
                     getParmValue(parameters, isGetAction, "clientSecret"),
                     getParmValue(parameters, isGetAction, "printerName"));
 
         case JsonApiDict.REQ_GCP_SET_NOTIFICATIONS:
 
-            return reqGcpSetNotifications(
-                    mySessionUser,
-                    getParmValue(parameters, isGetAction, "enabled").equals(
-                            PARM_VALUE_TRUE),
+            return reqGcpSetNotifications(mySessionUser,
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "enabled")),
                     getParmValue(parameters, isGetAction, "emailSubject"),
                     getParmValue(parameters, isGetAction, "emailBody"));
 
         case JsonApiDict.REQ_GET_EVENT:
 
-            return reqGetEvent(
-                    requestingUser,
+            return reqGetEvent(requestingUser,
                     getParmValue(parameters, isGetAction, "page-offset"),
                     getParmValue(parameters, isGetAction, "unique-url-value"),
-                    getParmValue(parameters, isGetAction, "base64").equals(
-                            PARM_VALUE_TRUE));
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "base64")));
 
         case JsonApiDict.REQ_PING:
 
@@ -1654,13 +1663,14 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_SEND:
 
-            return reqSend(
-                    lockedUser,
+            return reqSend(lockedUser,
                     getParmValue(parameters, isGetAction, "mailto"),
                     getParmValue(parameters, isGetAction, "jobIndex"),
                     getParmValue(parameters, isGetAction, "ranges"),
-                    getParmValue(parameters, isGetAction, "graphics").equals(
-                            PARM_VALUE_FALSE));
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "removeGraphics")),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "ecoprint")));
 
         case JsonApiDict.REQ_QUEUE_GET:
 
@@ -1731,6 +1741,8 @@ public final class JsonApiServer extends AbstractPage {
      * @param removeGraphics
      *            If <code>true</code> graphics are removed (minified to
      *            one-pixel).
+     * @param ecoPdf
+     *            <code>true</code> if Eco PDF is to be generated.
      * @param docLog
      * @param purpose
      *            A simple tag to insert into the filename (to add some
@@ -1743,9 +1755,10 @@ public final class JsonApiServer extends AbstractPage {
      */
     private File generatePdfForExport(final User user,
             final int vanillaJobIndex, final String pageRangeFilter,
-            final boolean removeGraphics, final DocLog docLog,
-            final String purpose) throws LetterheadNotFoundException,
-            IOException, PostScriptDrmException {
+            final boolean removeGraphics, final boolean ecoPdf,
+            final DocLog docLog, final String purpose)
+            throws LetterheadNotFoundException, IOException,
+            PostScriptDrmException {
 
         final String pdfFile =
                 OutputProducer.createUniqueTempPdfName(user, purpose);
@@ -1770,7 +1783,7 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         return OutputProducer.instance().generatePdfForExport(user, pdfFile,
-                documentPageRangeFilter, removeGraphics, docLog);
+                documentPageRangeFilter, removeGraphics, ecoPdf, docLog);
     }
 
     /**
@@ -2094,7 +2107,9 @@ public final class JsonApiServer extends AbstractPage {
         } else {
 
             if (!isShutdown) {
-                LOGGER.warn(exception.getMessage());
+                if (LOGGER.isWarnEnabled()) {
+                    LOGGER.warn(exception.getMessage());
+                }
             }
         }
 
@@ -2199,6 +2214,8 @@ public final class JsonApiServer extends AbstractPage {
      * @param jobIndex
      * @param ranges
      * @param removeGraphics
+     * @param ecoPdf
+     *            <code>true</code> if Eco PDF is to be generated.
      * @return
      * @throws LetterheadNotFoundException
      * @throws IOException
@@ -2209,9 +2226,10 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqSend(final User lockedUser,
             final String mailto, final String jobIndex, final String ranges,
-            boolean removeGraphics) throws LetterheadNotFoundException,
-            IOException, MessagingException, InterruptedException,
-            CircuitBreakerException, ParseException {
+            final boolean removeGraphics, final boolean ecoPdf)
+            throws LetterheadNotFoundException, IOException,
+            MessagingException, InterruptedException, CircuitBreakerException,
+            ParseException {
 
         final String user = lockedUser.getUserId();
 
@@ -2229,7 +2247,7 @@ public final class JsonApiServer extends AbstractPage {
             fileAttach =
                     generatePdfForExport(lockedUser,
                             Integer.parseInt(jobIndex), ranges, removeGraphics,
-                            docLog, "email");
+                            ecoPdf, docLog, "email");
             /*
              * INVARIANT: Since sending the mail is synchronous, file length is
              * important and MUST be less than criterion.
@@ -2266,10 +2284,14 @@ public final class JsonApiServer extends AbstractPage {
 
                 final String subject = fileName;
                 final String body =
-                        "Hi,\n\nHere are the SafePages attached from " + user
-                                + ".\n\n--\n"
-                                + CommunityDictEnum.SAVAPAGE.getWord() + " "
-                                + ConfigManager.getAppVersion();
+                        new StringBuilder()
+                                .append("Hi,<p>Here are the SafePages "
+                                        + "attached from ").append(user)
+                                .append(".</p>--<br/>")
+                                .append(CommunityDictEnum.SAVAPAGE.getWord())
+                                .append(" ")
+                                .append(ConfigManager.getAppVersion())
+                                .toString();
 
                 /*
                  * (2) Unlock the user BEFORE sending the email.
@@ -2279,8 +2301,17 @@ public final class JsonApiServer extends AbstractPage {
                 /*
                  * (3) Send email.
                  */
-                OutputProducer.instance().sendEmail(mailto, user, subject,
-                        body, fileAttach, fileName);
+
+                final EmailMsgParms emailParms = new EmailMsgParms();
+
+                emailParms.setToAddress(mailto);
+                emailParms.setToName(user);
+                emailParms.setSubject(subject);
+                emailParms.setBodyFromTemplate(fileName, body);
+                emailParms.setFileAttach(fileAttach);
+                emailParms.setFileName(fileName);
+
+                EMAIL_SERVICE.writeEmail(emailParms);
 
                 /*
                  * (4) Log in database
@@ -2291,7 +2322,7 @@ public final class JsonApiServer extends AbstractPage {
                 DOC_LOG_SERVICE.logDocOut(lockedUser, docLog.getDocOut());
 
                 addUserStats(userData, lockedUser, this.getSession()
-                        .getLocale(), SpSession.getCurrencySymbol());
+                        .getLocale(), SpSession.getAppCurrencySymbol());
 
                 setApiResult(userData, API_RESULT_CODE_OK, "msg-mail-sent",
                         mailto);
@@ -2344,7 +2375,7 @@ public final class JsonApiServer extends AbstractPage {
                 String.valueOf(jobCount));
 
         addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getCurrencySymbol());
+                SpSession.getAppCurrencySymbol());
 
         return userData;
     }
@@ -2373,7 +2404,7 @@ public final class JsonApiServer extends AbstractPage {
         setApiResult(userData, API_RESULT_CODE_OK, msgKey);
 
         addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getCurrencySymbol());
+                SpSession.getAppCurrencySymbol());
 
         return userData;
     }
@@ -2407,7 +2438,7 @@ public final class JsonApiServer extends AbstractPage {
                 String.valueOf(jobCount), String.valueOf(minutes));
 
         addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getCurrencySymbol());
+                SpSession.getAppCurrencySymbol());
 
         return userData;
     }
@@ -2423,7 +2454,14 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        final int nPages = INBOX_SERVICE.deletePages(user, ranges);
+        final int nPages;
+
+        try {
+            nPages = INBOX_SERVICE.deletePages(user, ranges);
+        } catch (IllegalArgumentException e) {
+            return setApiResult(userData, API_RESULT_CODE_ERROR,
+                    "msg-clear-range-syntax-error", ranges);
+        }
 
         final String msgKey;
 
@@ -2545,6 +2583,8 @@ public final class JsonApiServer extends AbstractPage {
             LOGGER.trace("jsonProps: " + jsonProps);
         }
 
+        String msgKey = "msg-config-props-applied";
+
         final JsonNode list;
 
         try {
@@ -2556,6 +2596,8 @@ public final class JsonApiServer extends AbstractPage {
         final ConfigManager cm = ConfigManager.instance();
 
         final Iterator<String> iter = list.getFieldNames();
+
+        boolean isSmartSchoolUpdate = false;
 
         boolean isValid = true;
         int nJobsRescheduled = 0;
@@ -2580,7 +2622,7 @@ public final class JsonApiServer extends AbstractPage {
             if (cm.isConfigBigDecimal(configKey)) {
                 value =
                         BigDecimalUtil.toPlainString(value, getSession()
-                                .getLocale(), false, true);
+                                .getLocale(), true);
             }
 
             /*
@@ -2590,10 +2632,13 @@ public final class JsonApiServer extends AbstractPage {
                 return userData;
             }
 
-            IConfigProp.ValidationResult res = cm.validate(configKey, value);
+            final IConfigProp.ValidationResult res =
+                    cm.validate(configKey, value);
             isValid = res.isValid();
 
             if (isValid) {
+
+                boolean preValue = false;
 
                 switch (configKey) {
 
@@ -2621,15 +2666,32 @@ public final class JsonApiServer extends AbstractPage {
                     SpJobScheduler.instance().scheduleJobs(configKey);
                     nJobsRescheduled++;
                     break;
-
+                case PRINT_IMAP_ENABLE:
+                    preValue = cm.isConfigValue(configKey);
+                    break;
                 default:
                     break;
                 }
 
-                ConfigManager.instance().updateConfigKey(configKey, value,
-                        requestingUser);
+                /*
+                 * TODO: This updates the cache while database is not committed
+                 * yet! When database transaction is rollback back the cache is
+                 * dirty.
+                 */
+                cm.updateConfigKey(configKey, value, requestingUser);
 
                 nValid++;
+
+                if (configKey == Key.PRINT_IMAP_ENABLE && preValue
+                        && !cm.isConfigValue(configKey)) {
+                    if (SpJobScheduler.interruptImapListener()) {
+                        msgKey = "msg-config-props-applied-mail-print-stopped";
+                    }
+
+                } else if (configKey == Key.SMARTSCHOOL_1_ENABLE
+                        || configKey == Key.SMARTSCHOOL_2_ENABLE) {
+                    isSmartSchoolUpdate = true;
+                }
 
             } else {
                 setApiResult(userData, API_RESULT_CODE_ERROR,
@@ -2643,11 +2705,18 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         if (isValid) {
-            final String msg =
-                    (nJobsRescheduled == 0) ? "msg-config-props-applied"
-                            : "msg-config-props-applied-rescheduled";
 
-            setApiResult(userData, API_RESULT_CODE_OK, msg);
+            if (nJobsRescheduled > 0) {
+                msgKey = "msg-config-props-applied-rescheduled";
+            } else if (isSmartSchoolUpdate
+                    && !ConfigManager.isSmartSchoolPrintActiveAndEnabled()
+                    && SmartSchoolPrinter.isOnline()) {
+                if (SpJobScheduler.interruptSmartSchoolPoller()) {
+                    msgKey = "msg-config-props-applied-smartschool-stopped";
+                }
+            }
+
+            setApiResult(userData, API_RESULT_CODE_OK, msgKey);
         }
 
         return userData;
@@ -2934,8 +3003,9 @@ public final class JsonApiServer extends AbstractPage {
             final String printerName, final String readerName,
             final String jobName, final String jobIndex, final String copies,
             final String rangesRaw, final PageScalingEnum pageScaling,
-            final boolean removeGraphics, final boolean clearInbox,
-            final String jsonOptions) throws Exception {
+            final boolean removeGraphics, final boolean ecoPrint,
+            final boolean clearInbox, final String jsonOptions)
+            throws Exception {
 
         final DeviceDao deviceDao =
                 ServiceContext.getDaoContext().getDeviceDao();
@@ -3051,6 +3121,7 @@ public final class JsonApiServer extends AbstractPage {
         printReq.setOptionValues(options);
         printReq.setPrinterName(printerName);
         printReq.setRemoveGraphics(removeGraphics);
+        printReq.setEcoPrint(ecoPrint);
         printReq.setLocale(getSession().getLocale());
         printReq.setIdUser(lockedUser.getId());
 
@@ -3078,7 +3149,7 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * Calculate the printing cost.
          */
-        final String currencySymbol = SpSession.getCurrencySymbol();
+        final String currencySymbol = SpSession.getAppCurrencySymbol();
 
         final BigDecimal cost;
 
@@ -3093,6 +3164,7 @@ public final class JsonApiServer extends AbstractPage {
             costParms.setDuplex(printReq.isDuplex());
             costParms.setGrayscale(printReq.isGrayscale());
             costParms.setNumberOfCopies(printReq.getNumberOfCopies());
+            costParms.setPagesPerSide(printReq.getNup());
 
             cost =
                     ACCOUNTING_SERVICE.calcProxyPrintCost(
@@ -3345,6 +3417,21 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
+     *
+     * @return
+     * @throws IOException
+     * @throws PaymentGatewayException
+     */
+    private Map<String, Object> reqBitcoinWalletRefresh()
+            throws PaymentGatewayException, IOException {
+
+        final Map<String, Object> userData = new HashMap<String, Object>();
+
+        WebApp.get().getPluginManager().refreshWalletInfoCache();
+        return setApiResultOK(userData);
+    }
+
+    /**
      * @param user
      * @return
      */
@@ -3406,7 +3493,7 @@ public final class JsonApiServer extends AbstractPage {
         final LocaleHelper localeHelper =
                 new LocaleHelper(SpSession.get().getLocale());
 
-        final String currencySymbol = SpSession.getCurrencySymbol();
+        final String currencySymbol = SpSession.getAppCurrencySymbol();
         final int balanceDecimals = ConfigManager.getUserBalanceDecimals();
 
         QuickSearchPosPurchaseItemDto itemWlk;
@@ -3460,7 +3547,7 @@ public final class JsonApiServer extends AbstractPage {
         final QuickSearchFilterDto dto =
                 AbstractDto.create(QuickSearchFilterDto.class, json);
 
-        final String currencySymbol = SpSession.getCurrencySymbol();
+        final String currencySymbol = SpSession.getAppCurrencySymbol();
 
         final UserDao.ListFilter filter = new UserDao.ListFilter();
 
@@ -3516,8 +3603,14 @@ public final class JsonApiServer extends AbstractPage {
                                 + ConfigManager.getAppVersion());
 
         try {
-            OutputProducer.instance().sendEmail(mailto, null, subject, body,
-                    null, null);
+
+            final EmailMsgParms emailParms = new EmailMsgParms();
+
+            emailParms.setToAddress(mailto);
+            emailParms.setSubject(subject);
+            emailParms.setBodyFromTemplate(subject, body);
+
+            EMAIL_SERVICE.sendEmail(emailParms);
 
             setApiResult(userData, API_RESULT_CODE_OK, "msg-mail-sent", mailto);
 
@@ -3573,10 +3666,20 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        if (ConfigManager.isPrintImapEnabled()) {
-            SpJobScheduler.instance().scheduleOneShotImapListener(1L);
+        if (!ConfigManager.isPrintImapEnabled()) {
+            return setApiResultOK(userData);
         }
-        return setApiResult(userData, API_RESULT_CODE_OK, "msg-imap-started");
+
+        final String msgKey;
+
+        if (ImapPrinter.isOnline()) {
+            msgKey = "msg-imap-started-already";
+        } else {
+            SpJobScheduler.instance().scheduleOneShotImapListener(1L);
+            msgKey = "msg-imap-started";
+        }
+
+        return setApiResult(userData, API_RESULT_CODE_OK, msgKey);
     }
 
     /**
@@ -3586,10 +3689,14 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqImapStop() {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
+        final String msgKey;
 
-        SpJobScheduler.interruptImapListener();
-
-        return setApiResult(userData, API_RESULT_CODE_OK, "msg-imap-stopped");
+        if (SpJobScheduler.interruptImapListener()) {
+            msgKey = "msg-imap-stopped";
+        } else {
+            msgKey = "msg-imap-stopped-already";
+        }
+        return setApiResult(userData, API_RESULT_CODE_OK, msgKey);
     }
 
     /**
@@ -3613,6 +3720,7 @@ public final class JsonApiServer extends AbstractPage {
         if (error == null) {
             error =
                     PaperCutDbProxy.create(
+                            cm.getConfigValue(Key.PAPERCUT_DB_JDBC_DRIVER),
                             cm.getConfigValue(Key.PAPERCUT_DB_JDBC_URL),
                             cm.getConfigValue(Key.PAPERCUT_DB_USER),
                             cm.getConfigValue(Key.PAPERCUT_DB_PASSWORD), false)
@@ -3666,7 +3774,29 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        if (ConfigManager.isSmartSchoolPrintActiveAndEnabled()) {
+        final String msgKey;
+
+        if (!ConfigManager.isSmartSchoolPrintActiveAndEnabled()) {
+            return setApiResult(userData, API_RESULT_CODE_ERROR,
+                    "msg-smartschool-accounts-disabled");
+        }
+
+        SmartSchoolPrinter.setBlocked(MemberCard.instance()
+                .isMembershipDesirable());
+
+        if (SmartSchoolPrinter.isBlocked()) {
+
+            return setApiResult(userData, API_RESULT_CODE_WARN,
+                    "msg-smartschool-blocked",
+                    CommunityDictEnum.SAVAPAGE.getWord(),
+                    CommunityDictEnum.MEMBERSHIP.getWord());
+        }
+
+        if (SmartSchoolPrinter.isOnline()) {
+
+            msgKey = "msg-smartschool-started-already";
+
+        } else {
 
             if (simulate) {
                 SmartSchoolPrintMonitor.resetJobTickerCounter();
@@ -3674,16 +3804,13 @@ public final class JsonApiServer extends AbstractPage {
 
             SpJobScheduler.instance().scheduleOneShotSmartSchoolPrintMonitor(
                     simulate, 1L);
+
+            if (simulate) {
+                msgKey = "msg-smartschool-started-simulation";
+            } else {
+                msgKey = "msg-smartschool-started";
+            }
         }
-
-        final String msgKey;
-
-        if (simulate) {
-            msgKey = "msg-smartschool-started-simulation";
-        } else {
-            msgKey = "msg-smartschool-started";
-        }
-
         return setApiResult(userData, API_RESULT_CODE_OK, msgKey);
     }
 
@@ -3695,10 +3822,63 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        SpJobScheduler.interruptSmartSchoolPoller();
+        final String msgKey;
 
-        return setApiResult(userData, API_RESULT_CODE_OK,
-                "msg-smartschool-stopped");
+        if (SpJobScheduler.interruptSmartSchoolPoller()) {
+            msgKey = "msg-smartschool-stopped";
+        } else {
+            msgKey = "msg-smartschool-stopped-already";
+        }
+        return setApiResult(userData, API_RESULT_CODE_OK, msgKey);
+    }
+
+    /**
+     *
+     * @return
+     * @throws PaymentGatewayException
+     */
+    private Map<String, Object> reqPaymentGatewayOnline(final boolean bitcoin,
+            final boolean online) throws PaymentGatewayException {
+
+        final Map<String, Object> userData = new HashMap<String, Object>();
+
+        final ServerPluginManager manager = WebApp.get().getPluginManager();
+
+        final PaymentGatewayPlugin plugin;
+
+        if (bitcoin) {
+            plugin = manager.getBitcoinGateway();
+        } else {
+            plugin = manager.getExternalPaymentGateway();
+        }
+
+        if (plugin != null) {
+
+            plugin.setOnline(online);
+
+            final String key;
+
+            final PubLevelEnum pubLevel;
+            if (online) {
+                key = "msg-payment-gateway-online";
+                pubLevel = PubLevelEnum.CLEAR;
+            } else {
+                key = "msg-payment-gateway-offline";
+                pubLevel = PubLevelEnum.WARN;
+            }
+
+            final String systemMsg =
+                    AppLogHelper.logInfo(getClass(), key, plugin.getName());
+
+            AdminPublisher.instance().publish(PubTopicEnum.PAYMENT_GATEWAY,
+                    pubLevel, systemMsg);
+
+            return setApiResult(userData, API_RESULT_CODE_OK, key,
+                    plugin.getName());
+        }
+
+        return setApiResult(userData, API_RESULT_CODE_ERROR,
+                "msg-payment-gateway-not-found");
     }
 
     /**
@@ -4113,6 +4293,41 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
+     * @param deviceType
+     * @return
+     */
+    private Map<String, Object> reqDeviceNew(final DeviceTypeEnum deviceType) {
+
+        final Map<String, Object> userObj = new HashMap<String, Object>();
+
+        userObj.put("deviceType", deviceType.toString());
+        userObj.put("disabled", Boolean.FALSE);
+
+        final HashMap<String, Object> attrMap = new HashMap<>();
+
+        userObj.put("attr", attrMap);
+
+        if (deviceType == DeviceTypeEnum.CARD_READER) {
+            userObj.put(
+                    "port",
+                    Integer.valueOf(ConfigManager.instance().getConfigInt(
+                            Key.DEVICE_CARD_READER_DEFAULT_PORT)));
+
+        } else if (deviceType == DeviceTypeEnum.TERMINAL) {
+
+            attrMap.put(DeviceAttrEnum.WEBAPP_USER_MAX_IDLE_SECS.getDbName(),
+                    "0");
+        }
+
+        final Map<String, Object> userData = new HashMap<String, Object>();
+
+        userData.put("j_device", userObj);
+
+        return setApiResultOK(userData);
+    }
+
+    /**
+     *
      * @param user
      * @param id
      * @return
@@ -4224,7 +4439,7 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         final JsonNode id = list.get("id");
-        final boolean isNew = id.isNull();
+        final boolean isNew = id == null || id.isNull();
         final Date now = new Date();
         final String deviceName = list.get("deviceName").getTextValue();
 
@@ -5001,7 +5216,7 @@ public final class JsonApiServer extends AbstractPage {
                     userId);
         } else {
             addUserStats(userData, user, this.getSession().getLocale(),
-                    SpSession.getCurrencySymbol());
+                    SpSession.getAppCurrencySymbol());
             setApiResultOK(userData);
         }
         return userData;
@@ -5067,20 +5282,51 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
+     * Creates an API result from {@link AbstractJsonRpcMethodResponse}
+     * containing either {@link ResultDataBasic} or {@link ErrorDataBasic}
+     *
+     * @param rpcResponse
+     *            The {@link AbstractJsonRpcMethodResponse}.
+     * @return
+     */
+    private static Map<String, Object> apiResultFromBasicRpcResponse(
+            final AbstractJsonRpcMethodResponse rpcResponse) {
+
+        final Map<String, Object> userData = new HashMap<String, Object>();
+
+        if (rpcResponse.isResult()) {
+
+            final ResultDataBasic result =
+                    rpcResponse.asResult().getResult()
+                            .data(ResultDataBasic.class);
+
+            setApiResultMsgOK(userData, null, result.getMessage());
+
+        } else {
+
+            final ErrorDataBasic error =
+                    rpcResponse.asError().getError().data(ErrorDataBasic.class);
+
+            setApiResultMsgError(userData, "", error.getReason());
+        }
+        return userData;
+    }
+
+    /**
      *
      * @param requestingUser
      * @param jsonDto
      * @return
      * @throws Exception
      */
-    private Map<String, Object> reqUserPaymentRequest(
+    private Map<String, Object> reqUserMoneyTransfer(
             final String requestingUser, final String jsonDto)
             throws IOException {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        final UserPaymentRequestDto dto =
-                JsonAbstractBase.create(UserPaymentRequestDto.class, jsonDto);
+        final MoneyTransferDto dto =
+                JsonAbstractBase.create(MoneyTransferDto.class, jsonDto);
 
         /*
          * INVARIANT: Amount MUST be valid.
@@ -5103,21 +5349,54 @@ public final class JsonApiServer extends AbstractPage {
                     "msg-amount-must-be positive");
         }
 
+        /*
+         * INVARIANT: plugin must be available.
+         */
+        final PaymentGatewayPlugin plugin =
+                WebApp.get().getPluginManager()
+                        .getPaymentGateway(dto.getGatewayId());
+
+        if (plugin == null) {
+            throw new IllegalStateException(String.format(
+                    "Payment gateway \"%s\" is not available.",
+                    dto.getGatewayId()));
+        } else if (!plugin.isOnline()) {
+            return setApiResult(userData, API_RESULT_CODE_ERROR,
+                    "msg-payment-method-not-possible", dto.getMethod()
+                            .toString());
+        }
+
         try {
             final String comment =
                     localize("msg-payment-gateway-comment",
                             CommunityDictEnum.SAVAPAGE.getWord(),
                             requestingUser);
 
-            final PaymentGatewayTrx trx =
-                    WebApp.get()
-                            .getPluginManager()
-                            .getPaymentGatewayPlugin()
-                            .startPayment(requestingUser,
-                                    paymentAmount.doubleValue(), comment);
+            final URL callbackUrl = ServerPluginManager.getCallBackUrl(plugin);
+
+            final URL redirectUrl =
+                    ServerPluginManager.getRedirectUrl(dto.getSenderUrl());
+
+            final PaymentRequest req = new PaymentRequest();
+
+            req.setMethod(dto.getMethod());
+            req.setAmount(paymentAmount.doubleValue());
+            req.setCallbackUrl(callbackUrl);
+            req.setCurrency(ConfigManager.getAppCurrency());
+            req.setDescription(comment);
+            req.setRedirectUrl(redirectUrl);
+            req.setUserId(requestingUser);
+
+            final PaymentGatewayTrx trx = plugin.onPaymentRequest(req);
 
             setApiResultOK(userData);
             userData.put("paymentUrl", trx.getPaymentUrl().toExternalForm());
+
+        } catch (IOException e) {
+
+            final StringBuilder err = new StringBuilder();
+            err.append("Communication error: ").append(e.getMessage());
+            createApiResult(userData, API_RESULT_CODE_ERROR, "", err.toString());
 
         } catch (PaymentGatewayException e) {
             createApiResult(userData, API_RESULT_CODE_ERROR, "", e.getMessage());
@@ -5128,11 +5407,10 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
+     * @param requestingUser
      * @param jsonDto
      * @return
-     * @throws IOException
-     * @throws MessagingException
-     * @throws JRException
+     * @throws Exception
      */
     private Map<String, Object> reqPosDeposit(final String requestingUser,
             final String jsonDto) throws Exception {
@@ -5142,7 +5420,7 @@ public final class JsonApiServer extends AbstractPage {
         final PosDepositDto dto =
                 JsonAbstractBase.create(PosDepositDto.class, jsonDto);
 
-        AbstractJsonRpcMethodResponse rpcResponse =
+        final AbstractJsonRpcMethodResponse rpcResponse =
                 ACCOUNTING_SERVICE.depositFunds(dto);
 
         if (rpcResponse.isResult()) {
@@ -5330,7 +5608,7 @@ public final class JsonApiServer extends AbstractPage {
         final AccountVoucherRedeemDto dto = new AccountVoucherRedeemDto();
 
         dto.setCardNumber(cardNumber);
-        dto.setRedeemDate(new Date().getTime());
+        dto.setRedeemDate(System.currentTimeMillis());
         dto.setUserId(requestingUser);
 
         final AbstractJsonRpcMethodResponse rpcResponse =
@@ -5431,8 +5709,6 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqUserSet(final String jsonUser)
             throws IOException {
 
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
         final Map<String, Object> userData = new HashMap<String, Object>();
 
         final UserDto userDto =
@@ -5472,20 +5748,7 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqUserDelete(final String id,
             final String userid) throws IOException {
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final AbstractJsonRpcMethodResponse rpcResponse =
-                USER_SERVICE.deleteUser(userid);
-
-        if (rpcResponse.isResult()) {
-            setApiResultMsgOK(userData, null, rpcResponse.asResult()
-                    .getResult().data(ResultDataBasic.class).getMessage());
-        } else {
-            setApiResultMsgError(userData, "", rpcResponse.asError().getError()
-                    .data(ErrorDataBasic.class).getReason());
-        }
-        return userData;
+        return apiResultFromBasicRpcResponse(USER_SERVICE.deleteUser(userid));
     }
 
     /**
@@ -6448,8 +6711,9 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("fullname", userDb.getFullName());
         userData.put("admin", userDb.getAdmin());
         userData.put("internal", userDb.getInternal());
-        userData.put("systime", Long.valueOf(new Date().getTime()));
+        userData.put("systime", Long.valueOf(System.currentTimeMillis()));
         userData.put("language", getSession().getLocale().getLanguage());
+        userData.put("country", getSession().getLocale().getCountry());
         userData.put("mail", USER_SERVICE.getPrimaryEmailAddress(userDb));
 
         if (authToken != null) {
@@ -6475,7 +6739,7 @@ public final class JsonApiServer extends AbstractPage {
         if (!isAdminOnlyLogin) {
 
             addUserStats(userData, userDb, this.getSession().getLocale(),
-                    SpSession.getCurrencySymbol());
+                    SpSession.getAppCurrencySymbol());
 
             /*
              * Make sure that any User Web App long poll for this user is
@@ -7239,7 +7503,7 @@ public final class JsonApiServer extends AbstractPage {
          * Setting values for existing i18n keys. These keys must be present in
          * the i18n_<language>.properties files.
          */
-        Map<String, Object> i18nValues = new HashMap<String, Object>();
+        final Map<String, Object> i18nValues = new HashMap<String, Object>();
 
         // deprecated
         userData.put("i18n_values", i18nValues);
@@ -7271,7 +7535,7 @@ public final class JsonApiServer extends AbstractPage {
         /*
          *
          */
-        ConfigManager cm = ConfigManager.instance();
+        final ConfigManager cm = ConfigManager.instance();
 
         userData.put("cardLocalMaxMsecs",
                 cm.getConfigInt(Key.WEBAPP_CARD_LOCAL_KEYSTROKES_MAX_MSECS));
@@ -7288,26 +7552,21 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("watchdogTimeoutSecs",
                 cm.getConfigInt(Key.WEBAPP_WATCHDOG_TIMEOUT_SECS));
 
-        /*
-         *
-         */
+        //
         userData.put("cometdToken", CometdClientMixin.SHARED_DEVICE_TOKEN);
 
         userData.put("cometdMaxNetworkDelay",
                 AbstractEventService.getMaxNetworkDelay());
 
-        /*
-         *
-         */
-        userData.put("locale", getSession().getLocale().toLanguageTag());
-        userData.put("systime", Long.valueOf(new Date().getTime()));
+        //
+        userData.put("systime", Long.valueOf(System.currentTimeMillis()));
 
         return userData;
     }
 
     /**
-     * Sets the language of the Web App, and the {@link Locale} in the
-     * {@link SpSession}.
+     * Sets the language (translation) of the Web App, and the {@link Locale} in
+     * the {@link SpSession}.
      * <p>
      * For the session {@link Locale} we adopt the country/region code from the
      * Browser, if the language setting of the Browser is the same as the
@@ -7321,59 +7580,68 @@ public final class JsonApiServer extends AbstractPage {
      * @param language
      *            The selected language for the Web App. This value is also used
      *            for the language setting in the session {@link Locale}.
+     * @param country
+     *            The selected country for the Web App. This value is also used
+     *            for the country setting in the session {@link Locale}.
      * @return
      * @throws IOException
      */
-    private Map<String, Object> reqLanguage(final String language)
-            throws IOException {
+    private Map<String, Object> reqLanguage(final String language,
+            final String country) throws IOException {
 
-        Map<String, Object> userData = new HashMap<String, Object>();
+        final Map<String, Object> userData = new HashMap<String, Object>();
 
         /*
          * Straight values.
          */
         setApiResultOK(userData);
 
-        Map<String, Object> i18n = new HashMap<String, Object>();
+        final Map<String, Object> i18n = new HashMap<String, Object>();
 
         /*
          * Set the new locale, for the strings to return AND for the current
          * session.
          */
-        Locale.Builder localeBuilder = new Locale.Builder();
+        final Locale.Builder localeBuilder = new Locale.Builder();
+
         localeBuilder.setLanguage(language);
 
-        /*
-         * We adopt the country/region code from the Browser, if the language
-         * setting of the Browser is the same as the SELECTED language in the
-         * SavaPage Web App.
-         *
-         * The country/region in our session locale is used (as default) when
-         * determining the Currency Symbol. If country/region in missing in the
-         * session locale
-         */
-        final Locale localeReq = getRequestCycle().getRequest().getLocale();
-        if (localeReq.getLanguage().equalsIgnoreCase(language)) {
-            localeBuilder.setRegion(localeReq.getCountry());
+        if (StringUtils.isNotBlank(country)) {
+
+            localeBuilder.setRegion(country);
+
+        } else {
+            /*
+             * We adopt the country/region code from the Browser, if the
+             * language setting of the Browser is the same as the SELECTED
+             * language in the SavaPage Web App.
+             */
+            final Locale localeReq = getRequestCycle().getRequest().getLocale();
+
+            if (localeReq.getLanguage().equalsIgnoreCase(language)) {
+                localeBuilder.setRegion(localeReq.getCountry());
+            }
         }
 
         //
-        Locale locale = localeBuilder.build();
+        final Locale locale = localeBuilder.build();
         SpSession.get().setLocale(locale);
 
         /*
          *
          */
-        ResourceBundle rcBundle =
-                Messages.loadResource(getClass(), "i18n", locale);
+        final ResourceBundle rcBundle =
+                Messages.loadXmlResource(getClass(), "i18n", locale);
 
-        Set<String> keySet = rcBundle.keySet();
+        final Set<String> keySet = rcBundle.keySet();
+
         for (final String key : keySet) {
             i18n.put(key, rcBundle.getString(key));
         }
 
         userData.put("i18n", i18n);
         userData.put("language", locale.getLanguage());
+        userData.put("country", locale.getCountry());
 
         return userData;
     }

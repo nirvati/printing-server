@@ -21,25 +21,47 @@
  */
 package org.savapage.server.plugin.test;
 
+import java.io.BufferedReader;
+import java.io.PrintWriter;
+import java.util.Currency;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayListener;
-import org.savapage.ext.payment.PaymentGatewayPlugin;
 import org.savapage.ext.payment.PaymentGatewayTrx;
+import org.savapage.ext.payment.PaymentMethodEnum;
+import org.savapage.ext.payment.PaymentMethodInfo;
 
 /**
  *
  * @author Datraverse B.V.
  *
  */
-public final class TestPlugin implements PaymentGatewayPlugin {
+public final class TestPlugin implements PaymentGateway {
 
     /**
      *
      */
     public TestPlugin() {
 
+    }
+
+    @Override
+    public String getId() {
+        return this.getClass().getSimpleName();
+    }
+
+    @Override
+    public String getName() {
+        return "Test Plugin";
+    }
+
+    @Override
+    public Map<PaymentMethodEnum, PaymentMethodInfo>
+            getExternalPaymentMethods() {
+        return new HashMap<>();
     }
 
     @Override
@@ -51,29 +73,25 @@ public final class TestPlugin implements PaymentGatewayPlugin {
     }
 
     @Override
-    public PaymentGatewayTrx startPayment(final String userId,
-            final double amount, final String description) {
+    public PaymentGatewayTrx onPaymentRequest(final PaymentRequest req) {
         return null;
     }
 
     @Override
-    public Integer onCallBack(final String pathInfo, final String queryString,
-            final Map<String, String[]> parameterMap) {
-        return Integer.valueOf(0);
+    public CallbackResponse onCallBack(
+            final Map<String, String[]> parameterMap, final boolean live,
+            final Currency currency, final BufferedReader request,
+            final PrintWriter response) {
+        return new CallbackResponse(0);
     }
 
     @Override
-    public String getCallbackUrl() {
-        return null;
+    public void onCallBackCommitted(final Object pluginObject) {
     }
 
     @Override
-    public String getRedirectUrl() {
-        return null;
-    }
-
-    @Override
-    public void onInit(final Properties props) {
+    public void onInit(final String id, final String name, final boolean live,
+            boolean online, final Properties props) {
         // noop
     }
 
@@ -83,8 +101,22 @@ public final class TestPlugin implements PaymentGatewayPlugin {
     }
 
     @Override
-    public String getCallbackSubPath() {
-        return String.format("/%s", this.getClass().getSimpleName());
+    public boolean isLive() {
+        return false;
     }
 
+    @Override
+    public boolean isCurrencySupported(String currencyCode) {
+        return true;
+    }
+
+    @Override
+    public boolean isOnline() {
+        return true;
+    }
+
+    @Override
+    public void setOnline(boolean online) {
+        // noop
+    }
 }

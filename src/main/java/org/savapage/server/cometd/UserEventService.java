@@ -53,7 +53,7 @@ import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.impl.DaoContextImpl;
-import org.savapage.core.img.ImageUrl;
+import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.inbox.PageImages;
 import org.savapage.core.inbox.PageImages.PageImage;
 import org.savapage.core.jpa.PrintIn;
@@ -354,7 +354,9 @@ public final class UserEventService extends AbstractEventService {
         final Long pageOffset = (Long) input.get("page-offset");
         final String uniqueUrlValue = (String) input.get("unique-url-value");
         final Boolean base64 = (Boolean) input.get("base64");
-        final Locale locale = new Locale((String) input.get("language"));
+
+        final Locale locale = this.getLocale(input, "language", "country");
+
         final Long msgPrevTime = (Long) input.get("msg-prev-time");
         final Boolean webAppClient = (Boolean) input.get("webAppClient");
 
@@ -830,7 +832,7 @@ public final class UserEventService extends AbstractEventService {
                     break;
                 }
 
-                final long msecNow = new Date().getTime();
+                final long msecNow = System.currentTimeMillis();
                 final long timeElapsed =
                         msecNow + MSECS_WAIT_BETWEEN_POLLS - msecStart;
 
@@ -906,8 +908,22 @@ public final class UserEventService extends AbstractEventService {
         daoContext.beginTransaction();
 
         try {
-
-            lockedUser = daoContext.getUserDao().lockByUserId(userName);
+            if (ConfigManager.isDbInternal()) {
+                /*
+                 * #575: Be less strict on internal Apache Derby database by NOT
+                 * locking the user, since multiple row locks of same user leads
+                 * to random deadlocks in Fast Print Release scenario's.
+                 */
+                lockedUser =
+                        daoContext.getUserDao()
+                                .findActiveUserByUserId(userName);
+            } else {
+                /*
+                 * #575: PostgreSQL handles same user concurrent row locking
+                 * just fine :-)
+                 */
+                lockedUser = daoContext.getUserDao().lockByUserId(userName);
+            }
 
             if (lockedUser == null) {
                 throw new UserNotFoundException("user [" + userName
@@ -943,7 +959,7 @@ public final class UserEventService extends AbstractEventService {
                 if (isWebAppClient) {
                     JsonApiServer.addUserStats(userData, lockedUser,
                             ServiceContext.getLocale(),
-                            ServiceContext.getCurrencySymbol());
+                            ServiceContext.getAppCurrencySymbol());
                 }
             }
 
@@ -1034,7 +1050,7 @@ public final class UserEventService extends AbstractEventService {
 
             JsonApiServer.addUserStats(eventData, user,
                     ServiceContext.getLocale(),
-                    ServiceContext.getCurrencySymbol());
+                    ServiceContext.getAppCurrencySymbol());
 
         } finally {
             ServiceContext.close();
@@ -1053,7 +1069,7 @@ public final class UserEventService extends AbstractEventService {
         final Map<String, Object> eventData = new HashMap<String, Object>();
         final JsonUserMsgNotification json = new JsonUserMsgNotification();
 
-        json.setMsgTime(new Date().getTime());
+        json.setMsgTime(System.currentTimeMillis());
 
         eventData.put(KEY_DATA, json);
         eventData.put(KEY_EVENT, UserEventEnum.ACCOUNT);
@@ -1070,7 +1086,8 @@ public final class UserEventService extends AbstractEventService {
 
         final Map<String, Object> eventData = new HashMap<String, Object>();
         final JsonUserMsgNotification json = new JsonUserMsgNotification();
-        json.setMsgTime(new Date().getTime());
+
+        json.setMsgTime(System.currentTimeMillis());
 
         eventData.put(KEY_EVENT, UserEventEnum.NULL);
         eventData.put(KEY_DATA, json);

@@ -21,7 +21,6 @@
  */
 package org.savapage.server.cometd;
 
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -137,7 +136,7 @@ public final class ProxyPrintEventService extends AbstractEventService {
         final String printerName = input.get("printerName").toString();
         final String readerName = input.get("readerName").toString();
         final Long idUser = Long.parseLong(input.get("idUser").toString());
-        final Locale locale = new Locale((String) input.get("language"));
+        final Locale locale = this.getLocale(input, "language", "country");
 
         final String clientIpAddress = getClientIpAddress();
 
@@ -395,7 +394,7 @@ public final class ProxyPrintEventService extends AbstractEventService {
 
                     JsonApiServer.addUserStats(eventData, lockedUser,
                             ServiceContext.getLocale(),
-                            ServiceContext.getCurrencySymbol());
+                            ServiceContext.getAppCurrencySymbol());
 
                     /*
                      *
@@ -403,7 +402,7 @@ public final class ProxyPrintEventService extends AbstractEventService {
                     eventData.put(KEY_EVENT, EVENT_PRINTED);
                     JsonUserMsgNotification json =
                             new JsonUserMsgNotification();
-                    json.setMsgTime(new Date().getTime());
+                    json.setMsgTime(System.currentTimeMillis());
                     eventData.put(KEY_DATA, json);
 
                     /*

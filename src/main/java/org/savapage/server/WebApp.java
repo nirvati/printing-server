@@ -21,11 +21,14 @@
  */
 package org.savapage.server;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.wicket.Session;
 import org.apache.wicket.core.request.mapper.MountedMapper;
 import org.apache.wicket.markup.head.CssHeaderItem;
@@ -46,12 +49,13 @@ import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.RunMode;
-import org.savapage.core.img.ImageUrl;
+import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.jpa.tools.DatabaseTypeEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.Messages;
+import org.savapage.ext.payment.PaymentMethodEnum;
 import org.savapage.server.cometd.AbstractEventService;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.img.ImageServer;
@@ -95,7 +99,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String MOUNT_PATH_WEBAPP_USER = "/user";
 
     /**
-     * URL parameter tp pass user id.
+     * URL parameter to pass user id.
      */
     public static final String URL_PARM_USER = "user";
 
@@ -123,7 +127,27 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     /**
      *
      */
+    public static final String PATH_IMAGES = "/images";
+
+    /**
+     *
+     */
+    public static final String PATH_IMAGES_PAYMENT = PATH_IMAGES + "/payment";
+
+    /**
+     * Basename of the properties file for web customization.
+     */
+    public static final String FILENAME_WEB_PROPERTIES = "web.properties";
+
+    /**
+     *
+     */
     private static Properties theServerProps = new Properties();
+
+    /**
+    *
+    */
+    private static Properties theWebProps = new Properties();
 
     /**
      *
@@ -171,6 +195,34 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      */
     private String localize(final String key, final String... args) {
         return Messages.getMessage(getClass(), key, args);
+    }
+
+    /**
+     * Gets the relative PNG image URL of the payment method.
+     * <p>
+     * The name of the PNG file is EQ to the lower case enum value of the
+     * payment method. For a bigger image "@2x" is appended.
+     * </p>
+     *
+     * @param method
+     *            The {@link PaymentMethodEnum}.
+     * @param bigger
+     *            {@code true} for bigger image.
+     * @return The relative URL as string.
+     */
+    public static String getPaymentMethodImgUrl(final PaymentMethodEnum method,
+            final boolean bigger) {
+
+        final StringBuilder url =
+                new StringBuilder().append(PATH_IMAGES_PAYMENT).append("/")
+                        .append(method.toString().toLowerCase());
+
+        if (bigger) {
+            url.append("@2x");
+        }
+        url.append(".png");
+
+        return url.toString();
     }
 
     /**
@@ -337,6 +389,46 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
+     * Get a property from {@link WebApp#FILENAME_WEB_PROPERTIES}.
+     *
+     * @param key
+     *            The key of the property
+     * @return {@code null} when not found.
+     */
+    public static String getWebProperty(final String key) {
+        return theWebProps.getProperty(key);
+    }
+
+    /**
+     * Loads the web properties from file {@link #FILENAME_WEB_PROPERTIES}.
+     *
+     * @throws IOException
+     *             When error loading properties file.
+     */
+    public static void loadWebProperties() throws IOException {
+
+        final StringBuilder builder = new StringBuilder();
+
+        builder.append(ConfigManager.getServerHome()).append("/custom/")
+                .append(FILENAME_WEB_PROPERTIES);
+
+        final File file = new File(builder.toString());
+
+        if (!file.exists()) {
+            return;
+        }
+
+        FileInputStream fis = null;
+
+        try {
+            fis = new FileInputStream(file);
+            theWebProps.load(fis);
+        } finally {
+            IOUtils.closeQuietly(fis);
+        }
+    }
+
+    /**
      *
      * @return The non-SSL server port.
      */
@@ -452,20 +544,6 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             mountPackage("/pages/admin", AbstractAdminPage.class);
             mountPackage("/pages/user", AbstractUserPage.class);
 
-            /*
-             * Raw Print Server
-             */
-            final int iRawPrintPort =
-                    Integer.valueOf(theServerProps.getProperty(
-                            ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
-                            ConfigManager.PRINTER_RAW_PORT_DEFAULT));
-
-            this.rawPrintServer = new RawPrintServer(iRawPrintPort);
-            this.rawPrintServer.start();
-
-            //
-            IppPrintServer.init();
-
             //
             replaceJQueryCore();
 
@@ -477,6 +555,17 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
             AppLogHelper.logInfo(getClass(), "WebApp.starting",
                     ConfigManager.getAppVersionBuild());
+
+            /*
+             * Web server.
+             */
+            final StringBuilder logMsg = new StringBuilder();
+            logMsg.append("Web Server started on port ").append(
+                    WebServer.getServerPort());
+            logMsg.append(" and ").append(WebServer.getServerPortSsl())
+                    .append(" (SSL)");
+
+            SpInfo.instance().log(logMsg.toString());
 
             /*
              *
@@ -501,7 +590,25 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                     ServerPluginManager
                             .create(ConfigManager.getServerExtHome());
 
+            this.pluginManager.start();
+
             SpInfo.instance().log(this.pluginManager.asLoggingInfo());
+
+            /*
+             * IPP Print Server.
+             */
+            IppPrintServer.init();
+
+            /*
+             * IP Print Server (RAW)
+             */
+            final int iRawPrintPort =
+                    Integer.valueOf(theServerProps.getProperty(
+                            ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
+                            ConfigManager.PRINTER_RAW_PORT_DEFAULT));
+
+            this.rawPrintServer = new RawPrintServer(iRawPrintPort);
+            this.rawPrintServer.start();
 
         } catch (Exception e) {
 
@@ -733,6 +840,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
     @Override
     protected void onDestroy() {
+        this.pluginManager.stop();
     }
 
 }

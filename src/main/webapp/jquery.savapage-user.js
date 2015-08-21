@@ -76,14 +76,6 @@
 		 */
 
 		/*
-		 * IMPORTANT: Disable the websocket transport before doing the handshake.
-		 * Google Chrome uses WebSockets, but this produces Invoking
-		 * event#monitorUserEven bursts after an event is reported back.
-		 */
-		$.cometd.websocketEnabled = false;
-		$.cometd.unregisterTransport('websocket');
-
-		/*
 		 * When the jQuery Mobile starts to execute, it triggers a mobileinit
 		 * event on the document object, to which you can bind to apply overrides to
 		 * jQuery Mobile's defaults.
@@ -158,12 +150,13 @@
 			 * between clients).
 			 * </p>
 			 */
-			this.poll = function(language) {
+			this.poll = function(language, country) {
 				_longPollPending = true;
 				//this.onWaitingForEvent();
 				try {
 					$.cometd.publish('/service/device', {
-						language : language
+						language : language,
+						country : country
 					});
 				} catch (err) {
 					this.onException(err);
@@ -266,7 +259,7 @@
 			 * between clients).
 			 * </p>
 			 */
-			this.poll = function(idUser, printerName, readerName, language) {
+			this.poll = function(idUser, printerName, readerName, language, country) {
 
 				if (!_longPollPending) {
 
@@ -281,7 +274,8 @@
 							idUser : idUser,
 							printerName : printerName,
 							readerName : readerName,
-							language : language
+							language : language,
+							country : country
 						});
 					} catch (err) {
 						_longPollPending = false;
@@ -418,7 +412,7 @@
 			 * between clients).
 			 * </p>
 			 */
-			this.poll = function(userid, pagecount, uniqueUrlVal, prevMsgTime, language, base64) {
+			this.poll = function(userid, pagecount, uniqueUrlVal, prevMsgTime, language, country, base64) {
 
 				if (!_longPollStartTime) {
 					_longPollStartTime = new Date().getTime();
@@ -430,6 +424,7 @@
 							'unique-url-value' : uniqueUrlVal,
 							'msg-prev-time' : prevMsgTime,
 							language : language,
+							country : country,
 							base64 : base64,
 							webAppClient : true
 						});
@@ -1098,6 +1093,12 @@
 					return false;
 				});
 
+				$(this).on('click', '#button-accounttrx-report', null, function() {
+					_panel.v2m(_panel);
+					_api.download("report", _panel.input, "AccountTrxList");
+					return true;
+				});
+
 				$(this).on('click', '#button-goto-doclog', null, function() {
 					_view.showUserPageAsync('#page-doclog', 'DocLog');
 					return false;
@@ -1421,8 +1422,66 @@
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
-				$("#voucher-redeem-number").val("");
+				$("#voucher-redeem-card-number").val("");
 			});
+		}
+
+		/**
+		 *
+		 */
+		function PageCreditTransfer(_i18n, _view, _model) {
+			var _this = this
+			//
+			, _selMain = '#money-credit-transfer-main'
+			//
+			, _selCents = '#money-credit-transfer-cents'
+			//
+			;
+			
+			$("#page-credit-transfer").on("pagecreate", function(event) {
+
+				$('#button-transfer-credit-ok').click(function() {
+					if (_this.onTransferCredit($('#money-credit-transfer-user').val(), $(_selMain).val(), $(_selCents).val(), $('#money-credit-transfer-comment').val())) {
+						// Back to main window, this will start user event monitoring (picking up the account balance change).
+						_view.changePage($('#page-main'));						
+					}
+					return false;
+				});
+
+			}).on("pagebeforeshow", function(event, ui) {
+				
+				$('#page-credit-transfer input').val('');
+				$(_selCents).val('00');
+				$('#credit-transfer-available').text(_model.user.stats.accountInfo.balance);
+				
+			}).on("pageshow", function(event, ui) {
+				$(_selMain).focus();
+			});
+		}
+
+		/**
+		 *
+		 */
+		function PageMoneyTransfer(_i18n, _view, _model) {
+			var _this = this
+			//
+			, _selMain = '#money-transfer-main'
+			//
+			, _selCents = '#money-transfer-cents'
+			//
+			;
+
+			this.onRefreshContent = function (html) {
+				var button = '#button-money-transfer';
+				$(button).off('click');
+				$('#page-money-transfer-content').html(html);
+				$('#page-money-transfer').enhanceWithin();
+				$(button).on('click', function() {
+					var hidden = $('#money-transfer-gateway');
+					_this.onMoneyTransfer(hidden.attr('data-payment-gateway'), hidden.attr('data-payment-method'), $(_selMain).val(), $(_selCents).val());
+					return false;
+				});
+			};
 		}
 
 		/**
@@ -1495,7 +1554,7 @@
 			$("#page-send").on("pagecreate", function(event) {
 
 				$('#button-send-send').click(function() {
-					_this.onSend($('#send-mailto').val(), _model.pdfPageRanges, _model.removeGraphics);
+					_this.onSend($('#send-mailto').val(), _model.pdfPageRanges, _model.removeGraphics, _model.ecoprint);
 					$('#pdf-page-ranges').val('');
 					return false;
 				});
@@ -1553,9 +1612,7 @@
 		 *
 		 */
 		function PageDashboard(_i18n, _view, _model) {
-			var _this = this
-			//
-			;
+			//var _this = this;
 
 			$('#page-dashboard').on('pagecreate', function(event) {
 
@@ -1576,16 +1633,52 @@
 					});
 				}
 
-				if ($('#button-redeem-voucher')) {
-					$(this).on('click', '#button-voucher-redeem', null, function() {
+				if ($('#button-voucher-redeem-page')) {
+					$(this).on('click', '#button-voucher-redeem-page', null, function() {
 						_view.showUserPage('#page-voucher-redeem', 'AccountVoucherRedeem');
 						return false;
 					});
 				}
 
-				if ($('#button-payment-amount')) {
-					$(this).on('click', '#button-payment-amount', null, function() {
-						_this.onPaymentRequest($('#payment-amount-main').val(), $('#payment-amount-cents').val());
+				if ($('#button-transfer-credit-page')) {
+					$(this).on('click', '#button-transfer-credit-page', null, function() {
+						_view.showUserPage('#page-credit-transfer', 'AccountCreditTransfer');
+						return false;
+					});
+				}
+
+				if ($('.sp-transfer-money-img')) {
+					$(this).on('click', '.sp-transfer-money-img', null, function() {
+						// The transfer page is a fixed part of WebAppUserPage.html
+						// (we only refresh the content)
+						var pageId = '#page-money-transfer'
+						//
+						, data = {
+							gateway : $(this).attr('data-payment-gateway'),
+							method : $(this).attr('data-payment-method')
+						}
+						//
+						, html = _view.getUserPageHtml('AccountMoneyTransfer', data)
+						//
+						;
+						_view.changePage(pageId);
+						if (html) {
+							_view.pages.moneyTransfer.onRefreshContent(html);
+						}
+						return false;
+					});
+				}
+
+				if ($('#button-transfer-bitcoin-page')) {
+					$(this).on('click', '#button-transfer-bitcoin-page', null, function() {
+						// The transfer page is a fixed part of WebAppUserPage.html
+						// (we only refresh the content)
+						var pageId = '#page-bitcoin-transfer', html = _view.getUserPageHtml('AccountBitcoinTransfer');
+						_view.changePage(pageId);
+						if (html) {
+							$('#page-bitcoin-transfer-content').html(html);
+							$(pageId).enhanceWithin();
+						}
 						return false;
 					});
 				}
@@ -3118,6 +3211,11 @@
 				}
 			}
 			//
+			, _onPrint = function(isClose) {
+					_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), isClose, 
+						_view.isCbChecked($("#print-remove-graphics")), _view.isCbChecked($("#print-ecoprint")));				
+			}
+			//
 			;
 
 			// this.onShow()
@@ -3154,12 +3252,12 @@
 				});
 
 				$('#button-print').click(function(e) {
-					_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), false, _view.isCbChecked($("#print-remove-graphics")));
+					_onPrint(false); 
 					return false;
 				});
 
 				$('#button-print-and-close').click(function(e) {
-					_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), true, _view.isCbChecked($("#print-remove-graphics")));
+					_onPrint(true); 
 					return false;
 				});
 
@@ -3222,6 +3320,8 @@
 			, _LOC_AUTH_TOKEN = 'sp.auth.user.token'
 			//
 			, _LOC_LANG = 'sp.user.language'
+			//
+			, _LOC_COUNTRY = 'sp.user.country'
 			//
 			;
 
@@ -3599,6 +3699,11 @@
 					this.authToken.language = window.localStorage[item];
 				}
 
+				item = _LOC_COUNTRY;
+				if (window.localStorage[item] !== null) {
+					this.authToken.country = window.localStorage[item];
+				}
+
 			};
 
 			this.setLanguage = function(lang) {
@@ -3606,7 +3711,12 @@
 				window.localStorage[_LOC_LANG] = lang;
 			};
 
-			this.setAuthToken = function(user, token, language) {
+			this.setCountry = function(country) {
+				this.authToken.country = country;
+				window.localStorage[_LOC_COUNTRY] = country;
+			};
+
+			this.setAuthToken = function(user, token, language, country) {
 				var item;
 
 				item = _LOC_AUTH_NAME;
@@ -3619,6 +3729,9 @@
 
 				if (language) {
 					this.setLanguage(language);
+				}
+				if (country) {
+					this.setCountry(country);
 				}
 			};
 
@@ -3782,23 +3895,28 @@
 			//
 			, _timeoutAuthPrint, _countdownAuthPrint, _clearTimeoutAuthPrint
 			//
-			,
+			
 			/**
 			 *
 			 */
-			_saveRemoveGraphics = function(sel) {
+			, _saveRemoveGraphics = function(sel) {
 				_model.removeGraphics = _view.isCbChecked($(sel));
 				_view.visible($('#button-mini-no-graphics'), _model.removeGraphics);
 			}
-			//
-			,
 			/**
 			 *
 			 */
-			_checkVanillaJobs = function() {
+			, _saveEcoprint = function(sel) {
+				_model.ecoprint = _view.isCbChecked($(sel));
+				_view.visible($('#button-mini-ecoprint'), _model.ecoprint);
+			}			
+			/**
+			 *
+			 */
+			, _checkVanillaJobs = function() {
 
 				var res = _api.call({
-					request : 'inbox-is-vanilla',
+					request : 'inbox-is-vanilla'
 				}), isOk = res.result.code === '0';
 
 				if (isOk) {
@@ -3828,6 +3946,7 @@
 				_model.myPrintTitle = $('#print-title').val();
 				_saveSelectedletterhead('#print-letterhead-list');
 				_saveRemoveGraphics('#print-remove-graphics');
+				_saveEcoprint('#print-ecoprint');
 
 				// Check IPP attributes value
 				ippAttrVal = _model.myPrinterOpt['print-color-mode'];
@@ -3877,7 +3996,9 @@
 				_model.user.fullname = loginRes.fullname;
 
 				_model.language = loginRes.language;
-				_model.setAuthToken(loginRes.id, loginRes.authtoken, _model.language);
+				_model.country = loginRes.country;
+
+				_model.setAuthToken(loginRes.id, loginRes.authtoken, _model.language, _model.country);
 
 				/*
 				 * This is the token used for CometD authentication. See: Java
@@ -4007,7 +4128,7 @@
 			 *
 			 */
 			this.init = function() {
-				var res, language
+				var res, language, country
 				//
 				, authModeRequest = _util.getUrlParam('login');
 
@@ -4056,10 +4177,15 @@
 				if (!language) {
 					language = _model.authToken.language || '';
 				}
+				country = _util.getUrlParam('country');
+				if (!country) {
+					country = _model.authToken.country || '';
+				}
 
 				res = _api.call({
 					request : 'language',
-					language : language
+					language : language,
+					country : country
 				});
 
 				i18nRefresh(res);
@@ -4203,8 +4329,8 @@
 					res = _api.call({
 						request : 'letterhead-get',
 						id : $('#letterhead-list').val(),
-						pub : ( pub ? '1' : '0'),
-						base64 : (_view.imgBase64 ? '1' : '0')
+						pub : pub,
+						base64 : _view.imgBase64
 					});
 
 					// _view.showApiMsg(res);
@@ -4538,7 +4664,7 @@
 				_cometd.stop();
 			};
 			_deviceEvent.onPollInvitation = function() {
-				_deviceEvent.poll(_model.language);
+				_deviceEvent.poll(_model.language, _model.country);
 			};
 
 			//_deviceEvent.onEventIgnored = function() {
@@ -4641,7 +4767,7 @@
 			};
 
 			_userEvent.onPollInvitation = function() {
-				_userEvent.poll(_model.user.id, _model.getPageCount(), _model.uniqueImgUrlValue, _model.prevMsgTime, _model.language, _view.imgBase64);
+				_userEvent.poll(_model.user.id, _model.getPageCount(), _model.uniqueImgUrlValue, _model.prevMsgTime, _model.language, _model.country, _view.imgBase64);
 			};
 
 			/*
@@ -4655,19 +4781,21 @@
 			/**
 			 * Callbacks: page language
 			 */
-			_view.pages.language.onSelectLanguage(function(lang) {
+			_view.pages.language.onSelectLocale(function(lang, country) {
 				/*
 				 * This call sets the locale for the current session and returns
 				 * strings needed for off-line mode.
 				 */
 				var res = _api.call({
-					'request' : 'language',
-					'language' : lang
+					request : 'language',
+					language : lang,
+					country : country
 				});
 
 				if (res.result.code === "0") {
 
 					_model.setLanguage(lang);
+					_model.setCountry(country);
 
 					i18nRefresh(res);
 					/*
@@ -4704,6 +4832,30 @@
 					$("#button-voucher-redeem-back").click();
 				}
 				_view.showApiMsg(res);
+			};
+
+			/**
+			 * Callbacks: page credit transfer
+			 */
+			_view.pages.creditTransfer.onTransferCredit = function(userTo, amountMain, amountCents, comment) {
+
+				// UserCreditTransferDto.java
+				var res = _api.call({
+					request : "user-credit-transfer",
+					dto : JSON.stringify({
+						userFrom : _model.user.id,
+						userTo : userTo,
+						amountMain : amountMain,
+						amountCents : amountCents,
+						comment : comment
+					})
+				}),
+				//
+				isOk = res.result.code === "0"
+				//
+				;
+				_view.showApiMsg(res);
+				return isOk;
 			};
 
 			/**
@@ -4746,14 +4898,17 @@
 			/**
 			 * Callbacks: pageDashboard
 			 */
-			_view.pages.pageDashboard.onPaymentRequest = function(main, cents) {
-				// UserPaymentRequestDto.java
+			_view.pages.moneyTransfer.onMoneyTransfer = function(gatewayId, method, main, cents) {
+				// MoneyTransferDto.java
 				var res = _api.call({
-					request : "user-payment-request",
+					request : "user-money-transfer-request",
 					dto : JSON.stringify({
 						userId : _model.user.id,
+						gatewayId : gatewayId,
+						method : method,
 						amountMain : main,
-						amountCents : cents
+						amountCents : cents,
+						senderUrl : window.location.protocol + "//" + window.location.host + window.location.pathname
 					})
 				});
 
@@ -4767,7 +4922,7 @@
 			/**
 			 * Callbacks: page send
 			 */
-			_view.pages.send.onSend = function(mailto, ranges, removeGraphics) {
+			_view.pages.send.onSend = function(mailto, ranges, removeGraphics, ecoprint) {
 
 				var res;
 
@@ -4777,7 +4932,8 @@
 						mailto : mailto,
 						jobIndex : _model.pdfJobIndex,
 						ranges : ranges,
-						graphics : ( removeGraphics ? '0' : '1')
+						removeGraphics : removeGraphics,
+						ecoprint : ecoprint
 					});
 					if (res.result.code === "0") {
 						_model.user.stats = res.stats;
@@ -4785,7 +4941,8 @@
 					}
 					_view.showApiMsg(res);
 				} else {
-					_view.message(_i18n.format('msg-email-invalid', [mailto]));
+					// Use a "quoted string" since mailto can be empty.
+					_view.message(_i18n.format('msg-email-invalid', ['"' + mailto + '"']));
 				}
 			};
 
@@ -4802,6 +4959,7 @@
 				$('#pdf-title').val(_model.myInboxTitle);
 
 				_view.checkCb('#pdf-remove-graphics', _model.removeGraphics);
+				_view.checkCb('#pdf-ecoprint', _model.ecoprint);
 			};
 
 			/**
@@ -4815,6 +4973,7 @@
 
 				_saveSelectedletterhead('#pdf-letterhead-list');
 				_saveRemoveGraphics('#pdf-remove-graphics');
+				_saveEcoprint('#pdf-ecoprint');
 
 				_model.pdfPageRanges = $('#pdf-page-ranges').val();
 
@@ -4832,6 +4991,7 @@
 			_view.pages.pdfprop.onDownload = function() {
 
 				_saveRemoveGraphics('#pdf-remove-graphics');
+				_saveEcoprint('#pdf-ecoprint');
 
 				if (!_saveSelectedletterhead('#pdf-letterhead-list', true)) {
 					return false;
@@ -4839,7 +4999,7 @@
 				if (!_savePdfProps()) {
 					return false;
 				}
-				window.location.assign(_api.getUrl4Pdf($('#pdf-page-ranges').val(), _model.removeGraphics, _model.pdfJobIndex));
+				window.location.assign(_api.getUrl4Pdf($('#pdf-page-ranges').val(), _model.removeGraphics, _model.ecoprint, _model.pdfJobIndex));
 				$('#pdf-page-ranges').val('');
 				_model.myShowUserStatsGet = true;
 				return true;
@@ -4887,17 +5047,9 @@
 			/**
 			 * Callbacks: page print
 			 */
-			_view.pages.print.onPrint = function(isClear, isClose, removeGraphics) {
+			_view.pages.print.onPrint = function(isClear, isClose, removeGraphics, ecoprint) {
 
-				var res
-				//
-				, clear = ( isClear ? '1' : '0')
-				//
-				, graphics = ( removeGraphics ? '0' : '1')
-				//
-				, sel, cost, visible
-				//
-				;
+				var res, sel, cost, visible;
 
 				if (_saveSelectedletterhead('#print-letterhead-list')) {
 					return;
@@ -4915,8 +5067,9 @@
 					pageScaling : _model.printPageScaling,
 					copies : $('#slider-print-copies').val(),
 					ranges : $('#print-page-ranges').val(),
-					graphics : graphics,
-					clear : clear,
+					removeGraphics : removeGraphics,
+					ecoprint : ecoprint,
+					clear : isClear,
 					options : JSON.stringify(_model.myPrinterOpt)
 				});
 
@@ -4925,7 +5078,7 @@
 					_view.pages.print.clearInput();
 					_model.closePrintDlg = isClose;
 
-					_proxyprintEvent.poll(_model.user.key_id, _model.myPrinter.name, _model.myPrinterReaderName, _model.language);
+					_proxyprintEvent.poll(_model.user.key_id, _model.myPrinter.name, _model.myPrinterReaderName, _model.language, _model.country);
 
 					_view.visible($('#auth-popup-content-wait'), true);
 					_view.visible($('#auth-popup-content-msg'), false);
@@ -5067,6 +5220,8 @@
 				_prepareReaderForPrinter();
 
 				_view.checkCb('#print-remove-graphics', _model.removeGraphics);
+				_view.checkCb('#print-ecoprint', _model.ecoprint);
+				
 				_this.setLetterheadMenu('#print-letterhead-list');
 				_this.setJobScopeMenu('#print-job-list');
 
@@ -5195,7 +5350,7 @@
 						res = _api.call({
 							'request' : 'letterhead-attach',
 							'id' : letterheadIdx,
-							pub : ( pub ? '1' : '0')
+							pub : pub
 						});
 					}
 				}
@@ -5238,9 +5393,9 @@
 				var pub = _view.pages.letterhead.getSelected().pub
 				//
 				, res = _api.call({
-					'request' : 'letterhead-delete',
-					'id' : id,
-					pub : ( pub ? '1' : '0')
+					request : 'letterhead-delete',
+					id : id,
+					pub : pub
 				});
 				_view.showApiMsg(res);
 				if (res.result.code === '0') {
@@ -5318,7 +5473,7 @@
 					 * will not show.
 					 */
 					_view.message(res.result.txt);
-					_model.setAuthToken(null, null);
+					_model.setAuthToken(null, null, null);
 				}
 
 				_view.pages.main.onClose();
@@ -5422,7 +5577,7 @@
 					request : 'job-pages',
 					'first-detail-page' : nPage,
 					'unique-url-value' : _model.uniqueImgUrlValue,
-					base64 : (_view.imgBase64 ? '1' : '0')
+					base64 : _view.imgBase64
 				});
 				if (data.result.code === '0') {
 					_handleSafePageEvent(data);
@@ -5565,6 +5720,8 @@
 				pagebrowser : new PageBrowser(_i18n, _view, _model),
 				pageDashboard : new PageDashboard(_i18n, _view, _model),
 				voucherRedeem : new PageVoucherRedeem(_i18n, _view, _model),
+				creditTransfer : new PageCreditTransfer(_i18n, _view, _model),
+				moneyTransfer : new PageMoneyTransfer(_i18n, _view, _model),
 				pdfprop : new PagePdfProp(_i18n, _view, _model),
 				main : new PageMain(_i18n, _view, _model),
 				print : new PagePrint(_i18n, _view, _model, _api),
@@ -5606,12 +5763,8 @@
 			};
 
 			$(window).on('beforeunload', function() {
-				// NOT returning anything will not show the unload dialog.
-				/*
-				 if (!_ns.isRestartWebApp) {
-				 return document.title;
-				 }
-				 */
+				// By NOT returning anything the unload dialog will not show.
+				$.noop();				
 			}).on('unload', function() {
 				_api.removeCallbacks();
 				_api.call({

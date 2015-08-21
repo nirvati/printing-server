@@ -9,6 +9,10 @@
 	<entry key="pub-admin-login-success">User "{0}" (administrator) logged in at {1}</entry>
 	<entry key="pub-user-logout">User "{0}" logged out at {1}</entry>
 
+    <!--   --> 
+    <entry key="circuit-damaged">Damaged</entry>
+    <entry key="circuit-open">Connection broken</entry>    
+
 	<!-- WebApp User/Admin Client -->
 	
     <entry key="msg-error">{0}</entry>
@@ -38,13 +42,15 @@
 	<entry key="mail-test-subject">SavaPage Test Mail</entry>
 	
 	<!-- This text should be on one (1) line: line feeds are picked up by the mailer  -->
-	<entry key="mail-test-body">Hi,&#10;&#10;This is a test message from {0}.&#10;--&#10;{1}</entry>
+	<entry key="mail-test-body">Hi,&#60;p&#62;This is a test message from {0}.&#60;/p&#62;--&#60;br&#62;{1}</entry>
 
     <entry key="msg-config-prop-not-found">Option "{0}" not found.</entry>
 	<entry key="msg-config-props-error">Value "{0}" is not valid.</entry>
 	<entry key="msg-config-props-applied">Configuration options are applied.</entry>
 	<entry key="msg-config-props-applied-rescheduled">Configuration options are applied and jobs
 		re-scheduled.</entry>
+    <entry key="msg-config-props-applied-mail-print-stopped">Configuration options are applied and Mail Print is stopped.</entry>
+    <entry key="msg-config-props-applied-smartschool-stopped">Configuration options are applied and SmartSchool monitoring is stopped.</entry>
 
     <entry key="msg-printer-connection-broken">Connection to Proxy Printers is broken.</entry>
 	<entry key="msg-printer-out-of-date">Printer information is out-of-date. Please refresh the
@@ -202,6 +208,8 @@
     <entry key="msg-imap-test-failed">Failed IMAP test: {0}</entry>
     <entry key="msg-imap-stopped">IMAP monitoring succesfully stopped.</entry>
     <entry key="msg-imap-started">IMAP monitoring succesfully started.</entry>
+    <entry key="msg-imap-stopped-already">IMAP monitoring already stopped.</entry>
+    <entry key="msg-imap-started-already">IMAP monitoring already started.</entry>
 
     <entry key="msg-papercut-test-passed">Passed PaperCut test.</entry>
     <entry key="msg-papercut-test-failed">Failed PaperCut test: {0}</entry>
@@ -211,12 +219,21 @@
     <entry key="msg-smartschool-stopped">SmartSchool monitoring succesfully stopped.</entry>
     <entry key="msg-smartschool-started">SmartSchool monitoring succesfully started.</entry>
     <entry key="msg-smartschool-started-simulation">SmartSchool monitoring started in simulation mode.</entry>
+    <entry key="msg-smartschool-blocked">SmartSchool monitoring is blocked: check your {0} {1}.</entry>
+    <entry key="msg-smartschool-stopped-already">SmartSchool monitoring already stopped.</entry>
+    <entry key="msg-smartschool-started-already">SmartSchool monitoring already started.</entry>
+    <entry key="msg-smartschool-accounts-disabled">SmartSchool accounts are disabled.</entry>
 
     <entry key="msg-gcp-online">Google Cloud Printer is set Online.</entry>
     <entry key="msg-gcp-offline">Google Cloud Printer is set Offline.</entry>
     <entry key="msg-gcp-already-online">Google Cloud Printer is already online.</entry>
     <entry key="msg-gcp-already-offline">Google Cloud Printer is already offline.</entry>
     <entry key="msg-gcp-state-mismatch">Google Cloud Printer state "{0}" does not allow this operation.</entry>
+
+    <entry key="msg-payment-gateway-online">{0} is set Online.</entry>
+    <entry key="msg-payment-gateway-offline">{0} is set Offline.</entry>    
+    <entry key="msg-payment-gateway-not-found">Payment Gateway not found.</entry>    
+    <entry key="msg-payment-method-not-possible">{0} payments are currently not possible.</entry>
 
     <entry key="msg-voucher-batch-created-ok">There are {0} vouchers created in batch {1}.</entry>
     
@@ -237,7 +254,7 @@
     <entry key="msg-voucher-redeem-void">Please enter a valid voucher number.</entry>
 
     <entry key="msg-deposit-funds-ok">Amount successfully added to user account.</entry>
-    <entry key="msg-deposit-funds-receipt-email-ok">Amount successfully added to user account. Receipt send to {0}</entry>
+    <entry key="msg-deposit-funds-receipt-email-ok">Amount successfully added to user account. Receipt sent to {0}</entry>
 
     <entry key="msg-deposit-email-subject">Receipt {0}</entry>
     <entry key="msg-deposit-email-body">Please find the deposit receipt attached as PDF file.</entry>

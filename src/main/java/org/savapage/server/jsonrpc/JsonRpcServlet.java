@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,22 +23,30 @@ package org.savapage.server.jsonrpc;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.util.Currency;
 import java.util.Locale;
 
 import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.SpException;
+import org.savapage.core.cometd.AdminPublisher;
+import org.savapage.core.cometd.PubLevelEnum;
+import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.DaoContext;
+import org.savapage.core.dao.helpers.AppLogLevelEnum;
 import org.savapage.core.dao.helpers.DaoBatchCommitter;
 import org.savapage.core.dao.helpers.JsonUserGroupAccess;
 import org.savapage.core.jpa.Entity;
 import org.savapage.core.json.rpc.AbstractJsonRpcMessage;
+import org.savapage.core.json.rpc.AbstractJsonRpcMethodResponse;
 import org.savapage.core.json.rpc.JsonRpcConfig;
 import org.savapage.core.json.rpc.JsonRpcError;
 import org.savapage.core.json.rpc.JsonRpcError.Code;
@@ -47,7 +55,9 @@ import org.savapage.core.json.rpc.JsonRpcMethodName;
 import org.savapage.core.json.rpc.JsonRpcMethodParser;
 import org.savapage.core.json.rpc.JsonRpcMethodResult;
 import org.savapage.core.json.rpc.ParamsPaging;
+import org.savapage.core.json.rpc.ResultDataBasic;
 import org.savapage.core.json.rpc.impl.ParamsAddInternalUser;
+import org.savapage.core.json.rpc.impl.ParamsChangeBaseCurrency;
 import org.savapage.core.json.rpc.impl.ParamsPrinterAccessControl;
 import org.savapage.core.json.rpc.impl.ParamsPrinterSnmp;
 import org.savapage.core.json.rpc.impl.ParamsSetUserGroupProperties;
@@ -56,6 +66,7 @@ import org.savapage.core.json.rpc.impl.ParamsSingleFilterList;
 import org.savapage.core.json.rpc.impl.ParamsSourceGroupMembers;
 import org.savapage.core.json.rpc.impl.ParamsUniqueName;
 import org.savapage.core.json.rpc.impl.ResultUserGroupAccess;
+import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.PrinterService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
@@ -63,6 +74,7 @@ import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.services.UserGroupService;
 import org.savapage.core.services.UserService;
 import org.savapage.core.snmp.SnmpConnectException;
+import org.savapage.core.util.AppLogHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,13 +82,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 
 /**
  *
- * <p>
- * See {@code web.xml}
- * </p>
- *
  * @author Datraverse B.V.
+ *
  */
-public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
+@WebServlet(name = "JsonRpcServlet", urlPatterns = { "/jsonrpc" })
+public final class JsonRpcServlet extends HttpServlet implements
+        ServiceEntryPoint {
 
     /**
      *
@@ -87,6 +98,12 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
     private static final long serialVersionUID = 1L;
 
     private static final String LOOPBACK_ADDRESS = "127.0.0.1";
+
+    /**
+     * .
+     */
+    private static final AccountingService ACCOUNTING_SERVICE = ServiceContext
+            .getServiceFactory().getAccountingService();
 
     /**
      * .
@@ -117,22 +134,23 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
     }
 
     /**
+     * Creates a method exception.
      *
-     * @param e
-     * @param reason
-     * @return
+     * @param ex
+     *            The {@link Exception}.
+     * @return The {@link JsonRpcMethodError}.
      */
-    private JsonRpcMethodError createMethodException(Exception e) {
+    private JsonRpcMethodError createMethodException(final Exception ex) {
 
-        LOGGER.error(e.getMessage(), e);
+        LOGGER.error(ex.getMessage(), ex);
 
         return JsonRpcMethodError.createBasicError(
                 JsonRpcError.Code.INTERNAL_ERROR, "Server exception: "
-                        + e.getClass().getSimpleName(), e.getMessage());
+                        + ex.getClass().getSimpleName(), ex.getMessage());
     }
 
     @Override
-    public final void doPost(final HttpServletRequest httpRequest,
+    public void doPost(final HttpServletRequest httpRequest,
             final HttpServletResponse httpResponse) throws IOException,
             ServletException {
 
@@ -152,6 +170,24 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
         httpResponse.getOutputStream().print(jsonOut);
         httpResponse.setContentType(JsonRpcConfig.INTERNET_MEDIA_TYPE);
 
+    }
+
+    /**
+     * Locks or unlocks the database.
+     *
+     * @param methodName
+     *            The {@link JsonRpcMethodName}.
+     * @param lock
+     *            {@code true==lock, false==unlock}.
+     */
+    private static void setDatabaseLock(final JsonRpcMethodName methodName,
+            final boolean lock) {
+
+        if (methodName == JsonRpcMethodName.CHANGE_BASE_CURRENCY) {
+            ReadWriteLockEnum.DATABASE_READONLY.setWriteLock(lock);
+        } else {
+            ReadWriteLockEnum.DATABASE_READONLY.setReadLock(lock);
+        }
     }
 
     /**
@@ -287,7 +323,7 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
 
         final DaoContext daoContext = ServiceContext.getDaoContext();
 
-        ReadWriteLockEnum.DATABASE_READONLY.setReadLock(true);
+        setDatabaseLock(methodName, true);
 
         AbstractJsonRpcMessage rpcResponse = null;
 
@@ -313,6 +349,24 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
                         USER_GROUP_SERVICE.addUserGroup(batchCommitter,
                                 methodParser.getParams(ParamsUniqueName.class)
                                         .getUniqueName());
+                break;
+
+            case CHANGE_BASE_CURRENCY:
+
+                final ParamsChangeBaseCurrency parmsChangeBaseCurrency =
+                        methodParser.getParams(ParamsChangeBaseCurrency.class);
+
+                batchCommitter = createBatchCommitter();
+                batchCommitter.setTest(parmsChangeBaseCurrency.isTest());
+
+                rpcResponse =
+                        ACCOUNTING_SERVICE.changeBaseCurrency(batchCommitter,
+                                Currency.getInstance(parmsChangeBaseCurrency
+                                        .getCurrencyCodeFrom()), Currency
+                                        .getInstance(parmsChangeBaseCurrency
+                                                .getCurrencyCodeTo()),
+                                parmsChangeBaseCurrency.getExchangeRate());
+
                 break;
 
             case DELETE_USER:
@@ -477,8 +531,10 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
 
         } finally {
 
-            // first statement
-            ReadWriteLockEnum.DATABASE_READONLY.setReadLock(false);
+            /*
+             * First statement.
+             */
+            setDatabaseLock(methodName, false);
 
             if (batchCommitter == null) {
                 daoContext.rollback();
@@ -491,7 +547,80 @@ public class JsonRpcServlet extends HttpServlet implements ServiceEntryPoint {
 
         rpcResponse.setId(methodParser.getId());
 
+        logResponse(methodName, rpcResponse);
+
         return rpcResponse;
+    }
+
+    /**
+     *
+     * @param methodName
+     *            The {@link JsonRpcMethodName}.
+     * @param rpcResponse
+     *            The {@link AbstractJsonRpcMessage}.
+     */
+    private static void logResponse(final JsonRpcMethodName methodName,
+            final AbstractJsonRpcMessage rpcResponse) {
+
+        final PubLevelEnum level;
+        final String msg;
+
+        if (rpcResponse instanceof AbstractJsonRpcMethodResponse) {
+
+            AbstractJsonRpcMethodResponse methodRsp =
+                    (AbstractJsonRpcMethodResponse) rpcResponse;
+
+            if (methodRsp.isError()) {
+                level = PubLevelEnum.ERROR;
+                msg = methodRsp.asError().getError().getMessage();
+            } else {
+                level = PubLevelEnum.INFO;
+                final ResultDataBasic data =
+                        methodRsp.asResult().getResult()
+                                .data(ResultDataBasic.class);
+                msg = data.getMessage();
+            }
+
+        } else if (rpcResponse instanceof JsonRpcMethodError) {
+
+            JsonRpcMethodError error = (JsonRpcMethodError) rpcResponse;
+
+            msg = error.getError().getMessage();
+            level = PubLevelEnum.ERROR;
+
+        } else {
+            msg = null;
+            level = PubLevelEnum.INFO;
+        }
+
+        final StringBuilder msgTxt =
+                new StringBuilder().append("Server Command [").append(
+                        methodName.getMethodName()).append("]");
+
+        if (StringUtils.isNotBlank(msg)) {
+            msgTxt.append(": ").append(msg);
+        }
+
+        AdminPublisher.instance().publish(PubTopicEnum.SERVER_COMMAND, level,
+                msgTxt.toString());
+
+        final AppLogLevelEnum logLevel;
+
+        switch (level) {
+        case ERROR:
+            logLevel = AppLogLevelEnum.ERROR;
+            break;
+        case WARN:
+            logLevel = AppLogLevelEnum.WARN;
+            break;
+        case INFO:
+            // no break intended
+        default:
+            logLevel = AppLogLevelEnum.INFO;
+            break;
+        }
+
+        AppLogHelper.log(logLevel, msgTxt.toString());
     }
 
     /**

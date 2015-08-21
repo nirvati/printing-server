@@ -116,16 +116,16 @@ public final class WebAppAdminPage extends AbstractWebAppPage {
         renderJs(response, "jquery.savapage-admin-pages.js" + nocache);
         renderJs(response, "jquery.savapage-admin-page-pos.js" + nocache);
 
-        renderJs(response, getSpecializedJsFile() + nocache);
+        renderJs(response, getSpecializedJsFileName() + nocache);
     }
 
     @Override
-    protected String getSpecializedCssFile() {
+    protected String getSpecializedCssFileName() {
         return "jquery.savapage-admin.css";
     }
 
     @Override
-    protected String getSpecializedJsFile() {
+    protected String getSpecializedJsFileName() {
         return "jquery.savapage-admin.js";
     }
 
@@ -239,10 +239,11 @@ public final class WebAppAdminPage extends AbstractWebAppPage {
                         info(getLocalizer().getString(
                                 "msg-membercard-import-file-invalid", this));
 
-                        LOGGER.info(uploadedFile.getClientFileName()
-                                + " is not a valid "
-                                + CommunityDictEnum.MEMBER_CARD.getWord());
-
+                        if (LOGGER.isInfoEnabled()) {
+                            LOGGER.info(uploadedFile.getClientFileName()
+                                    + " is not a valid "
+                                    + CommunityDictEnum.MEMBER_CARD.getWord());
+                        }
                         // + " File-Size: "
                         // +
                         // Bytes.bytes(uploadedFile.getSize()).toString());

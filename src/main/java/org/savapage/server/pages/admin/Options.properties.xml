@@ -4,6 +4,13 @@
 
 	<entry key="title">Options</entry>
 
+    <entry key="flipswitch-on">On</entry>
+    <entry key="flipswitch-off">Off</entry>
+
+    <entry key="circuit-damaged">Damaged</entry>
+    <entry key="circuit-open">Connection broken</entry>    
+    <entry key="blocked">Blocked</entry>
+
 	<entry key="cat-user-source">User Source</entry>
 	<entry key="cat-user-creation">User Creation</entry>
     <entry key="cat-user-authentication">User Authentication</entry>
@@ -55,6 +62,7 @@
 
 	<entry key="button-apply">Apply</entry>
 	<entry key="button-cancel">Cancel</entry>
+    <entry key="button-change">Change</entry>
 	<entry key="button-change-group">Change group</entry>
 	<entry key="button-clear">Clear</entry>
 	<entry key="button-sync-now">Synchronize now</entry>
@@ -200,6 +208,7 @@
     <entry key="papercut-token">Token</entry>
 
     <entry key="papercut-db-text">PaperCut Database</entry>
+    <entry key="papercut-db-driver">Driver</entry>
     <entry key="papercut-db-url">URL</entry>
     <entry key="papercut-db-user">User</entry>
     <entry key="papercut-db-password">Password</entry>
@@ -274,15 +283,23 @@
     <entry key="financial-global-credit-limit">Default credit limit</entry>    
     <entry key="financial-printer-cost-decimals">Printer cost decimals</entry>
     <entry key="financial-decimals-other">Decimals used elsewhere</entry>
-    <entry key="financial-show-currency">Display currency sign</entry>
-    <entry key="financial-custom-currency">Currency sign (leave empty to accept system default "{0}")</entry>
+    
+    <entry key="financial-currency-code">Currency code</entry>
+    <entry key="financial-currency-code-help">Use the server command line interface to change the currency.</entry>
+    
     <entry key="financial-payment-methods">A comma separated list of payment methods (leave empty if not required)</entry>
     <entry key="cat-financial-pos">Point-of-Sale</entry>
     <entry key="financial-pos-receipt-header">Receipt header text</entry>
+    
     <entry key="cat-financial-vouchers">Vouchers</entry>
+    <entry key="financial-user-vouchers-enable">Allow users to redeem vouchers</entry> 
     <entry key="financial-voucher-card-header">Header</entry>
     <entry key="financial-voucher-card-footer">Footer</entry>
     <entry key="financial-voucher-card-fontfamily">Font</entry>
+    
+    <entry key="cat-financial-user-transfers">Transfer funds</entry>    
+    <entry key="financial-user-transfer-enable">Allow users to transfer funds to other users</entry> 
+    <entry key="financial-user-transfer-enable-comments">Allow users to add comments to manual transfers</entry> 
     
     <!--  -->
     <entry key="report-fontfamily-header">Report Font</entry>

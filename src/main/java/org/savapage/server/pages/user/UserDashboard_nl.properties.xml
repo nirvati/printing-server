@@ -3,15 +3,20 @@
 <properties>
 
     <entry key="title">{0}</entry>
-    <entry key="button-redeem-voucher">Voucher inwisselen</entry>
-
+    
+    <entry key="button-voucher">Voucher</entry>
+    <entry key="button-transfer-to-user">Overdragen</entry>
+    
+    <entry key="button-title-voucher">Wissel een voucher in.</entry>
+    <entry key="button-title-transfer">Hoog saldo op door geld over te boeken van "{0}".</entry>
+    <entry key="button-title-bitcoin">Hoog saldo op door een Bitcoin transactie.</entry>
+    <entry key="button-title-transfer-to-user">Saldo overdragen naar een andere gebruiker.</entry>
+    
+    <entry key="header-gateway">Gebruik een externe rekening om uw saldo op te hogen:</entry>
+    
     <entry key="title-financial">Financieel</entry>
     <entry key="balance">Saldo</entry>
     <entry key="credit-limit">Bestedingslimiet</entry>
     <entry key="credit-limit-none">Geen</entry>
 
-    <entry key="prompt-payment-amount">Bedrag overmaken van extern account</entry>
-    <entry key="placeholder-comment">Voor commentaar in</entry>
-    <entry key="button-transfer">Overmaken</entry>
-    
 </properties>

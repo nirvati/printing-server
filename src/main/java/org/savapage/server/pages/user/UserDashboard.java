@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,15 +22,30 @@
 package org.savapage.server.pages.user;
 
 import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.PropertyListView;
 import org.savapage.core.SpException;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.dao.helpers.AppLogLevelEnum;
 import org.savapage.core.dto.AccountDisplayInfoDto;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.ext.payment.PaymentGatewayPlugin;
+import org.savapage.ext.payment.PaymentGateway;
+import org.savapage.ext.payment.PaymentGatewayException;
+import org.savapage.ext.payment.PaymentMethodEnum;
+import org.savapage.ext.payment.PaymentMethodInfo;
+import org.savapage.ext.payment.bitcoin.BitcoinGateway;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
+import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.pages.MessageContent;
 import org.savapage.server.pages.StatsEnvImpactPanel;
 import org.savapage.server.pages.StatsPageTotalPanel;
 
@@ -58,6 +73,8 @@ public class UserDashboard extends AbstractUserPage {
      * @throws ParseException
      */
     private void handlePage() {
+
+        final ConfigManager cm = ConfigManager.instance();
 
         final MarkupHelper helper = new MarkupHelper(this);
 
@@ -93,7 +110,7 @@ public class UserDashboard extends AbstractUserPage {
                         .getAccountingService()
                         .getAccountDisplayInfo(user,
                                 ServiceContext.getLocale(),
-                                SpSession.getCurrencySymbol());
+                                SpSession.getAppCurrencySymbol());
 
         // ------------------
         String creditLimit = dto.getCreditLimit();
@@ -125,18 +142,125 @@ public class UserDashboard extends AbstractUserPage {
         helper.addModifyLabelAttr("balance", dto.getBalance(), "class",
                 clazzBalance);
 
+        // Redeem voucher?
+        final Label labelVoucherRedeem =
+                MarkupHelper.createEncloseLabel("button-voucher-redeem",
+                        localized("button-voucher"),
+                        cm.isConfigValue(Key.FINANCIAL_USER_VOUCHERS_ENABLE));
+
+        add(MarkupHelper.appendLabelAttr(labelVoucherRedeem, "title",
+                localized("button-title-voucher")));
+
+        // Credit transfer?
+        final boolean enableTransferCredit =
+                dto.getStatus() == AccountDisplayInfoDto.Status.DEBIT
+                        && cm.isConfigValue(Key.FINANCIAL_USER_TRANSFER_ENABLE);
+
+        final Label labelTransferCredit =
+                MarkupHelper.createEncloseLabel("button-transfer-credit",
+                        localized("button-transfer-to-user"),
+                        enableTransferCredit);
+
+        add(MarkupHelper.appendLabelAttr(labelTransferCredit, "title",
+                localized("button-title-transfer-to-user")));
+
         /*
-         * Is payment gateway available?
+         * Payment Gateways
          */
-        final PaymentGatewayPlugin plugin =
-                WebApp.get().getPluginManager().getPaymentGatewayPlugin();
+        final String appCurrencyCode = ConfigManager.getAppCurrencyCode();
 
-        final boolean isPaymentGateway = plugin != null;
+        final ServerPluginManager pluginMgr = WebApp.get().getPluginManager();
 
-        helper.encloseLabel("currency-symbol", SpSession.getCurrencySymbol(),
-                isPaymentGateway);
+        int methodCount = 0;
 
-        helper.addLabel("decimal-separator", SpSession.getDecimalSeparator());
+        /*
+         * Bitcoin Gateway?
+         */
+        final BitcoinGateway bitcoinPlugin = pluginMgr.getBitcoinGateway();
+
+        final boolean isBitcoinGateway =
+                bitcoinPlugin != null && bitcoinPlugin.isOnline()
+                        && bitcoinPlugin.isCurrencySupported(appCurrencyCode);
+
+        if (isBitcoinGateway) {
+
+            final Label labelWrk = new Label("img-transfer-bitcoin");
+
+            labelWrk.add(new AttributeModifier("title",
+                    localized("button-title-bitcoin")));
+
+            labelWrk.add(new AttributeModifier("src", WebApp
+                    .getPaymentMethodImgUrl(PaymentMethodEnum.BITCOIN, false)));
+
+            add(labelWrk);
+
+            methodCount++;
+
+        } else {
+            helper.discloseLabel("img-transfer-bitcoin");
+        }
+
+        /*
+         * External Gateway?
+         */
+        final List<PaymentMethodInfo> list = new ArrayList<PaymentMethodInfo>();
+
+        final boolean isExternalGateway;
+
+        final PaymentGateway externalPlugin;
+
+        try {
+            externalPlugin = pluginMgr.getExternalPaymentGateway();
+
+            isExternalGateway =
+                    externalPlugin != null
+                            && externalPlugin.isOnline()
+                            && externalPlugin
+                                    .isCurrencySupported(appCurrencyCode);
+
+            if (isExternalGateway) {
+                list.addAll(externalPlugin.getExternalPaymentMethods().values());
+            }
+
+        } catch (PaymentGatewayException e) {
+            setResponsePage(new MessageContent(AppLogLevelEnum.ERROR,
+                    e.getMessage()));
+            return;
+        }
+
+        methodCount += list.size();
+
+        add(new PropertyListView<PaymentMethodInfo>("payment-methods", list) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void populateItem(final ListItem<PaymentMethodInfo> item) {
+
+                final PaymentMethodInfo info = item.getModelObject();
+
+                final Label labelWrk = new Label("img-payment-method", "");
+
+                labelWrk.add(new AttributeModifier("src", WebApp
+                        .getPaymentMethodImgUrl(info.getMethod(), false)));
+
+                labelWrk.add(new AttributeModifier("title", localized(
+                        "button-title-transfer", info.getMethod().toString()
+                                .toLowerCase())));
+
+                labelWrk.add(new AttributeModifier("data-payment-gateway",
+                        externalPlugin.getId()));
+
+                labelWrk.add(new AttributeModifier("data-payment-method", info
+                        .getMethod().toString()));
+
+                item.add(labelWrk);
+            }
+
+        });
+
+        helper.encloseLabel("header-gateway", localized("header-gateway"),
+                methodCount > 0);
 
     }
 }

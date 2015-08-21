@@ -14,8 +14,10 @@
 
 	<div>
 		<ul data-role="listview" data-inset="true" id="language-list">
-			<li><a href="#" id="language#en">English</a></li>
-			<li><a href="#" id="language#nl">Nederlands</a></li>
+            <li><a href="#" data-language="de" data-country="DE">Deutsch</a></li>
+			<li><a href="#" data-language="en" data-country="US">English</a></li>
+			<li><a href="#" data-language="fr" data-country="FR">Français</a></li>
+            <li><a href="#" data-language="nl" data-country="NL">Nederlands</a></li>
 		</ul>
 	</div>
 
@@ -28,4 +30,4 @@
 <wicket:remove><!-- 
 THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG 
 --></wicket:remove>  
-<div data-role="popup" data-position-to="window" data-overlay-theme="a" class="sp-msg-popup ui-content"/>
+<div data-role="popup" data-position-to="window" class="sp-msg-popup ui-content"/>

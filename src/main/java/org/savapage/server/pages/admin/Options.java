@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -32,6 +32,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.savapage.core.SpException;
+import org.savapage.core.circuitbreaker.CircuitStateEnum;
+import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
@@ -39,6 +41,8 @@ import org.savapage.core.doc.OfficeToPdf;
 import org.savapage.core.doc.XpsToPdf;
 import org.savapage.core.jmx.JmxRemoteProperties;
 import org.savapage.core.print.gcp.GcpPrinter;
+import org.savapage.core.print.imap.ImapPrinter;
+import org.savapage.core.print.smartschool.SmartSchoolPrinter;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.server.pages.FontOptionsPanel;
@@ -209,7 +213,6 @@ public class Options extends AbstractAdminPage {
         labelledCheckbox("webapp-user-auth-trust-cliapp-auth",
                 IConfigProp.Key.WEBAPP_USER_AUTH_TRUST_CLIAPP_AUTH);
 
-
         //
         labelledRadio("user-auth-mode-default", "-user",
                 IConfigProp.Key.AUTH_MODE_DEFAULT, IConfigProp.AUTH_MODE_V_NAME);
@@ -248,6 +251,11 @@ public class Options extends AbstractAdminPage {
          * SmartSchool.
          */
         final String headerId = "smartschool-print-header";
+
+        String msgKey;
+        String cssColor = null;
+        String msgText = null;
+        Label labelWrk;
 
         if (ConfigManager.isSmartSchoolPrintModuleActivated()) {
 
@@ -313,18 +321,74 @@ public class Options extends AbstractAdminPage {
                     IConfigProp.Key.PAPERCUT_SERVER_AUTH_TOKEN);
 
             //
+            labelledInput("papercut-db-driver",
+                    IConfigProp.Key.PAPERCUT_DB_JDBC_DRIVER);
             labelledInput("papercut-db-url",
                     IConfigProp.Key.PAPERCUT_DB_JDBC_URL);
             labelledInput("papercut-db-user", IConfigProp.Key.PAPERCUT_DB_USER);
             labelledInput("papercut-db-password",
                     IConfigProp.Key.PAPERCUT_DB_PASSWORD);
 
+            //
+            if (SmartSchoolPrinter.isBlocked()) {
+                msgKey = "blocked";
+                cssColor = MarkupHelper.CSS_TXT_WARN;
+            } else {
+                msgKey = null;
+
+                final CircuitStateEnum circuitState =
+                        ConfigManager.getCircuitBreaker(
+                                CircuitBreakerEnum.SMARTSCHOOL_CONNECTION)
+                                .getCircuitState();
+
+                switch (circuitState) {
+
+                case CLOSED:
+                    break;
+
+                case DAMAGED:
+                    msgKey = "circuit-damaged";
+                    cssColor = MarkupHelper.CSS_TXT_ERROR;
+                    break;
+
+                case HALF_OPEN:
+                    // no break intended
+                case OPEN:
+                    msgKey = "circuit-open";
+                    cssColor = MarkupHelper.CSS_TXT_WARN;
+                    break;
+
+                default:
+                    throw new SpException("Oops we missed "
+                            + CircuitStateEnum.class.getSimpleName()
+                            + " value [" + circuitState.toString() + "]");
+                }
+            }
+
+            if (msgKey == null) {
+                msgText = "";
+            } else {
+                msgText = getLocalizer().getString(msgKey, this);
+            }
+
+            labelWrk =
+                    helper.encloseLabel("smartschool-print-status", msgText,
+                            true);
+
+            MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
+
+            labelWrk =
+                    helper.addCheckbox("flipswitch-smartschool-online",
+                            SmartSchoolPrinter.isOnline());
+
+            setFlipswitchOnOffText(labelWrk);
+
         } else {
             helper.discloseLabel(headerId);
         }
 
         /*
-         *
+         * Mail Print.
          */
         labelledCheckbox("imap-enable", IConfigProp.Key.PRINT_IMAP_ENABLE);
 
@@ -352,8 +416,52 @@ public class Options extends AbstractAdminPage {
                 IConfigProp.Key.PRINT_IMAP_MAX_FILE_MB);
         labelledInput("imap-max-files", IConfigProp.Key.PRINT_IMAP_MAX_FILES);
 
+        msgKey = null;
+
+        final CircuitStateEnum circuitState =
+                ConfigManager.getCircuitBreaker(
+                        CircuitBreakerEnum.MAILPRINT_CONNECTION)
+                        .getCircuitState();
+
+        switch (circuitState) {
+
+        case CLOSED:
+            break;
+
+        case DAMAGED:
+            msgKey = "circuit-damaged";
+            cssColor = MarkupHelper.CSS_TXT_ERROR;
+            break;
+
+        case HALF_OPEN:
+            // no break intended
+        case OPEN:
+            msgKey = "circuit-open";
+            cssColor = MarkupHelper.CSS_TXT_WARN;
+            break;
+
+        default:
+            throw new SpException("Oops we missed "
+                    + CircuitStateEnum.class.getSimpleName() + " value ["
+                    + circuitState.toString() + "]");
+        }
+
+        if (msgKey == null) {
+            msgText = "";
+        } else {
+            msgText = getLocalizer().getString(msgKey, this);
+        }
+
+        labelWrk = helper.encloseLabel("mailprint-status", msgText, true);
+        MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
+
+        labelWrk =
+                helper.addCheckbox("flipswitch-mailprint-online",
+                        ImapPrinter.isOnline());
+        setFlipswitchOnOffText(labelWrk);
+
         /*
-         *
+         * Web Print
          */
         labelledCheckbox("webprint-enable", IConfigProp.Key.WEB_PRINT_ENABLE);
         labelledInput("webprint-max-file-mb",
@@ -362,22 +470,22 @@ public class Options extends AbstractAdminPage {
                 IConfigProp.Key.WEB_PRINT_LIMIT_IP_ADDRESSES);
 
         /*
-         *
+         * Google Cloud Print.
          */
         final ConfigManager cm = ConfigManager.instance();
 
         labelledCheckbox("gcp-enable", IConfigProp.Key.GCP_ENABLE);
 
-        addTextInput("gcp-client-id", GcpPrinter.getOAuthClientId());
-        addTextInput("gcp-client-secret", GcpPrinter.getOAuthClientSecret());
-        addTextInput("gcp-printer-name", GcpPrinter.getPrinterName());
+        helper.addTextInput("gcp-client-id", GcpPrinter.getOAuthClientId());
+        helper.addTextInput("gcp-client-secret",
+                GcpPrinter.getOAuthClientSecret());
+        helper.addTextInput("gcp-printer-name", GcpPrinter.getPrinterName());
 
         addCheckbox("gcp-mail-after-cancel-enable",
                 cm.isConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_ENABLE));
 
-        addTextInput(
-                "gcp-mail-after-cancel-subject",
-                cm.getConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_SUBJECT));
+        helper.addTextInput("gcp-mail-after-cancel-subject", cm
+                .getConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_SUBJECT));
 
         add(new Label("gcp-mail-after-cancel-body", ConfigManager.instance()
                 .getConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_BODY)));
@@ -390,14 +498,13 @@ public class Options extends AbstractAdminPage {
         boolean enabled = ConfigManager.isGcpEnabled();
         final GcpPrinter.State gcpStatus = GcpPrinter.getState();
 
-        String cssColor;
         if (enabled && gcpStatus == GcpPrinter.State.ON_LINE) {
             cssColor = MarkupHelper.CSS_TXT_VALID;
         } else {
             cssColor = MarkupHelper.CSS_TXT_WARN;
         }
 
-        Label labelWrk =
+        labelWrk =
                 new Label("gcp-summary-printer-state-display",
                         GcpPrinter.localized(enabled, gcpStatus));
         labelWrk.add(new AttributeModifier("class", cssColor));
@@ -430,15 +537,24 @@ public class Options extends AbstractAdminPage {
         labelledInput("financial-decimals-other",
                 IConfigProp.Key.FINANCIAL_USER_BALANCE_DECIMALS);
 
-        labelledCheckbox("financial-show-currency",
-                Key.USER_FIN_CURRENTCY_SYMBOL_SHOWS);
+        //
+        boolean disableCurrencyChange =
+                ConfigManager.instance().isAppReadyToUse();
 
-        tagInput("financial-custom-currency",
-                Key.USER_FIN_CURRENCY_SYMBOL_CUSTOM);
+        final Label labelCurrency =
+                tagInput("financial-currency-code",
+                        Key.FINANCIAL_GLOBAL_CURRENCY_CODE);
 
-        add(new Label("financial-custom-currency-label", MessageFormat.format(
-                getLocalizer().getString("financial-custom-currency", this),
-                ConfigManager.getDefaultCurrencySymbol())));
+        if (disableCurrencyChange) {
+            labelCurrency.add(new AttributeModifier("disabled", "disabled"));
+        }
+
+        helper.encloseLabel("button-change-financial-currency-code",
+                localized("button-change"), !disableCurrencyChange);
+
+        helper.encloseLabel("financial-currency-code-help",
+                localized("financial-currency-code-help"),
+                disableCurrencyChange);
 
         // POS
 
@@ -450,11 +566,21 @@ public class Options extends AbstractAdminPage {
 
         // Vouchers
 
+        labelledCheckbox("financial-user-vouchers-enable",
+                IConfigProp.Key.FINANCIAL_USER_VOUCHERS_ENABLE);
+
         labelledInput("financial-voucher-card-header",
                 IConfigProp.Key.FINANCIAL_VOUCHER_CARD_HEADER);
 
         labelledInput("financial-voucher-card-footer",
                 IConfigProp.Key.FINANCIAL_VOUCHER_CARD_FOOTER);
+
+        //
+        labelledCheckbox("financial-user-transfer-enable",
+                IConfigProp.Key.FINANCIAL_USER_TRANSFER_ENABLE);
+
+        labelledCheckbox("financial-user-transfer-enable-comments",
+                IConfigProp.Key.FINANCIAL_USER_TRANSFER_ENABLE_COMMENTS);
 
         /*
          * Report Font Family.
@@ -683,26 +809,48 @@ public class Options extends AbstractAdminPage {
     }
 
     /**
+     * Adds an input label for {@link IConfigProp.Key}.
      *
+     * @param id
+     *            The label id.
+     * @param key
+     *            The {@link IConfigProp.Key}.
+     * @param value
+     *            The value.
+     * @return The added {@link Label}.
      */
-    private void tagInput(final String id, final IConfigProp.Key key,
+    private Label tagInput(final String id, final IConfigProp.Key key,
             final String value) {
         Label labelWrk = new Label(id);
         labelWrk.add(new AttributeModifier("id", ConfigManager.instance()
                 .getConfigKey(key)));
         labelWrk.add(new AttributeModifier("value", value));
         add(labelWrk);
+        return labelWrk;
     }
 
     /**
+     * Adds an input label for {@link IConfigProp.Key}.
      *
+     * @param id
+     *            The label id.
+     * @param key
+     *            The {@link IConfigProp.Key}.
+     * @return The added {@link Label}.
      */
-    private void tagInput(final String id, final IConfigProp.Key key) {
-        tagInput(id, key, ConfigManager.instance().getConfigValue(key));
+    private Label tagInput(final String id, final IConfigProp.Key key) {
+        return tagInput(id, key, ConfigManager.instance().getConfigValue(key));
     }
 
     /**
+     * Adds an textarea label for {@link IConfigProp.Key}.
      *
+     * @param id
+     *            The label id.
+     * @param key
+     *            The {@link IConfigProp.Key}.
+     * @param value
+     *            The value.
      */
     private void tagTextarea(final String id, final IConfigProp.Key key,
             final String value) {
@@ -819,6 +967,20 @@ public class Options extends AbstractAdminPage {
 
         labelledRadio(wicketIdBase, wicketIdSuffix, attrName, attrValue,
                 checked);
+    }
+
+    /**
+     * Sets the on/off texts for a Flipswitch.
+     *
+     * @param label
+     *            The flipswitch {@link Label}.
+     */
+    private void setFlipswitchOnOffText(final Label label) {
+
+        MarkupHelper.modifyLabelAttr(label, "data-on-text", getLocalizer()
+                .getString("flipswitch-on", this));
+        MarkupHelper.modifyLabelAttr(label, "data-off-text", getLocalizer()
+                .getString("flipswitch-off", this));
     }
 
 }

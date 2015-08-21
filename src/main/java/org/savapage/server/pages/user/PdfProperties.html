@@ -25,7 +25,7 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             
 	        <div class="ui-field-contain">
 	            <label for="pdf-author"><wicket:message key="pdf-author"/></label>
-	            <input type="text" name="pdf-author" id="pdf-author" value=""
+	            <input type="text" name="pdf-author" id="pdf-author" value="" data-clear-btn="true"
 	                autocomplete="off" autocorrect="off" spellcheck="false"/>
 	        </div>
         
@@ -45,8 +45,12 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 	        <div class="ui-field-contain">
 	            <label data-mini="true" for="pdf-remove-graphics"><wicket:message key="pdf-remove-graphics"/></label>
 	            <input data-mini="true" type="checkbox" id="pdf-remove-graphics" value="1"/>
-	        </div>
-        
+<wicket:enclosure child="pdf-ecoprint">
+                <label data-mini="true" for="pdf-ecoprint"><wicket:message key="pdf-ecoprint"/></label>
+                <input data-mini="true" type="checkbox" wicket:id="pdf-ecoprint" id="pdf-ecoprint" value="1"/>
+</wicket:enclosure>       
+            </div>
+
 	        <fieldset data-role="controlgroup" data-type="horizontal" class="ui-mini">
 				<wicket:remove><!-- 
 	            <legend class="sp-txt-wrap">
@@ -139,18 +143,16 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 			    <h3><wicket:message key="pdf-cat-passwords"/></h3>
 			
 			    <label for="pdf-pw-user"><wicket:message key="pdf-user-password"/></label>
-			    <input class="sp-pdf-apply-src" type="password" id="pdf-pw-user" maxlength="32" value=""/>
+			    <input class="sp-pdf-apply-src" type="password" id="pdf-pw-user" maxlength="32" value="" data-clear-btn="true"/>
 	            		    
    			    <label for="pdf-pw-user-c"><wicket:message key="pdf-password-confirm"/></label>
-       		    <input type="password" id="pdf-pw-user-c" maxlength="32" value=""/>
+       		    <input type="password" id="pdf-pw-user-c" maxlength="32" value="" data-clear-btn="true"/>
 			         
-			    <p> 
-       			    <label for="pdf-pw-owner"><wicket:message key="pdf-owner-password"/></label>
-		     	    <input class="sp-pdf-apply-src" type="password" id="pdf-pw-owner" maxlength="32" value=""/>
+   			    <label for="pdf-pw-owner"><wicket:message key="pdf-owner-password"/></label>
+	     	    <input class="sp-pdf-apply-src" type="password" id="pdf-pw-owner" maxlength="32" value="" data-clear-btn="true"/>
 
-   				    <label for="pdf-pw-owner-c"><wicket:message key="pdf-password-confirm"/></label>
-       			    <input type="password" id="pdf-pw-owner-c" maxlength="32" value=""/>
-			    </p>
+			    <label for="pdf-pw-owner-c"><wicket:message key="pdf-password-confirm"/></label>
+   			    <input type="password" id="pdf-pw-owner-c" maxlength="32" value="" data-clear-btn="true"/>
 		    
 		    </div>
 	    
@@ -179,4 +181,4 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 <wicket:remove><!-- 
 THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG 
 --></wicket:remove>  
-<div data-role="popup" data-position-to="window" data-overlay-theme="a" class="sp-msg-popup ui-content"/>
+<div data-role="popup" data-position-to="window" class="sp-msg-popup ui-content"/>

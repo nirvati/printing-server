@@ -4,6 +4,13 @@
 
 	<entry key="title">Opties</entry>
 
+    <entry key="flipswitch-on">Aan</entry>
+    <entry key="flipswitch-off">Uit</entry>
+    
+    <entry key="circuit-damaged">Defect</entry>
+    <entry key="circuit-open">Connectie verbroken</entry>    
+    <entry key="blocked">Geblokkeerd</entry>
+    
 	<entry key="cat-user-source">Gebruikers Bron</entry>
 	<entry key="cat-user-creation">Gebruikers Aanmaken</entry>
     <entry key="cat-user-authentication">Gebruikers Authenticatie</entry>	
@@ -54,6 +61,7 @@
 
 	<entry key="button-apply">Toepassen</entry>
 	<entry key="button-cancel">Annuleren</entry>
+    <entry key="button-change">Wijzigen</entry>
 	<entry key="button-change-group">Groep wijzigen</entry>
 	<entry key="button-clear">Wissen</entry>
 	<entry key="button-sync-now">Nu synchroniseren</entry>
@@ -204,6 +212,7 @@
     <entry key="papercut-token">Token</entry>
 
     <entry key="papercut-db-text">PaperCut Database</entry>
+    <entry key="papercut-db-driver">Driver</entry>
     <entry key="papercut-db-url">URL</entry>
     <entry key="papercut-db-user">Gebruiker</entry>
     <entry key="papercut-db-password">Wachtwoord</entry>
@@ -277,15 +286,24 @@
     <entry key="financial-global-credit-limit">Standaard bestedingslimiet</entry>    
     <entry key="financial-printer-cost-decimals">Decimalen voor printerkosten</entry>
     <entry key="financial-decimals-other">Decimalen elders</entry>
-    <entry key="financial-show-currency">Valuta teken weergeven</entry>
-    <entry key="financial-custom-currency">Valuta teken (laat leeg om de systeem standaard "{0}" te accepteren)</entry>
+    
+    <entry key="financial-currency-code">Valuta code</entry>
+    <entry key="financial-currency-code-help">Gebruik de server command line interface om de valuta te wijzigen.</entry>
+    
     <entry key="financial-payment-methods">Een door comma's gescheiden lijst van betaalmethoden (laat leeg als niet vereist)</entry>
     <entry key="cat-financial-pos">Verkooppunt</entry>
     <entry key="financial-pos-receipt-header">Kassabon Kopregels</entry>
-    <entry key="cat-financial-vouchers">Vouchers</entry>    
+    
+    <entry key="cat-financial-vouchers">Vouchers</entry>
+    <entry key="financial-user-vouchers-enable">Gebruikers toestaan vouchers in te wisselen</entry> 
+        
     <entry key="financial-voucher-card-header">Kopregel</entry>
     <entry key="financial-voucher-card-footer">Voetregel</entry>
     <entry key="financial-voucher-card-fontfamily">Lettertype</entry>
+
+    <entry key="cat-financial-user-transfers">Bedragen overdragen</entry>    
+    <entry key="financial-user-transfer-enable">Gebruikers toestaan bedragen naar andere gebruikers over te dragen</entry> 
+    <entry key="financial-user-transfer-enable-comments">Gebruikers toestaan om commentaar toe te voegen bij handmatige overdrachten</entry> 
     
     <!--  -->
     <entry key="report-fontfamily-header">Rapport Lettertype</entry>

@@ -21,20 +21,33 @@
  */
 package org.savapage.server.callback;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.util.Map.Entry;
+import java.io.PrintWriter;
+import java.net.MalformedURLException;
+import java.net.URL;
 
 import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jetty.http.HttpStatus;
+import org.savapage.core.cometd.AdminPublisher;
+import org.savapage.core.cometd.PubLevelEnum;
+import org.savapage.core.cometd.PubTopicEnum;
+import org.savapage.core.concurrent.ReadWriteLockEnum;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
+import org.savapage.core.util.AppLogHelper;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentGatewayPlugin;
+import org.savapage.ext.payment.PaymentGatewayPlugin.CallbackResponse;
 import org.savapage.server.WebApp;
 import org.savapage.server.ext.ServerPluginManager;
 import org.slf4j.Logger;
@@ -42,14 +55,39 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Callback servlet for Web API providers.
- * <p>
- * See {@code web.xml}.
- * </p>
  *
  * @author Datraverse B.V.
+ * @since 0.9.9
  */
+@WebServlet(name = "CallbackServlet",
+        urlPatterns = { CallbackServlet.SERVLET_URL_PATTERN })
 public final class CallbackServlet extends HttpServlet implements
         ServiceEntryPoint {
+
+    /**
+     * .
+     */
+    private static final String PATH_BASE = "callback";
+
+    /**
+     * .
+     */
+    public static final String SERVLET_URL_PATTERN = "/" + PATH_BASE + "/*";
+
+    /**
+     * .
+     */
+    private static final String SUB_PATH_0_PAYMENT = "payment";
+
+    /**
+     * .
+     */
+    private static final String SUB_PATH_1_TEST = "test";
+
+    /**
+     * .
+     */
+    private static final String SUB_PATH_1_LIVE = "live";
 
     /**
      * The {@link Logger}.
@@ -62,28 +100,91 @@ public final class CallbackServlet extends HttpServlet implements
      */
     private static final long serialVersionUID = 1L;
 
-    @Override
-    public void init() {
+    /**
+     * Gets the callback {@link URL} for a {@link PaymentGatewayPlugin}.
+     *
+     * @param plugin
+     *            The {@link PaymentGatewayPlugin}.
+     * @return The callback {@link URL}.
+     * @throws MalformedURLException
+     *             When format of the URL is invalid.
+     */
+    public static URL getCallBackUrl(final PaymentGatewayPlugin plugin)
+            throws MalformedURLException {
+
+        final StringBuilder url = new StringBuilder();
+
+        final String urlBase =
+                ConfigManager.instance().getConfigValue(
+                        Key.EXT_WEBAPI_CALLBACK_URL_BASE);
+
+        if (StringUtils.isBlank(urlBase)) {
+            throw new IllegalStateException(
+                    "WebAPI callback URL base is not specified.");
+        }
+
+        url.append(urlBase).append('/').append(PATH_BASE).append('/')
+                .append(SUB_PATH_0_PAYMENT).append('/');
+
+        if (plugin.isLive()) {
+            url.append(SUB_PATH_1_LIVE);
+        } else {
+            url.append(SUB_PATH_1_TEST);
+        }
+
+        url.append('/').append(plugin.getId());
+
+        return new URL(url.toString());
     }
 
     /**
+     * Chunks the pathinfo from an {@link HttpServletRequest} into an array of
+     * sub paths.
      *
      * @param httpRequest
-     * @param httpResponse
-     * @throws IOException
-     * @throws ServletException
+     *            The {@link HttpServletRequest}.
+     * @return {@code null} when the pathInfo is not valid.
      */
-    private int onCallback(final HttpServletRequest httpRequest,
-            final HttpServletResponse httpResponse) throws IOException,
-            ServletException {
+    private static String[] chunkPathInfo(final HttpServletRequest httpRequest) {
+
+        final String[] pathChunks =
+                StringUtils.split(httpRequest.getPathInfo(), '/');
+
+        if (pathChunks != null && pathChunks.length == 3
+                && pathChunks[0].equals(SUB_PATH_0_PAYMENT)) {
+
+            if (pathChunks[1].equals(SUB_PATH_1_LIVE)
+                    || pathChunks[1].equals(SUB_PATH_1_TEST)) {
+                return pathChunks;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Handles the callback.
+     *
+     * @param httpRequest
+     *            The {@link HttpServletRequest}.
+     * @param httpResponse
+     *            The {@link HttpServletResponse}.
+     * @param isPostRequest
+     *            {@code true} when callback is a POST request.
+     * @throws IOException
+     *             if an input or output error is detected when the servlet
+     *             handles the GET request.
+     *
+     * @throws ServletException
+     *             if the request for the GET could not be handled.
+     */
+    private void
+            onCallback(final HttpServletRequest httpRequest,
+                    final HttpServletResponse httpResponse,
+                    final boolean isPostRequest) throws IOException,
+                    ServletException {
 
         final String pathInfo = httpRequest.getPathInfo();
-
-        String urlQueryString = httpRequest.getQueryString();
-
-        if (httpRequest.getQueryString() == null) {
-            urlQueryString = "";
-        }
 
         if (LOGGER.isTraceEnabled()) {
 
@@ -95,74 +196,125 @@ public final class CallbackServlet extends HttpServlet implements
                 builder.append(pathInfo);
             }
 
-            if (urlQueryString != null) {
-                builder.append(" [").append(urlQueryString).append(']');
-            }
-
-            for (final Entry<String, String[]> entry : httpRequest
-                    .getParameterMap().entrySet()) {
-                builder.append("\n").append(entry.getKey()).append(" :");
-                for (final String value : entry.getValue()) {
-                    builder.append(" [").append(value).append("]");
-                }
-            }
+            /*
+             * CAUTION: do NOT log the httpRequest.getParameterMap() and
+             * httpRequest.getQueryString() since they may contain sensitive
+             * data (passwords, etc).
+             */
 
             LOGGER.trace(builder.toString());
         }
 
-        /**
-         *
-         */
-        ServiceContext.open();
+        CallbackResponse callbackResponse =
+                new CallbackResponse(HttpStatus.OK_200);
 
-        final DaoContext daoContext = ServiceContext.getDaoContext();
+        final String[] pathChunks = chunkPathInfo(httpRequest);
 
-        /*
-         * Find a plug-in to handle the request: the first plug-in will do.
-         */
-        final ServerPluginManager pluginManager =
-                WebApp.get().getPluginManager();
+        if (pathChunks != null) {
 
-        Integer httpStatus = null;
+            /*
+             * Find a plug-in to handle the request: the first plug-in will do.
+             */
+            final ServerPluginManager pluginManager =
+                    WebApp.get().getPluginManager();
 
-        daoContext.beginTransaction();
+            final PaymentGatewayPlugin plugin =
+                    pluginManager.getPaymentPlugins().get(pathChunks[2]);
 
-        try {
+            if (plugin != null) {
 
-            for (final PaymentGatewayPlugin plugin : pluginManager
-                    .getPaymentGatewayPlugins()) {
+                final PrintWriter writer =
+                        new PrintWriter(httpResponse.getOutputStream(), true);
 
-                if (!plugin.getCallbackSubPath().equals(pathInfo)) {
-                    continue;
-                }
+                ReadWriteLockEnum.DATABASE_READONLY.setReadLock(true);
+                ServiceContext.open();
+                final DaoContext daoContext = ServiceContext.getDaoContext();
+                daoContext.beginTransaction();
 
-                final Integer status =
-                        plugin.onCallBack(pathInfo, urlQueryString,
-                                httpRequest.getParameterMap());
+                try {
 
-                if (status != null) {
+                    final BufferedReader reader;
+
+                    if (isPostRequest) {
+                        /*
+                         * Do NOT get the reader to prevent
+                         * IllegalStateException when getting the calling
+                         * httpRequest.getParameterMap() later on: all data is
+                         * passed in POST parameters.
+                         */
+                        reader = null;
+                    } else {
+                        reader = httpRequest.getReader();
+                    }
+
+                    callbackResponse =
+                            plugin.onCallBack(httpRequest.getParameterMap(),
+                                    pathChunks[1].equals(SUB_PATH_1_LIVE),
+                                    ConfigManager.getAppCurrency(), reader,
+                                    writer);
+
                     daoContext.commit();
-                    httpStatus = status;
-                    break;
+
+                    plugin.onCallBackCommitted(callbackResponse
+                            .getPluginObject());
+
+                } catch (PaymentGatewayException e) {
+                    /*
+                     * CAUTION: do NOT expose the urlQueryString in the logging,
+                     * since (depending on the plug-in) it could contain
+                     * sensitive (secret) data.
+                     */
+                    final String msg =
+                            AppLogHelper.logWarning(getClass(),
+                                    "paymentgateway-warning", plugin.getId(),
+                                    pathInfo, e.getMessage(), String
+                                            .valueOf(callbackResponse
+                                                    .getHttpStatus()));
+
+                    AdminPublisher.instance().publish(
+                            PubTopicEnum.PAYMENT_GATEWAY, PubLevelEnum.WARN,
+                            msg);
+
+                } catch (Exception e) {
+
+                    LOGGER.error(e.getMessage(), e);
+
+                    /*
+                     * WARNING: see warning above.
+                     */
+                    final String msg =
+                            AppLogHelper.logError(getClass(),
+                                    "paymentgateway-exception", plugin.getId(),
+                                    pathInfo, e.getClass().getSimpleName(),
+                                    e.getMessage());
+
+                    AdminPublisher.instance().publish(
+                            PubTopicEnum.PAYMENT_GATEWAY, PubLevelEnum.ERROR,
+                            msg);
+
+                    throw new ServletException(e.getMessage(), e);
+
+                } finally {
+                    daoContext.rollback();
+                    ServiceContext.close();
+                    ReadWriteLockEnum.DATABASE_READONLY.setReadLock(false);
                 }
+
+                // IMPORTANT: flush anything left in the buffer!
+                writer.flush();
             }
-
-        } catch (PaymentGatewayException e) {
-
-            throw new ServletException(e.getMessage(), e);
-
-        } finally {
-            daoContext.rollback();
-            ServiceContext.close();
         }
 
-        if (httpStatus == null) {
-            httpStatus = Integer.valueOf(HttpStatus.OK_200);
-            LOGGER.warn(String.format("%s [%s] not handled: return [%d]",
-                    pathInfo, urlQueryString, httpStatus.intValue()));
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace(String.format("%s handled: return [%d]", pathInfo,
+                    callbackResponse.getHttpStatus()));
         }
 
-        return httpStatus;
+        if (StringUtils.isNotBlank(callbackResponse.getContentType())) {
+            httpResponse.setContentType(callbackResponse.getContentType());
+        }
+
+        httpResponse.setStatus(callbackResponse.getHttpStatus());
     }
 
     @Override
@@ -170,7 +322,7 @@ public final class CallbackServlet extends HttpServlet implements
             final HttpServletResponse httpResponse) throws IOException,
             ServletException {
 
-        httpResponse.setStatus(onCallback(httpRequest, httpResponse));
+        onCallback(httpRequest, httpResponse, false);
     }
 
     @Override
@@ -178,7 +330,6 @@ public final class CallbackServlet extends HttpServlet implements
             final HttpServletResponse httpResponse) throws IOException,
             ServletException {
 
-        httpResponse.setStatus(onCallback(httpRequest, httpResponse));
+        onCallback(httpRequest, httpResponse, true);
     }
-
 }

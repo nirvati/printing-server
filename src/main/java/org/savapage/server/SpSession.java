@@ -29,8 +29,8 @@ import java.util.Locale;
 import org.apache.wicket.Session;
 import org.apache.wicket.protocol.http.WebSession;
 import org.apache.wicket.request.Request;
+import org.savapage.core.config.ConfigManager;
 import org.savapage.core.jpa.User;
-import org.savapage.core.util.CurrencyUtil;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -99,16 +99,13 @@ public class SpSession extends WebSession {
     }
 
     /**
-     * Gets the currency symbol from the {@link Locale} setting of the current
-     * session.
+     * Gets the Application's currency symbol according to the session
+     * {@link Locale} .
      *
-     * @see {@link CurrencyUtil#getCurrencySymbol(java.util.Locale)}
-     *
-     * @return The currency symbol, or an empty string when no currency may be
-     *         shown.
+     * @return The currency symbol.
      */
-    public static String getCurrencySymbol() {
-        return CurrencyUtil.getCurrencySymbol(get().getLocale());
+    public static String getAppCurrencySymbol() {
+        return ConfigManager.getAppCurrencySymbol(get().getLocale());
     }
 
     /**
