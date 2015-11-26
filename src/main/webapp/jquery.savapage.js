@@ -148,8 +148,7 @@
 		 * Constructor for the CometD connectivity wrapper.
 		 *
 		 * Use configure() at the start of the application. Use start() to start
-		 * the
-		 * after successful login. Use stop() to stop after logout.
+		 * the after successful login. Use stop() to stop after logout.
 		 */
 		_ns.Cometd = function() {
 
@@ -160,19 +159,6 @@
 			, _connected = false
 			// TODO: _isOn is ambiguous and needs rework
 			, _isOn = false;
-
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onConnecting = null;
-			// _self.onDisconnecting = null;
-			// _self.onHandshakeSuccess = null;
-			// _self.onHandshakeFailure = null;
-			// _self.onConnectionClosed = null;
-			// _self.onReconnect = null;
-			// _self.onConnectionBroken = null;
-			// _self.onUnsuccessful = null;
 
 			/**
 			 * Public function to toggle on/off (start/stop)
@@ -292,6 +278,15 @@
 				 * communication,
 				 * you need to call handshake()"
 				 */
+
+				/*
+				 * IMPORTANT: Because websocket is not supported yet by SavaPage server,
+				 * we disable websocket transport (before doing the CometD handshake).
+				 * This makes sure that CometD will not spill effort to try WebSockets
+				 * and fall back to long-polling (because WebSockets fails).
+				 */
+				$.cometd.websocketEnabled = false;
+				$.cometd.unregisterTransport('websocket');
 
 				/*
 				 * See:
@@ -588,10 +583,10 @@
 						data : jsonData
 					}
 				}).done(function(html) {
-					var json;					
-					$(jqId).html(html).enhanceWithin();			
- 					json = $(jqId + ' .json-rsp').text();										
-					if (panel.onOutput && json) {						
+					var json;
+					$(jqId).html(html).enhanceWithin();
+					json = $(jqId + ' .json-rsp').text();
+					if (panel.onOutput && json) {
 						panel.onOutput(panel, $.parseJSON(json));
 					}
 				}).fail(function() {
@@ -599,7 +594,7 @@
 				}).always(function() {
 					$.mobile.loading("hide");
 				});
-				
+
 			},
 
 			/**
@@ -857,20 +852,21 @@
 			setVisibility : function(my) {
 				var _view = _ns.PanelCommon.view;
 
-				$('.sp-doclog-cat').hide();
+				$('.sp-doclog-cat-out').hide();
+				$('.sp-doclog-cat-pdf').hide();
+				$('.sp-doclog-cat-queue').hide();
+				$('.sp-doclog-cat-printer').hide();
 
 				if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-in')) {
-					$('#sp-doclog-cat-queue').show();
-					$('#sp-doclog-sort-by-queue-cat').show();
+					$('.sp-doclog-cat-queue').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-out')) {
-					$('#sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-out').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-pdf')) {
-					$('#sp-doclog-cat-out').show();
-					$('#sp-doclog-cat-pdf').show();
+					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-pdf').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-print')) {
-					$('#sp-doclog-cat-out').show();
-					$('#sp-doclog-cat-printer').show();
-					$('#sp-doclog-sort-by-printer-cat').show();
+					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-printer').show();
 				}
 			},
 
@@ -1868,6 +1864,10 @@
 					title : {
 						//text : xydata.optionObj.title.text,
 						show : false
+					},
+					highlighter : {
+						show : true,
+						sizeAdjust : 7.5
 					}
 				});
 			};
@@ -1906,6 +1906,11 @@
 					title : {
 						//text : piedata.optionObj.title.text,
 						show : false
+					},
+					highlighter : {
+						show : true,
+						useAxesFormatters : false,
+						tooltipFormatString : '%s'
 					}
 				});
 

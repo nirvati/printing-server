@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -84,8 +84,7 @@ public class PrinterMediaSourcePanel extends Panel {
          */
         private static final long serialVersionUID = 1L;
 
-        public MediaListView(String id,
-                List<? extends JsonProxyPrinterOptChoice> list,
+        public MediaListView(String id, List<JsonProxyPrinterOptChoice> list,
                 final String media) {
 
             super(id, list);
@@ -135,7 +134,7 @@ public class PrinterMediaSourcePanel extends Panel {
          * @param isDuplexPrinter
          */
         public MediaSourceListView(final String id,
-                final List<? extends IppMediaSourceCostDto> mediaSourceList,
+                final List<IppMediaSourceCostDto> mediaSourceList,
                 List<JsonProxyPrinterOptChoice> mediaList,
                 final boolean isColorPrinter, final boolean isDuplexPrinter) {
 
@@ -463,7 +462,6 @@ public class PrinterMediaSourcePanel extends Panel {
             }
         }
 
-        //
         add(labelWrk);
 
     }

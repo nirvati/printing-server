@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<div data-role="header" data-theme="a" class="ui-mini">
-    <h3 class="sp-txt-info" wicket:id="title"/>
-</div>
- 
 <div class="ui-content" id="main">
 
     <div id="page-main-thumbnail-viewport" class="thumbnail_viewport thumbnail_viewport_empty">
@@ -251,11 +247,13 @@
 	
 	<fieldset data-role="controlgroup" data-type="horizontal" data-mini="true">
 	
-        <a href="#page-info" data-dialog="true" id="button-cometd-status" class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-icon-left ui-icon-info">
+        <a href="#" id="button-cometd-status" class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-icon-notext ui-icon-info">&nbsp;</a>
+
+        <a href="#page-info" id="button-about" data-dialog="true" class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-icon-text">
             <wicket:message key="button-about"/></a>
             
         <a href="#" data-dialog="true" id="button-mini-user" class="ui-btn ui-btn-inline">
-            <span id="sparkline-user-pie"/>&nbsp;<span class="sp-txt-wrap" id="mini-user-balance"/><!-- &nbsp;<span id="mini-user-name"/>  --></a>
+            <span id="sparkline-user-pie"/>&nbsp;<span class="sp-txt-wrap" id="mini-user-balance"/>&nbsp;<span class="sp-plain-info">&bull;</span>&nbsp;<span class="sp-txt-info" id="mini-user-name"/></a>
 
 	    <wicket:enclosure child="button-upload">
 	        <a href="#" data-dialog="true" id="button-mini-upload" class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-icon-notext ui-icon-arrow-u" wicket:id="button-upload"/>
@@ -279,13 +277,8 @@
         <button class="sp-button-mini-print-duplex sp-main-status-ind ui-icon-mini-duplex ui-shadow ui-btn ui-corner-all ui-btn-icon-left">&nbsp;</button>
         <button class="sp-button-mini-print-n-up sp-main-status-ind ui-icon-mini-n-up ui-shadow ui-btn ui-corner-all ui-btn-icon-left">&nbsp;</button>
 
-        <wicket:enclosure child="membership-org">
-            <button wicket:id="membership-org" class="ui-btn ui-btn-inline ui-btn-icon-text ui-icon-none sp-plain-info"/>
-        </wicket:enclosure>
-        <wicket:enclosure child="membership-status">        
-        <button wicket:id="membership-status" class="ui-btn ui-btn-inline ui-btn-icon-text ui-icon-none sp-plain-warn"/>
-        </wicket:enclosure>
-
+        <wicket:fragment wicket:id="community-status-footer-panel"/>
+        
     </fieldset>
     
 </div>

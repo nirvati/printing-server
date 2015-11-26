@@ -22,6 +22,8 @@
     <entry key="title-warning">Waarschuwing</entry>
     <entry key="title-info">Info</entry>
 
+    <entry key="msg-password-mismatch">Wachtwoorden komen niet overeen.</entry>
+
 	<!-- ================================================================= -->
 	<!-- Admin -->
 	<!-- ================================================================= -->
@@ -40,5 +42,7 @@
 	<entry key="msg-print-polling-stop">Wachten op afdruk-opdrachten is gestopt.</entry>
 	<entry key="msg-pdf-identical-owner-user-pw">PDF wachtwoord van gebruiker en eigenaar moeten
 		verschillend zijn.</entry>
+    <entry key="msg-select-single-pdf-filter">Selectie van meerdere PDF filters wordt niet ondersteund: selecteer één filter.</entry>
+		
 
 </properties>

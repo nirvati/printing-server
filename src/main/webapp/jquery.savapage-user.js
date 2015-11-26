@@ -95,14 +95,9 @@
 			//
 			, _onEvent
 			//
+			, _subscription
+			//
 			;
-
-			// this.onCardSwipe()
-			// this.onEventIgnored
-			// this.onEventError()
-			// this.onPollInvitation()
-			// this.onWaitingForEvent()
-			// this.onException()
 
 			/**
 			 * NOTE: use _this instead of this.
@@ -132,9 +127,24 @@
 			 * </p>
 			 */
 			this.addListener = function() {
-				_cometd.addListener('/device/event', _onEvent);
+
+				if (!_subscription) {
+					_longPollPending = false;
+					_subscription = _cometd.addListener('/device/event', _onEvent);
+				}
 				// Get things started: invite to do a poll
 				this.onPollInvitation();
+			};
+
+			/*
+			 *
+			 */
+			this.removeListener = function() {
+				if (_subscription) {
+					_cometd.removeListener(_subscription);
+					_subscription = null;
+				}
+				_longPollPending = false;
 			};
 
 			/**
@@ -197,8 +207,6 @@
 			, _subscription
 			//
 			;
-
-			// this.onException();
 
 			/**
 			 * NOTE: use _this instead of this.
@@ -306,13 +314,6 @@
 			//
 			;
 
-			// this.onJobEvent()
-			// this.onEventIgnored
-			// this.onEventError()
-			// this.onPollInvitation()
-			// this.onWaitingForEvent()
-			// this.onException();
-
 			/**
 			 * NOTE: use _this instead of this.
 			 */
@@ -414,7 +415,7 @@
 			 */
 			this.poll = function(userid, pagecount, uniqueUrlVal, prevMsgTime, language, country, base64) {
 
-				if (!_longPollStartTime) {
+				if (!_longPollStartTime && userid) {
 					_longPollStartTime = new Date().getTime();
 					this.onWaitingForEvent();
 					try {
@@ -1095,7 +1096,7 @@
 
 				$(this).on('click', '#button-accounttrx-report', null, function() {
 					_panel.v2m(_panel);
-					_api.download("report", _panel.input, "AccountTrxList");
+					_api.download("report-user", _panel.input, "AccountTrxList");
 					return true;
 				});
 
@@ -1437,23 +1438,23 @@
 			, _selCents = '#money-credit-transfer-cents'
 			//
 			;
-			
+
 			$("#page-credit-transfer").on("pagecreate", function(event) {
 
 				$('#button-transfer-credit-ok').click(function() {
 					if (_this.onTransferCredit($('#money-credit-transfer-user').val(), $(_selMain).val(), $(_selCents).val(), $('#money-credit-transfer-comment').val())) {
 						// Back to main window, this will start user event monitoring (picking up the account balance change).
-						_view.changePage($('#page-main'));						
+						_view.changePage($('#page-main'));
 					}
 					return false;
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
-				
+
 				$('#page-credit-transfer input').val('');
 				$(_selCents).val('00');
 				$('#credit-transfer-available').text(_model.user.stats.accountInfo.balance);
-				
+
 			}).on("pageshow", function(event, ui) {
 				$(_selMain).focus();
 			});
@@ -1471,7 +1472,7 @@
 			//
 			;
 
-			this.onRefreshContent = function (html) {
+			this.onRefreshContent = function(html) {
 				var button = '#button-money-transfer';
 				$(button).off('click');
 				$('#page-money-transfer-content').html(html);
@@ -1609,6 +1610,14 @@
 		}
 
 		/**
+		 * Constructor
+		 */
+		function PageUserInternetPrinter(_i18n, _view, _model) {
+			var _page = new _ns.Page(_i18n, _view, '#page-user-internet-printer', 'UserInternetPrinter'), _self = _ns.derive(_page);
+			return _self;
+		}
+
+		/**
 		 *
 		 */
 		function PageDashboard(_i18n, _view, _model) {
@@ -1624,11 +1633,31 @@
 						return false;
 					});
 				}
+
 				if ($('#button-user-pin-dialog')) {
 					$(this).on('click', '#button-user-pin-dialog', null, function() {
 						_view.showPageAsync('#page-user-pin-reset', 'UserPinReset', function() {
 							$('#user-pin-reset-title').html(_model.user.id);
 						});
+						return false;
+					});
+				}
+
+				if ($('#button-user-internet-printer-dialog')) {
+					$(this).on('click', '#button-user-internet-printer-dialog', null, function() {
+						// The UUID page is a fixed part of WebAppUserPage.html
+						// (we only refresh the content)
+						var pageId = '#page-user-internet-printer'
+						//
+						, html = _view.getUserPageHtml('UserInternetPrinter')
+						//
+						;
+						_view.changePage(pageId);
+						if (html) {
+							$('#page-user-internet-printer-content').html(html);
+							$(pageId).enhanceWithin();
+						}
+
 						return false;
 					});
 				}
@@ -1788,19 +1817,6 @@
 
 			// for now ...
 			this.id = '#page-main';
-
-			// this.onCreated = null;
-			// this.onLogout = null;
-			// this.onClose = null;
-			// this.onPollToggle = null;
-			// this.onShow = null;
-			// this.onHide = null;
-			// this.onRefreshPages = null;
-			// this.onExpandPage = null;
-			// this.onPageMove = null;
-			// this.onPageDelete = null;
-			// this.onPopupJobApply = null;
-			// this.onPopupJobDelete = null;
 
 			/**
 			 * Clears all traces of previous editing.
@@ -2468,7 +2484,7 @@
 					e.preventDefault();
 				});
 				// Button on fixed footer
-				$('#button-cometd-status').click(function() {
+				$('#button-about').click(function() {
 					_view.showPageAsync('#page-info', 'AppAbout');
 					return false;
 				});
@@ -3212,17 +3228,36 @@
 			}
 			//
 			, _onPrint = function(isClose) {
-					_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), isClose, 
-						_view.isCbChecked($("#print-remove-graphics")), _view.isCbChecked($("#print-ecoprint")));				
+				_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), isClose, 
+					_view.isCbChecked($("#print-remove-graphics")), 
+					_view.isCbChecked($("#print-ecoprint")), _view.isCbChecked($("#print-collate")));
+			}
+			//
+			, _setVisibility = function() {
+
+				var selCollate = $(".print-collate"), copies = parseInt($('#slider-print-copies').val(), 10);
+
+				if (copies > 1) {
+
+					selCollate.show();
+
+					if ($("#print-collate").is(':checked')) {
+						$('.print_collate_sheet_1_1').html('1');
+						$('.print_collate_sheet_1_2').html('2');
+						$('.print_collate_sheet_2_1').html('1');
+						$('.print_collate_sheet_2_2').html('2');
+					} else {
+						$('.print_collate_sheet_1_1').html('1');
+						$('.print_collate_sheet_1_2').html('1');
+						$('.print_collate_sheet_2_1').html('2');
+						$('.print_collate_sheet_2_2').html('2');
+					}
+				} else {
+					selCollate.hide();
+				}
 			}
 			//
 			;
-
-			// this.onShow()
-			// this.onHide()
-			// this.onPrint()
-			// this.onPrinter()
-			// this.onSettings()
 
 			this.clearInput = function() {
 				$('#slider-print-copies').val(1).slider("refresh");
@@ -3251,13 +3286,21 @@
 					_onSelectPrinter($(this), filterablePrinter);
 				});
 
+				$("#print-collate").on("change", null, null, function(event, ui) {
+					_setVisibility();
+				});
+
+				$('#slider-print-copies').change(function() {
+					_setVisibility();
+				});
+
 				$('#button-print').click(function(e) {
-					_onPrint(false); 
+					_onPrint(false);
 					return false;
 				});
 
 				$('#button-print-and-close').click(function(e) {
-					_onPrint(true); 
+					_onPrint(true);
 					return false;
 				});
 
@@ -3296,6 +3339,7 @@
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
+				_setVisibility();
 				_this.onShow();
 				if (_fastPrintAvailable) {
 					_this.onFastProxyPrintRenew(false);
@@ -3766,6 +3810,7 @@
 				this.myPrinterOpt = {};
 				this.myJobsDrm = false;
 				this.myJobs = [];
+				this.myTotPages = 0;
 				this.myJobPages = [];
 				this.myCutPages = {};
 				this.myPrinter = null;
@@ -3879,7 +3924,7 @@
 			//
 			, _adaptLetterheadPage
 			//
-			, _refreshLetterheadList, _saveSelectedletterhead, _savePdfProps
+			, _refreshLetterheadList, _saveSelectedletterhead, _savePdfProps, _userLazyEcoPrint
 			//
 			, _handleSafePageEvent
 			/*
@@ -3895,25 +3940,22 @@
 			//
 			, _timeoutAuthPrint, _countdownAuthPrint, _clearTimeoutAuthPrint
 			//
-			
+
 			/**
 			 *
-			 */
-			, _saveRemoveGraphics = function(sel) {
+			 */, _saveRemoveGraphics = function(sel) {
 				_model.removeGraphics = _view.isCbChecked($(sel));
 				_view.visible($('#button-mini-no-graphics'), _model.removeGraphics);
 			}
 			/**
 			 *
-			 */
-			, _saveEcoprint = function(sel) {
+			 */, _saveEcoprint = function(sel) {
 				_model.ecoprint = _view.isCbChecked($(sel));
 				_view.visible($('#button-mini-ecoprint'), _model.ecoprint);
-			}			
+			}
 			/**
 			 *
-			 */
-			, _checkVanillaJobs = function() {
+			 */, _checkVanillaJobs = function() {
 
 				var res = _api.call({
 					request : 'inbox-is-vanilla'
@@ -3978,9 +4020,7 @@
 			};
 
 			_tbIndUser = function() {
-				// suppressed for now
-				//$('#mini-user-name').html(_model.user.id);
-				$.noop();
+				$('#mini-user-name').html(_model.user.id);
 			};
 
 			_initUser = function(loginRes) {
@@ -3993,6 +4033,9 @@
 
 				_model.user.key_id = loginRes.key_id;
 				_model.user.id = loginRes.id;
+				_model.user.uuid = loginRes.uuid;
+				_model.user.number = loginRes.number;
+
 				_model.user.fullname = loginRes.fullname;
 
 				_model.language = loginRes.language;
@@ -4159,11 +4202,6 @@
 				_cometdMaxNetworkDelay = res.cometdMaxNetworkDelay;
 				_cometd.configure(_cometdMaxNetworkDelay);
 
-				/*
-				 *
-				 */
-				_i18n.initValues(res.i18n_values);
-
 				_model.authCardIp = res.authCardIp;
 				_model.cometdDeviceToken = res.cometdToken;
 				_model.maxIdleSeconds = res.maxIdleSeconds;
@@ -4221,6 +4259,11 @@
 					return false;
 				});
 
+				$(document).on('click', '.sp-collapse', null, function() {
+					$(this).closest('[data-role=collapsible]').collapsible('collapse');
+					return false;
+				});
+
 			};
 
 			/*
@@ -4245,7 +4288,7 @@
 					if (_model.user.loggedIn) {
 
 						if (_model.authCardIp) {
-							_cometd.stop();
+							_deviceEvent.removeListener();
 						}
 
 						_initUser(data);
@@ -4587,20 +4630,23 @@
 			// -----------------------------
 			// Call-back: polling
 			// -----------------------------
-			_changeIcon = function(icon) {
+			_changeIcon = function(icon, title) {
 				if (icon !== _iconCur) {
-					$("#button-cometd-status").addClass("ui-icon-" + icon).removeClass("ui-icon-" + _iconCur);
+					$("#button-cometd-status").attr('title', title ? title : '');
+					$("#button-cometd-status").buttonMarkup({
+						icon : icon
+					});
 					_iconCur = icon;
 				}
 			};
 
 			//--------------------------------------------------
 			_userEvent.onWaitingForEvent = function() {
-				_changeIcon("check");
+				_changeIcon("check", 'Watching events . . .');
 			};
 
 			_cometd.onConnecting = function() {
-				_changeIcon("recycle");
+				_changeIcon("recycle", 'Connecting . . .');
 			};
 
 			_cometd.onHandshakeSuccess = function() {
@@ -4611,21 +4657,19 @@
 				}
 			};
 			_cometd.onHandshakeFailure = function() {
-				_changeIcon("alert");
+				_changeIcon("alert", 'Handshake failure.');
 			};
 			_cometd.onReconnect = function() {
-				//_changeIcon(_userEvent.getLongPollPending() ? "check" :
-				// "plus");
 				if (_userEvent.isLongPollPending()) {
-					_changeIcon("check");
+					_changeIcon("check", 'Watching events . . .');
 				} else {
-					_changeIcon("plus");
+					_changeIcon("plus", 'Start event watch . . .');
 					_userEvent.onPollInvitation();
 				}
 			};
 
 			_cometd.onConnectionBroken = function() {
-				_changeIcon("delete");
+				_changeIcon("delete", 'Connection is broken.');
 				if (_model.user.loggedIn) {
 					_this.onWakeUp();
 				}
@@ -4634,11 +4678,11 @@
 				/*
 				 * IMPORTANT: This is end-state in Google Chrome.
 				 */
-				_changeIcon("minus");
+				_changeIcon("minus", 'Connection is closed.');
 			};
 
 			_cometd.onDisconnecting = function() {
-				_changeIcon("clock");
+				_changeIcon("clock", 'Disconnecting . . .');
 			};
 
 			/*
@@ -4646,11 +4690,8 @@
 			 */
 			_cometd.onUnsuccessful = function(message) {
 				/*
-				* #327: We handle this message as redundant: no action needed.
-				*/
-				//_changeIcon("forbidden");
-				//alert(JSON.stringify(message));
-				//_this.onWakeUp();
+				 * #327: We handle this message as redundant: no action needed.
+				 */
 				$.noop();
 			};
 
@@ -4666,11 +4707,6 @@
 			_deviceEvent.onPollInvitation = function() {
 				_deviceEvent.poll(_model.language, _model.country);
 			};
-
-			//_deviceEvent.onEventIgnored = function() {
-			//};
-			//_deviceEvent.onWaitingForEvent = function() {
-			//};
 
 			_deviceEvent.onException = function(msg) {
 				_view.message(msg);
@@ -4986,12 +5022,19 @@
 			};
 
 			/**
-			 * @return true if PDF props saved ok, false is an error occurred.
+			 * @return true if pre-conditions are OK, false is an error occurred.
 			 */
 			_view.pages.pdfprop.onDownload = function() {
 
+				var pageRanges = $('#pdf-page-ranges').val();
+
 				_saveRemoveGraphics('#pdf-remove-graphics');
 				_saveEcoprint('#pdf-ecoprint');
+
+				if (_model.removeGraphics && _model.ecoprint) {
+					_view.message(_i18n.format('msg-select-single-pdf-filter', null));
+					return false;				
+				}
 
 				if (!_saveSelectedletterhead('#pdf-letterhead-list', true)) {
 					return false;
@@ -4999,7 +5042,11 @@
 				if (!_savePdfProps()) {
 					return false;
 				}
-				window.location.assign(_api.getUrl4Pdf($('#pdf-page-ranges').val(), _model.removeGraphics, _model.ecoprint, _model.pdfJobIndex));
+				if (_model.ecoprint && !_userLazyEcoPrint(_model.pdfJobIndex, pageRanges)) {
+					return false;
+				}
+				//
+				window.location.assign(_api.getUrl4Pdf(pageRanges, _model.removeGraphics, _model.ecoprint, _model.pdfJobIndex));
 				$('#pdf-page-ranges').val('');
 				_model.myShowUserStatsGet = true;
 				return true;
@@ -5047,7 +5094,7 @@
 			/**
 			 * Callbacks: page print
 			 */
-			_view.pages.print.onPrint = function(isClear, isClose, removeGraphics, ecoprint) {
+			_view.pages.print.onPrint = function(isClear, isClose, removeGraphics, ecoprint, collate) {
 
 				var res, sel, cost, visible;
 
@@ -5058,19 +5105,22 @@
 				_model.myPrintTitle = $('#print-title').val();
 
 				res = _api.call({
-					user : _model.user.id,
 					request : 'printer-print',
-					printer : _model.myPrinter.name,
-					readerName : _model.myPrinterReaderName,
-					jobName : _model.myPrintTitle,
-					jobIndex : _model.printJobIndex,
-					pageScaling : _model.printPageScaling,
-					copies : $('#slider-print-copies').val(),
-					ranges : $('#print-page-ranges').val(),
-					removeGraphics : removeGraphics,
-					ecoprint : ecoprint,
-					clear : isClear,
-					options : JSON.stringify(_model.myPrinterOpt)
+					dto : JSON.stringify({
+						user : _model.user.id,
+						printer : _model.myPrinter.name,
+						readerName : _model.myPrinterReaderName,
+						jobName : _model.myPrintTitle,
+						jobIndex : _model.printJobIndex,
+						pageScaling : _model.printPageScaling,
+						copies : parseInt($('#slider-print-copies').val(), 10),
+						ranges : $('#print-page-ranges').val(),
+						collate : collate,
+						removeGraphics : removeGraphics,
+						ecoprint : ecoprint,
+						clear : isClear,						
+						options : _model.myPrinterOpt
+					})
 				});
 
 				if (res.requestStatus === 'NEEDS_AUTH') {
@@ -5221,7 +5271,7 @@
 
 				_view.checkCb('#print-remove-graphics', _model.removeGraphics);
 				_view.checkCb('#print-ecoprint', _model.ecoprint);
-				
+
 				_this.setLetterheadMenu('#print-letterhead-list');
 				_this.setJobScopeMenu('#print-job-list');
 
@@ -5290,6 +5340,22 @@
 					_this.setLetterheadMenu('#letterhead-list');
 					_adaptLetterheadPage();
 				}
+			};
+
+			/**
+			 *
+			 */
+			_userLazyEcoPrint = function(jobIndex, ranges) {
+				var res = _api.call({
+					request : 'user-lazy-ecoprint',
+					jobIndex : jobIndex,
+					ranges : ranges
+				});
+				if (res.result.code === "0") {
+					return true;
+				}
+				_view.showApiMsg(res);
+				return false;
 			};
 
 			/**
@@ -5728,6 +5794,7 @@
 				print_settings : new PagePrintSettings(_i18n, _view, _model),
 				fileUpload : new PageFileUpload(_i18n, _view, _model),
 				userPinReset : new PageUserPinReset(_i18n, _view, _model),
+				userInternetPrinter : new PageUserInternetPrinter(_i18n, _view, _model),
 				userPwReset : new _ns.PageUserPasswordReset(_i18n, _view, _model)
 			};
 
@@ -5764,7 +5831,7 @@
 
 			$(window).on('beforeunload', function() {
 				// By NOT returning anything the unload dialog will not show.
-				$.noop();				
+				$.noop();
 			}).on('unload', function() {
 				_api.removeCallbacks();
 				_api.call({

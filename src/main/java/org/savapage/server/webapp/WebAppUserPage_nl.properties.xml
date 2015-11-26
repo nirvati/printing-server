@@ -13,8 +13,7 @@
     <entry key="button-file-upload">Uploaden</entry>
     <entry key="button-file-upload-clear">Wissen</entry>
     <entry key="button-back">Terug</entry>
-    <entry key="button-password">Wachtwoord</entry>
-    <entry key="button-pin">PIN</entry>
+    <entry key="button-renew">Vernieuwen</entry>
 
     <entry key="msg-file-upload-busy">Uploaden ...</entry>
     <entry key="msg-file-upload-success">Bestand met succes geüpload.</entry>
@@ -29,6 +28,8 @@
     
     <entry key="money-transfer-title">Geld Overboeken</entry>
     <entry key="bitcoin-transfer-title">Bitcoin</entry>
+    <entry key="internet-printer-title">Internet Printer</entry>
+    
     <entry key="button-start">Start</entry>
         
 </properties>

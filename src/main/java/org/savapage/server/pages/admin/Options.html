@@ -250,7 +250,7 @@ pattern="[0-9]*"
 					<h3>
 						<wicket:message key="sync-messages" />
 					</h3>
-					<div id="user-sync-messages" class="sp-live-msg"
+					<div id="user-sync-messages" class="sp-live-msg sp-txt-wrap"
 						style="font-size: small; font-weight: normal"></div>
 					<div>
 						<a href="#" id="sync-messages-clear" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-delete">
@@ -272,6 +272,14 @@ pattern="[0-9]*"
 
 			<ul data-role="listview" data-inset="true">
 
+                <li>
+                    <h3>
+                        <wicket:message key="authentication-persistence" />                    
+                    </h3>
+
+                    <label for="" wicket:id="browser-local-storage-label" /> <input
+                        type="checkbox" id="" value="0" wicket:id="browser-local-storage" />
+                </li>
 
 				<li>
 					<h3>
@@ -558,6 +566,7 @@ pattern="[0-9]*"
                 
 	                <div class="smartschool-1-print-enabled">
 	
+                        <br/>
 	                    <label for="" wicket:id="smartschool-print-endpoint-label-1"/>
 	                    <input type="text" id="" value="" wicket:id="smartschool-print-endpoint-1"
 	                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
@@ -565,10 +574,30 @@ pattern="[0-9]*"
 	                    <label for="" wicket:id="smartschool-print-password-label-1" />
 	                    <input type="password" id="" wicket:id="smartschool-print-password-1" value="" autocomplete="off"
 	                        autocorrect="off" autocapitalize="off" spellcheck="false" />
-	
+	                        
+                        <br/>
 	                    <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-label-1" />
 	                    <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-1"
 	                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-duplex-label-1" data-mini="true" />
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-duplex-1" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                            
+                        <br/>
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-grayscale-label-1" data-mini="true"/>
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-grayscale-1" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-grayscale-duplex-label-1" data-mini="true"/>
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-grayscale-duplex-1" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                            
+                        <br/>
+	                    <label for="" wicket:id="smartschool-print-charge-to-students-label-1"/>
+	                    <input type="checkbox" id="smartschool-print-charge-to-students" value="0" data-mini="true" 
+	                        wicket:id="smartschool-print-charge-to-students-1" />
+                
                     </div>                            
                 </li>
 
@@ -579,6 +608,7 @@ pattern="[0-9]*"
                 
                     <div class="smartschool-2-print-enabled">
     
+                        <br/>
                         <label for="" wicket:id="smartschool-print-endpoint-label-2"/>
                         <input type="text" id="" value="" wicket:id="smartschool-print-endpoint-2"
                             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
@@ -587,9 +617,29 @@ pattern="[0-9]*"
                         <input type="password" id="" wicket:id="smartschool-print-password-2" value="" autocomplete="off"
                             autocorrect="off" autocapitalize="off" spellcheck="false" />
     
+                        <br/>
                         <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-label-2" />
                         <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-2"
                             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-duplex-label-2" data-mini="true" />
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-duplex-2" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                            
+                        <br/>
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-grayscale-label-2" data-mini="true" />
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-grayscale-2" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+                        <label class="sp-txt-wrap" for="" wicket:id="smartschool-print-proxyprinter-grayscale-duplex-label-2" data-mini="true"/>
+                        <input type="text" id="" value="" wicket:id="smartschool-print-proxyprinter-grayscale-duplex-2" data-mini="true"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+                        <br/>
+                        <label for="" wicket:id="smartschool-print-charge-to-students-label-2" />
+                        <input type="checkbox" id="smartschool-print-charge-to-students" value="0" data-mini="true"
+                            wicket:id="smartschool-print-charge-to-students-2" />
+                
                     </div>                            
                 </li>
 
@@ -629,49 +679,49 @@ pattern="[0-9]*"
                     <label for="smartschool-papercut-enable" wicket:id="smartschool-papercut-enable-label" />
                     <input type="checkbox" id="smartschool-papercut-enable" value="0"
                         wicket:id="smartschool-papercut-enable" />
-                </li>
                 
-                <li class="smartschool-papercut-enabled">
+                    <div class="smartschool-papercut-enabled">
                 
-                        <h3><wicket:message key="papercut-server-text"/></h3>
-                        
-                        <label for="" wicket:id="papercut-host-label" />
-                        <input type="text" id="" value="" wicket:id="papercut-host" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />
-                                            
-                        <label for="" wicket:id="papercut-port-label" />
-                        <input type="text" id=""
-                            value="" wicket:id="papercut-port" pattern="[0-9]*"
-                            autocomplete="off" autocorrect="off" autocapitalize="off"
-                            spellcheck="false" />
-                            
-                        <label for="" wicket:id="papercut-token-label" />
-                        <input type="password" id="" wicket:id="papercut-token" value="" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />                         
-                </li>
-
-                <li class="smartschool-papercut-enabled">
+                        <div data-role="collapsible" data-collapsed="true">
+                
+	                        <h3><wicket:message key="papercut-server-text"/></h3>
+	                        
+	                        <label for="" wicket:id="papercut-host-label" />
+	                        <input type="text" id="" value="" wicket:id="papercut-host" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                                            
+	                        <label for="" wicket:id="papercut-port-label" />
+	                        <input type="text" id=""
+	                            value="" wicket:id="papercut-port" pattern="[0-9]*"
+	                            autocomplete="off" autocorrect="off" autocapitalize="off"
+	                            spellcheck="false" />
+	                            
+	                        <label for="" wicket:id="papercut-token-label" />
+	                        <input type="password" id="" wicket:id="papercut-token" value="" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                    </div>
+                                             
+                        <div data-role="collapsible" data-collapsed="true">
                     
-                        <h3><wicket:message key="papercut-db-text"/></h3>
-
-                        <label for="" wicket:id="papercut-db-driver-label" />
-                        <input type="text" id="" value="" wicket:id="papercut-db-driver" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />
-                                                                    
-                        <label for="" wicket:id="papercut-db-url-label" />
-                        <input type="text" id="" value="" wicket:id="papercut-db-url" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />
-                                            
-                        <label for="" wicket:id="papercut-db-user-label" />
-                        <input type="text" id="" value="" wicket:id="papercut-db-user" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />
-                            
-                        <label for="" wicket:id="papercut-db-password-label" />
-                        <input type="password" id="" wicket:id="papercut-db-password" value="" autocomplete="off"
-                            autocorrect="off" autocapitalize="off" spellcheck="false" />                         
-                </li>
-
-                <li>
+	                        <h3><wicket:message key="papercut-db-text"/></h3>
+	
+	                        <label for="" wicket:id="papercut-db-driver-label" />
+	                        <input type="text" id="" value="" wicket:id="papercut-db-driver" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                                                                    
+	                        <label for="" wicket:id="papercut-db-url-label" />
+	                        <input type="text" id="" value="" wicket:id="papercut-db-url" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                                            
+	                        <label for="" wicket:id="papercut-db-user-label" />
+	                        <input type="text" id="" value="" wicket:id="papercut-db-user" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                            
+	                        <label for="" wicket:id="papercut-db-password-label" />
+	                        <input type="password" id="" wicket:id="papercut-db-password" value="" autocomplete="off"
+	                            autocorrect="off" autocapitalize="off" spellcheck="false" />
+	                    </div>
+                    </div>                         
                     <div>
                         <a href="#" id="apply-smartschool-papercut" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check"> 
                           <wicket:message key="button-apply" /></a>                          
@@ -680,6 +730,35 @@ pattern="[0-9]*"
                           key="smartschool-button-test" /></a>
                                 
                     </div>                
+                </li>
+                <li class="smartschool-papercut-enabled">
+                
+                    <h3><wicket:message key="smartschool-papercut-exports-header"/></h3>
+                    
+                    <div data-role="collapsible" data-collapsed="true">
+                                        
+                        <h3><wicket:message key="smartschool-student-invoicing-header"/></h3>
+
+                        <legend class="sp-txt-wrap">
+                            <wicket:message key="smartschool-student-invoicing-legend" />
+                        </legend>                        
+                        <br/>
+                        
+                        <label for="sp-smartschool-papercut-student-cost-date-from"><wicket:message key="prompt-period-from"/></label>
+                        <input id="sp-smartschool-papercut-student-cost-date-from" data-clear-btn="true"/>
+                        
+                        <label for="sp-smartschool-papercut-student-cost-date-to"><wicket:message key="prompt-period-to"/></label>
+                        <input id="sp-smartschool-papercut-student-cost-date-to" data-clear-btn="true"/>
+
+
+                        <label for="sp-smartschool-papercut-student-cost-klassen" class="sp-txt-wrap">
+                            <wicket:message key="smartschool-student-invoicing-classes-prompt"/></label>
+                        <input type="text" id="sp-smartschool-papercut-student-cost-klassen" value="" data-clear-btn="true" 
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                        	                        
+	                    <a href="#" id="apply-smartschool-papercut-student-cost-csv" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check"> 
+	                         <wicket:message key="button-download" /></a>                          
+	                </div>
                 </li>
             </ul>
                         
@@ -956,6 +1035,25 @@ pattern="[0-9]*"
 		</div>
 	</li>
 
+
+    <li>
+        <div data-role="collapsible" data-collapsed="true">
+
+            <h3>Internet Print</h3>
+
+            <div class="sp-txt-wrap"><wicket:message key="prompt-internetprint-base-uri" /></div>
+            
+            <input type="text" id="" value="" wicket:id="internetprint-base-uri"
+                autocomplete="off" autocorrect="off" autocapitalize="off"
+                 spellcheck="false" />
+                                         
+            <div>
+                <a href="#" id="apply-internetprint" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check"> 
+                  <wicket:message key="button-apply" /></a>
+            </div>
+        </div>
+    </li>
+
 	<li>
 		<div data-role="collapsible" data-collapsed="true">
 
@@ -1034,6 +1132,47 @@ pattern="[0-9]*"
 
 		</div>
 	</li>
+
+    <li>
+        <div data-role="collapsible" data-collapsed="true">
+
+            <h3>Eco Print</h3>
+
+            <ul data-role="listview" data-inset="true">
+
+                <li>
+                    <label for="ecoprint-enable" wicket:id="ecoprint-enable-label" />
+                    <input type="checkbox" id="ecoprint-enable" value="0"
+                        wicket:id="ecoprint-enable" />
+                </li>
+
+                <li class="ecoprint-enabled">
+                
+                    <label for="" wicket:id="ecoprint-discount-perc-label" class="sp-txt-wrap"/>
+                    <input type="text" id="" value="" wicket:id="ecoprint-discount-perc"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" maxlength="2"
+                        pattern="[0-9]*" spellcheck="false" />
+
+                    <label for="" wicket:id="ecoprint-auto-threshold-page-count-label" class="sp-txt-wrap"/>
+                    <input type="text" id="" value="" wicket:id="ecoprint-auto-threshold-page-count"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" 
+                        pattern="[0-9]*" spellcheck="false" />                        
+
+                    <label for="" wicket:id="ecoprint-resolution-dpi-label" class="sp-txt-wrap"/>
+                    <input type="text" id="" value="" wicket:id="ecoprint-resolution-dpi"
+                        autocomplete="off" autocorrect="off" autocapitalize="off" maxlength="3"
+                        pattern="[0-9]*" spellcheck="false" />
+                </li>
+                
+                <li>
+                    <div>
+                        <a href="#" id="apply-ecoprint" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check"> 
+                          <wicket:message key="button-apply" /></a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </li>
 
     <li>
         <div data-role="collapsible" data-collapsed="true">

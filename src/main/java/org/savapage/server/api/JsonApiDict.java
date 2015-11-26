@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,13 +19,20 @@
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
-package org.savapage.server;
+package org.savapage.server.api;
 
 import java.util.HashMap;
 import java.util.Map;
 
+import org.savapage.core.SpException;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.server.api.request.ApiRequestHandler;
+import org.savapage.server.api.request.ReqDbBackup;
+import org.savapage.server.api.request.ReqGenerateUuid;
+import org.savapage.server.api.request.ReqPrinterPrint;
+import org.savapage.server.api.request.ReqQueueEnable;
+import org.savapage.server.api.request.ReqQueueGet;
 
 /**
  * A dedicated class for initializing the JSON API dictionary at the right time.
@@ -94,6 +101,9 @@ public class JsonApiDict {
             "smartschool-start-simulate";
     public static final String REQ_SMARTSCHOOL_STOP = "smartschool-stop";
 
+    public static final String REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV =
+            "smartschool-papercut-student-cost-csv";
+
     public static final String REQ_LETTERHEAD_ATTACH = "letterhead-attach";
     public static final String REQ_LETTERHEAD_DELETE = "letterhead-delete";
     public static final String REQ_LETTERHEAD_DETACH = "letterhead-detach";
@@ -142,6 +152,9 @@ public class JsonApiDict {
     public static final String REQ_POS_RECEIPT_DOWNLOAD_USER =
             "pos-receipt-download-user";
 
+    /**
+     * An administrator sending email to a POS Receipt.
+     */
     public static final String REQ_POS_RECEIPT_SENDMAIL =
             "pos-receipt-sendmail";
 
@@ -169,10 +182,12 @@ public class JsonApiDict {
 
     public static final String REQ_PRINTER_SYNC = "printer-sync";
 
+    public static final String REQ_QUEUE_ENABLE = "queue-enable";
     public static final String REQ_QUEUE_GET = "queue-get";
     public static final String REQ_QUEUE_SET = "queue-set";
 
     public static final String REQ_REPORT = "report";
+    public static final String REQ_REPORT_USER = "report-user";
 
     public static final String REQ_RESET_JMX_PASSWORD = "reset-jmx-pw";
     public static final String REQ_RESET_ADMIN_PASSWORD = "reset-admin-pw";
@@ -182,12 +197,15 @@ public class JsonApiDict {
     public static final String REQ_USER_DELETE = "user-delete";
     public static final String REQ_USER_GET = "user-get";
     public static final String REQ_USER_GET_STATS = "user-get-stats";
+    public static final String REQ_USER_LAZY_ECOPRINT = "user-lazy-ecoprint";
     public static final String REQ_USER_NOTIFY_ACCOUNT_CHANGE =
             "user-notify-account-change";
     public static final String REQ_USER_QUICK_SEARCH = "user-quick-search";
     public static final String REQ_USER_SET = "user-set";
     public static final String REQ_USER_SOURCE_GROUPS = "user-source-groups";
     public static final String REQ_USER_SYNC = "user-sync";
+
+    public static final String REQ_GENERATE_UUID = "generate-uuid";
 
     /**
      */
@@ -220,7 +238,18 @@ public class JsonApiDict {
      *
      */
     public enum AuthReq {
-        NONE, USER, ADMIN
+        /**
+         * No authentication required.
+         */
+        NONE,
+        /**
+         * User authentication required.
+         */
+        USER,
+        /**
+         * Admin authentication required.
+         */
+        ADMIN
     }
 
     /**
@@ -238,12 +267,31 @@ public class JsonApiDict {
         final AuthReq authReq;
         final DbAccess dbAccess;
         final DbClaim dbClaim;
+        final Class<? extends ApiRequestHandler> handler;
 
+        /**
+         * @deprecated
+         * @param authReq
+         * @param dbClaim
+         * @param dbAccess
+         */
+        @Deprecated
         private Req(AuthReq authReq, DbClaim dbClaim, DbAccess dbAccess) {
             this.dbAccess = dbAccess;
             this.dbClaim = dbClaim;
             this.authReq = authReq;
+            this.handler = null;
         }
+
+        private Req(AuthReq authReq,
+                Class<? extends ApiRequestHandler> handler, DbClaim dbClaim,
+                DbAccess dbAccess) {
+            this.dbAccess = dbAccess;
+            this.dbClaim = dbClaim;
+            this.authReq = authReq;
+            this.handler = handler;
+        }
+
     };
 
     /**
@@ -264,29 +312,63 @@ public class JsonApiDict {
     }
 
     /**
-     * Puts a user's {@link Req} in the dictionary.
+     * @deprecated Puts a user's {@link Req} in the dictionary.
      *
      * @param key
      * @param dbClaim
      * @param dbAccess
      */
+    @Deprecated
     private void usr(final String key, DbClaim dbClaim, DbAccess dbAccess) {
         dict.put(key, new Req(AuthReq.USER, dbClaim, dbAccess));
     }
 
     /**
-     * Puts a administrator's {@link Req} in the dictionary.
+     * Puts a user's {@link Req} in the dictionary.
+     *
+     * @param key
+     * @param handler
+     * @param dbClaim
+     * @param dbAccess
+     */
+    private void usr(final String key,
+            final Class<? extends ApiRequestHandler> handler, DbClaim dbClaim,
+            DbAccess dbAccess) {
+        dict.put(key, new Req(AuthReq.USER, handler, dbClaim, dbAccess));
+    }
+
+    /**
+     * @deprecated Puts a administrator's {@link Req} in the dictionary.
      *
      * @param key
      * @param dbClaim
      * @param dbAccess
      */
+    @Deprecated
     private void adm(final String key, DbClaim dbClaim, DbAccess dbAccess) {
         dict.put(key, new Req(AuthReq.ADMIN, dbClaim, dbAccess));
     }
 
+    /**
+     *
+     * @param key
+     * @param handler
+     * @param dbClaim
+     * @param dbAccess
+     */
+    private void adm(final String key,
+            final Class<? extends ApiRequestHandler> handler, DbClaim dbClaim,
+            DbAccess dbAccess) {
+        dict.put(key, new Req(AuthReq.ADMIN, handler, dbClaim, dbAccess));
+    }
+
     private void non(final String key) {
         dict.put(key, new Req(AuthReq.NONE, DbClaim.NONE, DbAccess.NO));
+    }
+
+    private void non(final String key,
+            final Class<? extends ApiRequestHandler> handler) {
+        dict.put(key, new Req(AuthReq.NONE, handler, DbClaim.NONE, DbAccess.NO));
     }
 
     /**
@@ -407,10 +489,12 @@ public class JsonApiDict {
 
         case REQ_PDF:
         case REQ_REPORT:
+        case REQ_REPORT_USER:
         case REQ_ACCOUNT_VOUCHER_BATCH_PRINT:
         case REQ_POS_RECEIPT_DOWNLOAD:
         case REQ_POS_RECEIPT_DOWNLOAD_USER:
         case REQ_PRINTER_OPT_DOWNLOAD:
+        case REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
             return true;
         default:
             return false;
@@ -489,7 +573,9 @@ public class JsonApiDict {
         adm(REQ_CONFIG_GET_PROP, DbClaim.READ, DbAccess.YES);
         adm(REQ_CONFIG_SET_PROPS, DbClaim.READ, DbAccess.YES);
         put(REQ_CONSTANTS, AuthReq.NONE, DbClaim.READ, DbAccess.YES);
-        adm(REQ_DB_BACKUP, DbClaim.NONE, DbAccess.NO);
+
+        adm(REQ_DB_BACKUP, ReqDbBackup.class, DbClaim.NONE, DbAccess.NO);
+
         adm(REQ_DEVICE_DELETE, DbClaim.READ, DbAccess.YES);
 
         adm(REQ_DEVICE_NEW_CARD_READER, DbClaim.NONE, DbAccess.NO);
@@ -516,6 +602,8 @@ public class JsonApiDict {
         adm(REQ_SMARTSCHOOL_START, DbClaim.NONE, DbAccess.NO);
         adm(REQ_SMARTSCHOOL_START_SIMULATE, DbClaim.NONE, DbAccess.NO);
         adm(REQ_SMARTSCHOOL_STOP, DbClaim.NONE, DbAccess.NO);
+        adm(REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV, DbClaim.NONE,
+                DbAccess.NO);
 
         usr(REQ_JOB_DELETE, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_JOB_EDIT, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -553,6 +641,7 @@ public class JsonApiDict {
         usr(REQ_PDF_SET_PROPERTIES, DbClaim.READ, DbAccess.YES);
 
         non(REQ_PING);
+        non(REQ_GENERATE_UUID, ReqGenerateUuid.class);
 
         usr(REQ_USER_CREDIT_TRANSFER, DbClaim.READ, DbAccess.YES);
         usr(REQ_USER_MONEY_TRANSFER_REQUEST, DbClaim.READ, DbAccess.YES);
@@ -560,8 +649,10 @@ public class JsonApiDict {
         adm(REQ_BITCOIN_WALLET_REFRESH, DbClaim.NONE, DbAccess.NO);
 
         adm(REQ_POS_DEPOSIT, DbClaim.NONE, DbAccess.YES);
+
         adm(REQ_POS_RECEIPT_DOWNLOAD, DbClaim.READ, DbAccess.YES);
         usr(REQ_POS_RECEIPT_DOWNLOAD_USER, DbClaim.READ, DbAccess.YES);
+
         adm(REQ_POS_RECEIPT_SENDMAIL, DbClaim.READ, DbAccess.YES);
         adm(REQ_POS_DEPOSIT_QUICK_SEARCH, DbClaim.READ, DbAccess.YES);
 
@@ -573,22 +664,29 @@ public class JsonApiDict {
         adm(REQ_PRINTER_GET, DbClaim.NONE, DbAccess.YES);
         usr(REQ_PRINTER_LIST, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_OPT_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
-        usr(REQ_PRINTER_PRINT, DbClaim.READ, DbAccess.USER_LOCK);
+        usr(REQ_PRINTER_PRINT, ReqPrinterPrint.class, DbClaim.READ,
+                DbAccess.USER_LOCK);
         usr(REQ_PRINTER_QUICK_SEARCH, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SET, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SET_MEDIA_COST, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SET_MEDIA_SOURCES, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_RENAME, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SYNC, DbClaim.READ, DbAccess.YES);
-        adm(REQ_QUEUE_GET, DbClaim.NONE, DbAccess.YES);
+        adm(REQ_QUEUE_GET, ReqQueueGet.class, DbClaim.NONE, DbAccess.YES);
         adm(REQ_QUEUE_SET, DbClaim.READ, DbAccess.YES);
+        adm(REQ_QUEUE_ENABLE, ReqQueueEnable.class, DbClaim.READ, DbAccess.YES);
+
         adm(REQ_REPORT, DbClaim.READ, DbAccess.YES);
+        usr(REQ_REPORT_USER, DbClaim.READ, DbAccess.YES);
+
         adm(REQ_RESET_ADMIN_PASSWORD, DbClaim.NONE, DbAccess.NO);
         adm(REQ_RESET_JMX_PASSWORD, DbClaim.NONE, DbAccess.NO);
 
         usr(REQ_RESET_USER_PASSWORD, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_RESET_USER_PIN, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_SEND, DbClaim.READ, DbAccess.USER_LOCK);
+        usr(REQ_USER_LAZY_ECOPRINT, DbClaim.NONE, DbAccess.USER_LOCK);
+
         adm(REQ_USER_DELETE, DbClaim.READ, DbAccess.YES);
         adm(REQ_USER_GET, DbClaim.READ, DbAccess.YES);
         usr(REQ_USER_GET_STATS, DbClaim.READ, DbAccess.YES);
@@ -599,4 +697,25 @@ public class JsonApiDict {
         adm(REQ_USER_SYNC, DbClaim.NONE, DbAccess.NO);
     }
 
+    /**
+     * Creates a request handler.
+     *
+     * @param request
+     *            The request id.
+     * @return The {@link ApiRequestHandler}.
+     */
+    public ApiRequestHandler createApiRequest(final String request) {
+
+        final Req req = this.dict.get(request);
+
+        if (req.handler == null) {
+            return null;
+        }
+
+        try {
+            return req.handler.newInstance();
+        } catch (InstantiationException | IllegalAccessException e) {
+            throw new SpException(e.getMessage(), e);
+        }
+    }
 }

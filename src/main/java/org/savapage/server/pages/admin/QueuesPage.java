@@ -45,6 +45,7 @@ import org.savapage.core.json.JsonRollingTimeSeries;
 import org.savapage.core.json.TimeSeriesInterval;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.server.WebApp;
 import org.savapage.server.pages.MarkupHelper;
@@ -182,7 +183,7 @@ public class QueuesPage extends AbstractAdminListPage {
 
         if (serverName == null || serverName.trim().isEmpty()) {
             try {
-                serverName = ConfigManager.getServerHostAddress();
+                serverName = InetUtils.getServerHostAddress();
             } catch (UnknownHostException e) {
                 serverName = "[?????]";
             }
@@ -194,9 +195,9 @@ public class QueuesPage extends AbstractAdminListPage {
                         .append(WebApp.MOUNT_PATH_PRINTERS).toString();
 
         final String urlWindows =
-                new StringBuilder().append("http://").append(serverName)
-                .append(":").append(WebApp.getServerPort())
-                .append(WebApp.MOUNT_PATH_PRINTERS).toString();
+                new StringBuilder().append("https://").append(serverName)
+                        .append(":").append(WebApp.getServerSslPort())
+                        .append(WebApp.MOUNT_PATH_PRINTERS).toString();
 
         /*
          * Display the requested page.
@@ -308,15 +309,21 @@ public class QueuesPage extends AbstractAdminListPage {
                 final MarkupHelper helper = new MarkupHelper(item);
 
                 if (reservedQueue == null
-                        || (reservedQueue != ReservedIppQueueEnum.RAW_PRINT && reservedQueue
-                                .isDriverPrint())) {
+                        || (reservedQueue.isDriverPrint()
+                                && reservedQueue != ReservedIppQueueEnum.RAW_PRINT
+                                && reservedQueue != ReservedIppQueueEnum.IPP_PRINT_INTERNET && reservedQueue != ReservedIppQueueEnum.AIRPRINT)) {
 
-                    helper.encloseLabel("url-default",
-                            urlDefault + "/" + queue.getUrlPath(), true)
+                    helper.encloseLabel(
+                            "url-default",
+                            String.format("%s/%s", urlDefault,
+                                    queue.getUrlPath()), true)
                             .setEscapeModelStrings(false);
 
-                    helper.encloseLabel("url-windows",
-                            urlWindows + "/" + queue.getUrlPath(), true)
+                    // For now, do NOT show the Windows URL.
+                    helper.encloseLabel(
+                            "url-windows",
+                            String.format("%s/%s", urlWindows,
+                                    queue.getUrlPath()), false)
                             .setEscapeModelStrings(false);
 
                 } else {
@@ -327,30 +334,27 @@ public class QueuesPage extends AbstractAdminListPage {
                 /*
                  *
                  */
-                final String reservedText;
+                final StringBuilder reservedText = new StringBuilder();
 
                 if (reservedQueue == null) {
-                    reservedText = ReservedIppQueueEnum.IPP_PRINT.getUiText();
+                    reservedText.append(ReservedIppQueueEnum.IPP_PRINT
+                            .getUiText());
                 } else {
-                    switch (reservedQueue) {
-                    case IPP_PRINT:
-                        reservedText =
-                                reservedQueue.getUiText()
-                                        + " ("
-                                        + getLocalizer().getString(
-                                                "signal-reserved", this) + ")";
-                        break;
-                    case RAW_PRINT:
-                        reservedText =
-                                reservedQueue.getUiText() + " Port "
-                                        + ConfigManager.getRawPrinterPort();
-                        break;
-                    default:
-                        reservedText = reservedQueue.getUiText();
-                        break;
+                    reservedText.append(reservedQueue.getUiText());
+
+                    if (reservedQueue == ReservedIppQueueEnum.RAW_PRINT) {
+                        reservedText.append(" Port ").append(
+                                ConfigManager.getRawPrinterPort());
                     }
+
+                    reservedText
+                            .append(" (")
+                            .append(getLocalizer().getString("signal-reserved",
+                                    this)).append(")");
+
                 }
-                helper.encloseLabel("reserved-queue", reservedText, true);
+                helper.encloseLabel("reserved-queue", reservedText.toString(),
+                        true);
 
                 /*
                  *
@@ -367,6 +371,14 @@ public class QueuesPage extends AbstractAdminListPage {
                     if (cm.isConfigValue(Key.SMARTSCHOOL_1_ENABLE)) {
                         builder.append(cm
                                 .getConfigValue(Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER));
+
+                        final String grayscalePrinter =
+                                cm.getConfigValue(Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE);
+
+                        if (StringUtils.isNotBlank(grayscalePrinter)) {
+                            builder.append(" (").append(grayscalePrinter)
+                                    .append(")");
+                        }
                     }
 
                     if (cm.isConfigValue(Key.SMARTSCHOOL_2_ENABLE)) {
@@ -375,6 +387,14 @@ public class QueuesPage extends AbstractAdminListPage {
                         }
                         builder.append(cm
                                 .getConfigValue(Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER));
+
+                        final String grayscalePrinter =
+                                cm.getConfigValue(Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE);
+
+                        if (StringUtils.isNotBlank(grayscalePrinter)) {
+                            builder.append(" (").append(grayscalePrinter)
+                                    .append(")");
+                        }
                     }
 
                     proxyPrinterNames = builder.toString();
@@ -447,13 +467,6 @@ public class QueuesPage extends AbstractAdminListPage {
                  * be picked up in JavaScript for editing.
                  */
                 if (reservedQueue == null || reservedQueue.isDriverPrint()) {
-                    // labelWrk =
-                    // new Label("button-edit", getLocalizer().getString(
-                    // "button-edit", this));
-                    // labelWrk.add(new AttributeModifier("data-savapage", queue
-                    // .getId()));
-                    // item.add(labelWrk);
-
                     helper.encloseLabel("button-edit",
                             getLocalizer().getString("button-edit", this), true)
                             .add(new AttributeModifier("data-savapage", queue

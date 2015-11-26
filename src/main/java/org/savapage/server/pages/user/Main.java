@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,12 +21,10 @@
  */
 package org.savapage.server.pages.user;
 
-import org.apache.wicket.markup.html.basic.Label;
-import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
-import org.savapage.core.services.helpers.InetUtils;
+import org.savapage.core.util.InetUtils;
+import org.savapage.server.pages.CommunityStatusFooterPanel;
 
 /**
  *
@@ -42,8 +40,6 @@ public class Main extends AbstractUserPage {
      */
     public Main() {
 
-        add(new Label("title", CommunityDictEnum.SAVAPAGE.getWord()));
-
         boolean visible =
                 (ConfigManager.isWebPrintEnabled() && InetUtils
                         .isIp4AddrInCidrRanges(
@@ -54,16 +50,6 @@ public class Main extends AbstractUserPage {
         addVisible(visible, "button-upload", localized("button-upload"));
 
         //
-        final MemberCard card = MemberCard.instance();
-        final String memberStatus = card.getStatusUserText(getLocale());
-        final boolean cardDesirable = card.isMembershipDesirable();
-
-        if (card.isVisitorCard()) {
-            addVisible(!cardDesirable, "membership-org", memberStatus);
-        } else {
-            addVisible(true, "membership-org", card.getMemberOrganisation());
-        }
-
-        addVisible(cardDesirable, "membership-status", memberStatus);
+        add(new CommunityStatusFooterPanel("community-status-footer-panel"));
     }
 }

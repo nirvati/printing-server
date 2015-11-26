@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -49,6 +49,7 @@ import org.savapage.core.jpa.PrintIn;
 import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.server.WebApp;
 
@@ -65,6 +66,7 @@ public class DocLogItem {
     private String header;
     private DocLogDao.Type docType;
     private Date createdDate;
+    private Date completedDate;
     private String title;
     private String comment;
     private String deliveryProtocol;
@@ -84,6 +86,10 @@ public class DocLogItem {
     private Boolean letterhead;
     private Boolean duplex;
     private Boolean grayscale;
+
+    private Boolean collateCopies;
+    private Boolean ecoPrint;
+    private Boolean removeGraphics;
 
     private Integer jobId;
     private IppJobStateEnum jobState;
@@ -149,6 +155,14 @@ public class DocLogItem {
         this.createdDate = createdDate;
     }
 
+    public Date getCompletedDate() {
+        return completedDate;
+    }
+
+    public void setCompletedDate(Date completedDate) {
+        this.completedDate = completedDate;
+    }
+
     public String getHumanReadableByteCount() {
         return humanReadableByteCount;
     }
@@ -189,38 +203,34 @@ public class DocLogItem {
         private String getSelectString(final EntityManager em,
                 final boolean count, final Long userId, DocLogPagerReq req) {
 
-            String jpql = getSelectCommon(count);
+            final StringBuilder jpql = new StringBuilder();
 
-            /*
-             *
-             */
+            jpql.append(getSelectCommon(count));
+
+            //
             final String join = getExtraJoin();
             if (join != null) {
-                jpql += " " + join;
+                jpql.append(" ").append(join);
             }
 
-            /*
-             *
-             */
+            //
             final String whereCommon = getWhereCommon(userId, req);
             if (whereCommon != null) {
-                jpql += " WHERE " + whereCommon;
+                jpql.append(" WHERE ").append(whereCommon);
             }
 
-            /*
-             *
-             */
+            //
             final String where = getExtraWhere(req);
             if (where != null) {
                 if (whereCommon == null) {
-                    jpql += " WHERE ";
+                    jpql.append(" WHERE ");
                 } else {
-                    jpql += " AND ";
+                    jpql.append(" AND ");
                 }
-                jpql += where;
+                jpql.append(where);
             }
 
-            return jpql;
+            return jpql.toString();
         }
 
         /**
@@ -264,13 +274,15 @@ public class DocLogItem {
          * @return
          */
         @SuppressWarnings("unchecked")
-        public List<DocLogItem> getListChunk(EntityManager em,
+        public List<DocLogItem> getListChunk(final EntityManager em,
                 final Long userId, final DocLogPagerReq req) {
 
             final PrintOutDao printOutDAO =
                     ServiceContext.getDaoContext().getPrintOutDao();
 
-            String jpql = getSelectString(em, false, userId, req);
+            final StringBuilder jpql = new StringBuilder();
+
+            jpql.append(getSelectString(em, false, userId, req));
 
             /*
              *
@@ -294,16 +306,16 @@ public class DocLogItem {
 
             if (orderField != null) {
 
-                jpql += " ORDER BY " + orderField;
+                jpql.append(" ORDER BY ").append(orderField);
 
                 if (!sortAscending) {
-                    jpql += " DESC";
+                    jpql.append(" DESC");
                 }
 
-                jpql += ", D.id DESC";
+                jpql.append(", D.id DESC");
             }
 
-            final Query query = em.createQuery(jpql);
+            final Query query = em.createQuery(jpql.toString());
 
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
@@ -415,6 +427,9 @@ public class DocLogItem {
                     log.setLetterhead(docOut.getLetterhead() != null
                             && docOut.getLetterhead().booleanValue());
 
+                    log.setEcoPrint(docOut.getEcoPrint());
+                    log.setRemoveGraphics(docOut.getRemoveGraphics());
+
                     final PrintOut printOut = docOut.getPrintOut();
                     final PdfOut pdfOut = docOut.getPdfOut();
 
@@ -425,6 +440,7 @@ public class DocLogItem {
 
                         log.setDuplex(printOut.getDuplex());
                         log.setGrayscale(printOut.getGrayscale());
+                        log.setCollateCopies(printOut.getCollateCopies());
 
                         log.setPaperSize(printOut.getPaperSize());
                         log.setJobId(printOut.getCupsJobId());
@@ -434,6 +450,12 @@ public class DocLogItem {
 
                         log.setPrintMode(PrintModeEnum.valueOf(printOut
                                 .getPrintMode()));
+
+                        if (printOut.getCupsCompletedTime() != null) {
+                            log.setCompletedDate(new Date(printOut
+                                    .getCupsCompletedTime()
+                                    * DateUtil.DURATION_MSEC_SECOND));
+                        }
 
                     } else if (pdfOut != null) {
 
@@ -462,17 +484,19 @@ public class DocLogItem {
          */
         protected final String getSelectCommon(final boolean count) {
 
-            String jpql = "SELECT ";
+            final StringBuilder jpql = new StringBuilder();
+
+            jpql.append("SELECT ");
 
             if (count) {
-                jpql += "COUNT(D.id)";
+                jpql.append("COUNT(D.id)");
             } else {
-                jpql += "D";
+                jpql.append("D");
             }
 
-            jpql += " FROM DocLog D JOIN D.user U";
+            jpql.append(" FROM DocLog D JOIN D.user U");
 
-            return jpql;
+            return jpql.toString();
         }
 
         /**
@@ -489,45 +513,46 @@ public class DocLogItem {
             final String titleText = req.getSelect().getDocName();
 
             int nWhere = 0;
-            String where = "";
+
+            final StringBuilder where = new StringBuilder();
 
             if (userId != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "U.id = :userId";
+                where.append("U.id = :userId");
             }
 
             if (dayFrom != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "D.createdDay >= :dayFrom";
+                where.append("D.createdDay >= :dayFrom");
             }
 
             if (dayTo != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "D.createdDay <= :dayTo";
+                where.append("D.createdDay <= :dayTo");
             }
 
             if (titleText != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(D.title) like :titleText";
+                where.append("lower(D.title) like :titleText");
             }
 
             if (nWhere == 0) {
-                where = null;
+                return null;
             }
 
-            return where;
+            return where.toString();
         }
 
         /**
@@ -552,12 +577,11 @@ public class DocLogItem {
                 query.setParameter("dayTo", dayTo);
             }
             if (titleText != null) {
-                query.setParameter("titleText", "%" + titleText.toLowerCase()
-                        + "%");
+                query.setParameter("titleText",
+                        String.format("%%%s%%", titleText.toLowerCase()));
             }
         }
-
-    };
+    }
 
     /**
      *
@@ -576,12 +600,13 @@ public class DocLogItem {
         }
 
         @Override
-        protected void setExtraParms(Query query, DocLogPagerReq req) {
+        protected void
+                setExtraParms(final Query query, final DocLogPagerReq req) {
             // no code intended
         }
 
         @Override
-        protected String getOrderByField(DocLogDao.FieldEnum orderBy) {
+        protected String getOrderByField(final DocLogDao.FieldEnum orderBy) {
             return null;
         }
     };
@@ -592,7 +617,7 @@ public class DocLogItem {
     private static class QIn extends AbstractQuery {
 
         @Override
-        protected String getExtraWhere(DocLogPagerReq req) {
+        protected String getExtraWhere(final DocLogPagerReq req) {
             String jpql = null;
             Long id = req.getSelect().getQueueId();
             if (id != null && id > 0) {
@@ -607,7 +632,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void setExtraParms(Query query, DocLogPagerReq req) {
+        protected void
+                setExtraParms(final Query query, final DocLogPagerReq req) {
             Long id = req.getSelect().getQueueId();
             if (id != null && id > 0) {
                 query.setParameter("queue_id", id);
@@ -615,7 +641,7 @@ public class DocLogItem {
         }
 
         @Override
-        protected String getOrderByField(DocLogDao.FieldEnum orderBy) {
+        protected String getOrderByField(final DocLogDao.FieldEnum orderBy) {
 
             if (orderBy == DocLogDao.FieldEnum.QUEUE) {
                 return "Q.urlPath";
@@ -631,44 +657,44 @@ public class DocLogItem {
     private static class QOut extends AbstractQuery {
 
         @Override
-        protected String getExtraWhere(DocLogPagerReq req) {
+        protected String getExtraWhere(final DocLogPagerReq req) {
 
             final String selSignature = req.getSelect().getSignature();
             final String selDestination = req.getSelect().getDestination();
             final Boolean selLetterhead = req.getSelect().getLetterhead();
 
             int nWhere = 0;
-            String where = "";
+            final StringBuilder where = new StringBuilder();
 
             if (selSignature != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(O.signature) like :signature";
+                where.append("lower(O.signature) like :signature");
             }
 
             if (selDestination != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(O.destination) like :destination";
+                where.append("lower(O.destination) like :destination");
             }
 
             if (selLetterhead != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "O.letterhead = :letterhead";
+                where.append("O.letterhead = :letterhead");
             }
 
             if (nWhere == 0) {
-                where = null;
+                return null;
             }
 
-            return where;
+            return where.toString();
         }
 
         @Override
@@ -677,7 +703,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void setExtraParms(Query query, DocLogPagerReq req) {
+        protected void
+                setExtraParms(final Query query, final DocLogPagerReq req) {
 
             final String selSignature = req.getSelect().getSignature();
             final String selDestination = req.getSelect().getDestination();
@@ -685,11 +712,11 @@ public class DocLogItem {
 
             if (selSignature != null) {
                 query.setParameter("signature",
-                        "%" + selSignature.toLowerCase() + "%");
+                        String.format("%%%s%%", selSignature.toLowerCase()));
             }
             if (selDestination != null) {
                 query.setParameter("destination",
-                        "%" + selDestination.toLowerCase() + "%");
+                        String.format("%%%s%%", selDestination.toLowerCase()));
             }
             if (selLetterhead != null) {
                 query.setParameter("letterhead", selLetterhead);
@@ -697,7 +724,7 @@ public class DocLogItem {
         }
 
         @Override
-        protected String getOrderByField(DocLogDao.FieldEnum orderBy) {
+        protected String getOrderByField(final DocLogDao.FieldEnum orderBy) {
             return null;
         }
     }
@@ -707,17 +734,20 @@ public class DocLogItem {
      */
     private static class QPdf extends QOut {
         @Override
-        protected String getExtraWhere(DocLogPagerReq req) {
+        protected String getExtraWhere(final DocLogPagerReq req) {
 
             int nWhere = 0;
-            String where = super.getExtraWhere(req);
 
-            if (where == null) {
-                where = "";
-            } else {
+            final StringBuilder where = new StringBuilder();
+
+            //
+            final String extraWhere = super.getExtraWhere(req);
+            if (extraWhere != null) {
+                where.append(extraWhere);
                 nWhere++;
             }
 
+            //
             final String selAuthor = req.getSelect().getAuthor();
             final String selSubject = req.getSelect().getSubject();
             final String selKeywords = req.getSelect().getKeywords();
@@ -727,51 +757,51 @@ public class DocLogItem {
 
             if (selAuthor != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(F.author) like :author";
+                where.append("lower(F.author) like :author");
             }
             if (selSubject != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(F.subject) like :subject";
+                where.append("lower(F.subject) like :subject");
             }
             if (selKeywords != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "lower(F.keywords) like :keywords";
+                where.append("lower(F.keywords) like :keywords");
             }
             if (selUserpw != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "F.passwordUser = :userpw";
+                where.append("F.passwordUser = :userpw");
             }
             if (selOwnerpw != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "F.passwordOwner = :ownerpw";
+                where.append("F.passwordOwner = :ownerpw");
             }
             if (selEncrypted != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "F.encrypted = :encrypted";
+                where.append("F.encrypted = :encrypted");
             }
 
             if (nWhere == 0) {
-                where = null;
+                return null;
             }
-            return where;
+            return where.toString();
         }
 
         @Override
@@ -780,7 +810,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void setExtraParms(Query query, DocLogPagerReq req) {
+        protected void
+                setExtraParms(final Query query, final DocLogPagerReq req) {
 
             super.setExtraParms(query, req);
 
@@ -792,16 +823,16 @@ public class DocLogItem {
             final Boolean selEncrypted = req.getSelect().getEncrypted();
 
             if (selAuthor != null) {
-                query.setParameter("author", "%" + selAuthor.toLowerCase()
-                        + "%");
+                query.setParameter("author",
+                        String.format("%%%s%%", selAuthor.toLowerCase()));
             }
             if (selSubject != null) {
-                query.setParameter("subject", "%" + selSubject.toLowerCase()
-                        + "%");
+                query.setParameter("subject",
+                        String.format("%%%s%%", selSubject.toLowerCase()));
             }
             if (selKeywords != null) {
-                query.setParameter("keywords", "%" + selKeywords.toLowerCase()
-                        + "%");
+                query.setParameter("keywords",
+                        String.format("%%%s%%", selKeywords.toLowerCase()));
             }
             if (selUserpw != null) {
                 query.setParameter("userpw", CryptoUser.encrypt(selUserpw));
@@ -815,7 +846,7 @@ public class DocLogItem {
         }
 
         @Override
-        protected String getOrderByField(DocLogDao.FieldEnum orderBy) {
+        protected String getOrderByField(final DocLogDao.FieldEnum orderBy) {
             return null;
         }
     }
@@ -826,17 +857,20 @@ public class DocLogItem {
     private static class QPrint extends QOut {
 
         @Override
-        protected String getExtraWhere(DocLogPagerReq req) {
+        protected String getExtraWhere(final DocLogPagerReq req) {
 
             int nWhere = 0;
-            String where = super.getExtraWhere(req);
 
-            if (where == null) {
-                where = "";
-            } else {
+            final StringBuilder where = new StringBuilder();
+
+            //
+            String extraWhere = super.getExtraWhere(req);
+            if (extraWhere != null) {
+                where.append(extraWhere);
                 nWhere++;
             }
 
+            //
             Long selId = req.getSelect().getPrinterId();
             final Boolean selDuplex = req.getSelect().getDuplex();
             final DocLogDao.JobState selState =
@@ -844,42 +878,52 @@ public class DocLogItem {
 
             if (selId != null && selId > 0) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "S.id = :printer_id";
+                where.append("S.id = :printer_id");
             }
 
             if (selDuplex != null) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where += "P.duplex = :duplex";
+                where.append("P.duplex = :duplex");
             }
 
             if (selState == DocLogDao.JobState.ACTIVE) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where +=
-                        "P.cupsJobState < "
-                                + IppJobStateEnum.IPP_JOB_STOPPED.asInt();
+                where.append("P.cupsJobState <= ").append(
+                        IppJobStateEnum.IPP_JOB_STOPPED.asInt());
+
+            } else if (selState == DocLogDao.JobState.UNFINISHED) {
+                if (nWhere > 0) {
+                    where.append(" AND ");
+                }
+                nWhere++;
+                where.append("(P.cupsJobState = ")
+                        .append(IppJobStateEnum.IPP_JOB_CANCELED.asInt())
+                        .append(" OR P.cupsJobState = ")
+                        .append(IppJobStateEnum.IPP_JOB_ABORTED.asInt())
+                        .append(")");
+
             } else if (selState == DocLogDao.JobState.COMPLETED) {
                 if (nWhere > 0) {
-                    where += " AND ";
+                    where.append(" AND ");
                 }
                 nWhere++;
-                where +=
-                        "P.cupsJobState > "
-                                + IppJobStateEnum.IPP_JOB_PROCESSING.asInt();
+                where.append("P.cupsJobState = ").append(
+                        IppJobStateEnum.IPP_JOB_COMPLETED.asInt());
             }
 
             if (nWhere == 0) {
-                where = null;
+                return null;
             }
-            return where;
+            return where.toString();
         }
 
         @Override
@@ -888,7 +932,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void setExtraParms(Query query, DocLogPagerReq req) {
+        protected void
+                setExtraParms(final Query query, final DocLogPagerReq req) {
 
             super.setExtraParms(query, req);
 
@@ -906,7 +951,7 @@ public class DocLogItem {
         }
 
         @Override
-        protected String getOrderByField(DocLogDao.FieldEnum orderBy) {
+        protected String getOrderByField(final DocLogDao.FieldEnum orderBy) {
             if (orderBy == DocLogDao.FieldEnum.PRINTER) {
                 return "S.displayName";
             } else {
@@ -944,7 +989,8 @@ public class DocLogItem {
         case PRINT:
             return new QPrint();
         default:
-            throw new SpException("unknown doctype [" + docType + "]");
+            throw new SpException(String.format("Unknown doctype [%s]",
+                    docType.toString()));
         }
     }
 
@@ -994,6 +1040,30 @@ public class DocLogItem {
 
     public void setGrayscale(Boolean grayscale) {
         this.grayscale = grayscale;
+    }
+
+    public Boolean getCollateCopies() {
+        return collateCopies;
+    }
+
+    public void setCollateCopies(Boolean collateCopies) {
+        this.collateCopies = collateCopies;
+    }
+
+    public Boolean getEcoPrint() {
+        return ecoPrint;
+    }
+
+    public void setEcoPrint(Boolean ecoPrint) {
+        this.ecoPrint = ecoPrint;
+    }
+
+    public Boolean getRemoveGraphics() {
+        return removeGraphics;
+    }
+
+    public void setRemoveGraphics(Boolean removeGraphics) {
+        this.removeGraphics = removeGraphics;
     }
 
     public String getAuthor() {

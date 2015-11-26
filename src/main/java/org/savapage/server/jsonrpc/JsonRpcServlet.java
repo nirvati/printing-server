@@ -55,7 +55,6 @@ import org.savapage.core.json.rpc.JsonRpcMethodName;
 import org.savapage.core.json.rpc.JsonRpcMethodParser;
 import org.savapage.core.json.rpc.JsonRpcMethodResult;
 import org.savapage.core.json.rpc.ParamsPaging;
-import org.savapage.core.json.rpc.ResultDataBasic;
 import org.savapage.core.json.rpc.impl.ParamsAddInternalUser;
 import org.savapage.core.json.rpc.impl.ParamsChangeBaseCurrency;
 import org.savapage.core.json.rpc.impl.ParamsPrinterAccessControl;
@@ -75,6 +74,7 @@ import org.savapage.core.services.UserGroupService;
 import org.savapage.core.services.UserService;
 import org.savapage.core.snmp.SnmpConnectException;
 import org.savapage.core.util.AppLogHelper;
+import org.savapage.core.util.InetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -212,7 +212,7 @@ public final class JsonRpcServlet extends HttpServlet implements
          */
         final String serverAdress;
         try {
-            serverAdress = ConfigManager.getServerHostAddress();
+            serverAdress = InetUtils.getServerHostAddress();
         } catch (UnknownHostException e1) {
             return JsonRpcMethodError.createBasicError(
                     JsonRpcError.Code.INTERNAL_ERROR, "Access denied.",
@@ -575,10 +575,7 @@ public final class JsonRpcServlet extends HttpServlet implements
                 msg = methodRsp.asError().getError().getMessage();
             } else {
                 level = PubLevelEnum.INFO;
-                final ResultDataBasic data =
-                        methodRsp.asResult().getResult()
-                                .data(ResultDataBasic.class);
-                msg = data.getMessage();
+                msg = null;
             }
 
         } else if (rpcResponse instanceof JsonRpcMethodError) {
@@ -594,8 +591,8 @@ public final class JsonRpcServlet extends HttpServlet implements
         }
 
         final StringBuilder msgTxt =
-                new StringBuilder().append("Server Command [").append(
-                        methodName.getMethodName()).append("]");
+                new StringBuilder().append("Server Command \"")
+                        .append(methodName.getMethodName()).append("\"");
 
         if (StringUtils.isNotBlank(msg)) {
             msgTxt.append(": ").append(msg);

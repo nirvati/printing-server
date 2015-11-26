@@ -50,17 +50,15 @@
 			//
 			;
 
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onSaveUser = null;
-			// _self.DeleteUser = null;
-
 			/**
 			 *
 			 */
 			$(_self.id()).on('pagecreate', function(event) {
+
+				$(this).on('click', '#button-user-generate-uuid', null, function() {
+					_self.onGenerateUserUuid();
+					return false;
+				});
 
 				$(this).on('click', '#button-save-user', null, function() {
 					_self.onSaveUser();
@@ -117,6 +115,7 @@
 				$('#user-card-number').val(_model.editUser.card);
 				$('#user-id-number').val(_model.editUser.id);
 				$('#user-pin').val(_model.editUser.pin);
+				$('#user-uuid').val(_model.editUser.uuid);
 
 				$('#user-user-pw').val('');
 				$('#user-user-pw-confirm').val('');
@@ -136,6 +135,8 @@
 					$('#user-userid').focus();
 				}
 
+			}).on('pageshow', function(event, ui) {
+				$('#user-uuid-collapsible').collapsible('collapse');
 			});
 			return _self;
 			// IMPORTANT
@@ -150,13 +151,6 @@
 			var _page = new _ns.Page(_i18n, _view, '#page-voucher-create', 'admin.PageAccountVoucherCreate')
 			//
 			, _self = _ns.derive(_page);
-
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onCreateBatch = null;
-			// _self.onCreateBatchExit = null;
 
 			/**
 			 *
@@ -209,12 +203,6 @@
 			//
 			, _self = _ns.derive(_page);
 
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onSave = null;
-
 			/**
 			 *
 			 */
@@ -265,7 +253,7 @@
 			//
 			, _self = _ns.derive(_page)
 			//
-			//,                                                       _this = this
+			//,  _this = this
 			//
 			, _onAuthModeEnabled, _onProxyPrintEnabled, _onCustomAuthEnabled
 			//
@@ -290,12 +278,6 @@
 			, _CARD_FORMAT_ATTR = ['.format', '.first-byte']
 			//
 			;
-
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onSaveDevice = null;
 
 			_onAuthModeEnabled = function() {
 				var authUser = _view.isCbChecked($("#auth-mode\\.name"))
@@ -657,12 +639,6 @@
 			//
 			;
 
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onSaveQueue = null;
-
 			/**
 			 *
 			 */
@@ -694,9 +670,9 @@
 
 				$('#queue-header').text(_model.editQueue.uiText);
 
-				_view.visible($('.queue_user-defined-section'), !reserved);
-				_view.enable($('#queue-url-path'), !reserved);
-
+				_view.visible($('.queue_user-defined-section'), !reserved && _model.editQueue.id !== null);
+				$('#queue-url-path').textinput( reserved ? "disable" : "enable");
+				$('#queue-trusted').checkboxradio(_model.editQueue.fixedTrust ? "disable" : "enable");
 			});
 			/*
 			 * IMPORTANT
@@ -715,13 +691,6 @@
 			, _self = _ns.derive(_page)
 			//
 			, _onChangeChargeType, _showAllMediaRows;
-
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onSavePrinter = null;
-			// _self.onRenamePrinter = null;
 
 			_onChangeChargeType = function(chargeType) {
 				var isSimple = (chargeType === 'SIMPLE');
@@ -930,37 +899,6 @@
 				// _loadPanel('ConfigPropBase');
 				// _loadPanel("AccountVoucherBase");
 			};
-
-			// -------------------------------------------------------------
-			// DOCUMENTATION for Callback Functions
-			// Do NOT remove the commented documentation block below
-			// -------------------------------------------------------------
-			// _self.onApplyAuth = null;
-			// _self.onApplySmtp = null;
-			// _self.onApplyMail = null;
-			// _self.onApplyUserCreate = null;
-			// _self.onApplyLocale = null;
-			// _self.onApplyBackupAuto = null;
-			// _self.onAdminPwReset = null;
-			// _self.onBackupNow = null;
-			// _self.onEditUser = null;
-			// _self.onEditConfigProp = null;
-			// _self.onCreateQueue = null;
-			// _self.onEditQueue = null;
-			// _self.onEditPrinter = null;
-			// _self.onPrinterSynchr = null;
-			// _self.onUserSourceGroupAll = null;
-			// _self.onUserSourceGroupApply = null;
-			// _self.onUserSourceGroupCancel = null;
-			// _self.onUserSourceGroupEdit = null;
-			// _self.onUserSyncApply = null;
-			// _self.onUserSyncNow = null;
-			// _self.onUserSyncTest = null;
-			// _self.onPagometerReset = null;
-			// _self.onVoucherDeleteBatch
-			// _self.onVoucherExpireBatch
-			// _self.onVoucherDeleteExpired
-			// _self.onDownload
 
 			/*
 			 * The map of panels. The key is the Java Wicket class. Each key has
@@ -1708,7 +1646,7 @@
 				$(this).on('change', "input:checkbox[id='flipswitch-payment-plugin-bitcoin-online']", null, function(e) {
 					_self.onPaymentGatewayOnline(true, $(this).is(':checked'));
 				});
-				
+
 				$(this).on('change', "input:checkbox[id='flipswitch-payment-plugin-generic-online']", null, function(e) {
 					_self.onPaymentGatewayOnline(false, $(this).is(':checked'));
 				});
@@ -1741,9 +1679,28 @@
 					var isChecked = $(this).is(':checked'), res = _self.onFlatRequest( isChecked ? 'smartschool-start' : 'smartschool-stop');
 					if (!res || res.result.code !== '0') {
 						$(this).prop("checked", !isChecked);
-						// This triggers 'change' event again :-)	
-						$(this).flipswitch( "refresh" );						
+						// This triggers 'change' event again :-)
+						$(this).flipswitch("refresh");
 					}
+				});
+
+				$(this).on('click', '#apply-smartschool-papercut-student-cost-csv', null, function() {
+					var sel = $('#sp-smartschool-papercut-student-cost-date-from'), from = sel.val().length > 0 ? _view.mobipickGetDate(sel).getTime() : null, to, klassen = $('#sp-smartschool-papercut-student-cost-klassen').val();
+
+					sel = $('#sp-smartschool-papercut-student-cost-date-to');
+					to = sel.val().length > 0 ? _view.mobipickGetDate(sel).getTime() : null;
+
+					if (klassen.length > 0) {
+						klassen = klassen.split(" ");
+					} else {
+						klassen = null;
+					}
+					_self.onApplySmartSchoolPaperCutStudentCostCsv(from, to, klassen);
+					return false;
+				});
+
+				$(this).on('change', "input:checkbox[id='flipswitch-internetprint-online']", null, function(e) {
+					_self.onFlipswitchInternetPrint($(this).is(':checked'));
 				});
 
 				$(this).on('change', "input:checkbox[id='flipswitch-webprint-online']", null, function(e) {
@@ -1752,6 +1709,10 @@
 
 				$(this).on('change', "input:checkbox[id='web-print.enable']", null, function(e) {
 					_panel.Options.onWebPrintEnabled($(this).is(':checked'));
+				});
+
+				$(this).on('change', "input:checkbox[id='eco-print.enable']", null, function(e) {
+					_panel.Options.onEcoPrintEnabled($(this).is(':checked'));
 				});
 
 				$(this).on('change', "input:checkbox[id='smartschool.1.enable']", null, function(e) {
@@ -1784,6 +1745,16 @@
 
 				$(this).on('click', '#apply-webprint', null, function() {
 					_self.onApplyWebPrint(_view.isCbChecked($('#web-print\\.enable')));
+					return false;
+				});
+
+				$(this).on('click', '#apply-ecoprint', null, function() {
+					_self.onApplyEcoPrint(_view.isCbChecked($('#eco-print\\.enable')));
+					return false;
+				});
+
+				$(this).on('click', '#apply-internetprint', null, function() {
+					_self.onApplyInternetPrint();
 					return false;
 				});
 

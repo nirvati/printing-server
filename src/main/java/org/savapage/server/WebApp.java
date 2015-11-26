@@ -53,13 +53,17 @@ import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.jpa.tools.DatabaseTypeEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
+import org.savapage.core.services.helpers.ExternalSupplierEnum;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.payment.PaymentMethodEnum;
+import org.savapage.server.api.JsonApiServer;
 import org.savapage.server.cometd.AbstractEventService;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.img.ImageServer;
 import org.savapage.server.ios.WebClipServer;
+import org.savapage.server.ipp.IppPrintServer;
+import org.savapage.server.ipp.IppPrintServerHomePage;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.admin.AbstractAdminPage;
 import org.savapage.server.pages.user.AbstractUserPage;
@@ -89,9 +93,14 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String MOUNT_PATH_COMETD = "/cometd";
 
     /**
-     * Used in this class to set mountPage().
+     * The URL path for "printers" as used in {@link #MOUNT_PATH_PRINTERS}.
      */
-    public static final String MOUNT_PATH_PRINTERS = "/printers";
+    public static final String PATH_PRINTERS = "printers";
+
+    /**
+     * Used in this class to set mountPage() for {@link WebApp#PATH_PRINTERS}.
+     */
+    public static final String MOUNT_PATH_PRINTERS = "/" + PATH_PRINTERS;
 
     /**
      * Used in this class to set mountPage().
@@ -133,6 +142,12 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      *
      */
     public static final String PATH_IMAGES_PAYMENT = PATH_IMAGES + "/payment";
+
+    /**
+    *
+    */
+    public static final String PATH_IMAGES_EXT_SUPPLIER = PATH_IMAGES
+            + "/ext-supplier";
 
     /**
      * Basename of the properties file for web customization.
@@ -221,6 +236,23 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             url.append("@2x");
         }
         url.append(".png");
+
+        return url.toString();
+    }
+
+    /**
+     * Gets the relative image URL of an {@link ExternalSupplierEnum}.
+     *
+     * @param extSupplierEnum
+     *            The {@link ExternalSupplierEnum}.
+     * @return The relative URL as string.
+     */
+    public static String getExtSupplierEnumImgUrl(
+            final ExternalSupplierEnum extSupplierEnum) {
+
+        final StringBuilder url =
+                new StringBuilder().append(PATH_IMAGES_EXT_SUPPLIER)
+                        .append("/").append(extSupplierEnum.getImageFileName());
 
         return url.toString();
     }
@@ -386,6 +418,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static void setServerProps(final Properties props) {
         theServerProps = props;
         ConfigManager.setServerProps(props);
+        ConfigManager.setWebAppAdminPath(MOUNT_PATH_WEBAPP_ADMIN);
     }
 
     /**
@@ -489,7 +522,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * <p>
      * NOTE: DocBook generated HTML chunks (and Maven site generated HTML) are
      * handled by <savapage-docs> servletname, see web.xml and
-     * {@link SpDocsServlet}.
+     * {@link DocumentationServlet}.
      * </p>
      */
     private void myInitialize() {
@@ -840,7 +873,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
     @Override
     protected void onDestroy() {
-        this.pluginManager.stop();
+        if (this.pluginManager != null) {
+            this.pluginManager.stop();
+        }
     }
 
 }

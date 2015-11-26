@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -40,13 +40,13 @@ import org.apache.wicket.markup.html.form.IChoiceRenderer;
 import org.apache.wicket.markup.html.form.upload.FileUpload;
 import org.apache.wicket.markup.html.form.upload.FileUploadField;
 import org.apache.wicket.markup.html.panel.FeedbackPanel;
+import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.LoadableDetachableModel;
 import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.util.lang.Bytes;
-import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
@@ -60,7 +60,7 @@ import org.savapage.core.print.server.DocContentPrintException;
 import org.savapage.core.print.server.DocContentPrintReq;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.services.helpers.InetUtils;
+import org.savapage.core.util.InetUtils;
 import org.savapage.server.SpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -266,7 +266,9 @@ public final class WebAppUserPage extends AbstractWebAppPage {
             return;
         }
 
-        add(new Label("app-name", CommunityDictEnum.SAVAPAGE.getWord()));
+        final String appTitle = getWebAppTitle(null);
+
+        add(new Label("app-title", appTitle));
 
         addZeroPagePanel(WebAppTypeEnum.USER);
 
@@ -283,17 +285,14 @@ public final class WebAppUserPage extends AbstractWebAppPage {
         addFileDownloadApiPanel();
 
         /*
-         *
+         * NOTE: Since Wicket 7 a panel is needed to make <wicket:enclosure>
+         * work.
          */
-        addVisible(
-                ConfigManager.instance().isConfigValue(
-                        Key.INTERNAL_USERS_CAN_CHANGE_PW),
-                "button-user-pw-dialog", localized("button-password"));
+        final UserDashboardPanel dashboardPanel =
+                new UserDashboardPanel("page-dashboard-panel");
 
-        addVisible(
-                ConfigManager.instance().isConfigValue(Key.USER_CAN_CHANGE_PIN),
-                "button-user-pin-dialog", localized("button-pin"));
-
+        add(dashboardPanel);
+        dashboardPanel.populate();
     }
 
     @Override
@@ -394,6 +393,15 @@ public final class WebAppUserPage extends AbstractWebAppPage {
                                     final InternalFontFamilyEnum object,
                                     final int index) {
                                 return object.toString();
+                            }
+
+                            @Override
+                            public
+                                    InternalFontFamilyEnum
+                                    getObject(
+                                            String arg0,
+                                            IModel<? extends List<? extends InternalFontFamilyEnum>> arg1) {
+                                return InternalFontFamilyEnum.valueOf(arg0);
                             }
                         });
 

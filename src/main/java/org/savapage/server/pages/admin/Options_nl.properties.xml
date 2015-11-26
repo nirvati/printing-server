@@ -64,6 +64,7 @@
     <entry key="button-change">Wijzigen</entry>
 	<entry key="button-change-group">Groep wijzigen</entry>
 	<entry key="button-clear">Wissen</entry>
+    <entry key="button-download">Download</entry>
 	<entry key="button-sync-now">Nu synchroniseren</entry>
 	<entry key="button-sync-test">Test</entry>
 
@@ -115,6 +116,9 @@
         
     <entry key="user-auth-mode-card-local">Lokale NFC Kaart</entry>
     <entry key="user-auth-mode-card-local-dialog">Tonen in Dialoog</entry>
+    
+    <entry key="authentication-persistence">Persistentie</entry>
+    <entry key="browser-local-storage">Browser Local Storage</entry>
     
     <entry key="users-pin">PIN</entry>
     <entry key="users-can-change-pin">Gebruikers mogen hun PIN wijzigen</entry>
@@ -193,7 +197,11 @@
     <entry key="smartschool-print-enable">Account inschakelen</entry>
     <entry key="smartschool-print-endpoint">SOAP endpoint</entry>
     <entry key="smartschool-print-password">Wachtwoord</entry>
-    <entry key="smartschool-print-proxyprinter">Proxy Printer (laat leeg voor WebApp Proxy Print)</entry>
+    <entry key="smartschool-print-proxyprinter">Proxy Printer voor alle opdrachten (laat leeg voor WebApp Proxy Print)</entry>
+    <entry key="smartschool-print-proxyprinter-duplex">duplex printer (optioneel)</entry>
+    <entry key="smartschool-print-proxyprinter-grayscale">Proxy Printer voor z/w opdrachten (optioneel)</entry>
+    <entry key="smartschool-print-proxyprinter-grayscale-duplex">z/w duplex printer (optioneel)</entry>
+    <entry key="smartschool-print-charge-to-students">Kosten verrekenen met studenten</entry>
 
     <entry key="smartschool-on-demand-user-creation">Ad-hoc gebruikers aanmaken</entry>
     
@@ -203,6 +211,11 @@
     <entry key="smartschool-button-stop">Stop</entry>
     <entry key="smartschool-button-start">Start</entry>
     <entry key="smartschool-button-start-simulate">Start (simulatie)</entry>
+
+    <entry key="smartschool-papercut-exports-header">Exports</entry>
+    <entry key="smartschool-student-invoicing-header">Facturering voor Studenten</entry>
+    <entry key="smartschool-student-invoicing-legend">Een CSV export van afdrukkosten totalen voor studenten binnen een periode.</entry>
+    <entry key="smartschool-student-invoicing-classes-prompt">Een door spaties gescheiden lijst van Klassen (laat leeg om alles te selecteren)</entry>
 
     <entry key="papercut-header-text">PaperCut Integratie</entry>
     
@@ -216,6 +229,9 @@
     <entry key="papercut-db-url">URL</entry>
     <entry key="papercut-db-user">Gebruiker</entry>
     <entry key="papercut-db-password">Wachtwoord</entry>
+
+    <entry key="prompt-period-from">Van</entry>
+    <entry key="prompt-period-to">Tot</entry>
 
     <entry key="imap-enable">Gebruikers mogen documenten mailen</entry>
     <entry key="imap-host">Host</entry>
@@ -236,6 +252,13 @@
     <entry key="webprint-enable">Gebruikers mogen documenten uploaden</entry>
     <entry key="webprint-max-file-mb">Maximale document grootte (MB)</entry>
     <entry key="webprint-ip-allowed">Toegestane IP adressen</entry>
+
+    <entry key="ecoprint-enable">Gebruikers mogen Eco Print toepassen</entry>
+    <entry key="ecoprint-discount-perc">Proxy Printing Kortingspercentage</entry>
+    <entry key="ecoprint-auto-threshold-page-count">Maximale document grootte (pagina's) voor automatisch filteren</entry>
+    <entry key="ecoprint-resolution-dpi">Resolutie DPI</entry>
+
+    <entry key="prompt-internetprint-base-uri">IPP protocol://authority van de Internet Printer Device URI:</entry>
 
     <entry key="gcp-enable">Inschakelen</entry>
     <entry key="gcp-online">On-line</entry>

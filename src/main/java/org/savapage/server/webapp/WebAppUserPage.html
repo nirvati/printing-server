@@ -10,7 +10,7 @@ disabled!</h2>
 <hr />
 </noscript>
 
-<title wicket:id="app-name"/>
+<title wicket:id="app-title"/>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,17 +44,6 @@ If no sizes attribute is set, the element’s size defaults to 57 x 57.
 <link rel="apple-touch-icon" sizes="72x72" href="/apple-touch-icon-72x72.png" />
 <link rel="apple-touch-icon" sizes="114x114" href="/apple-touch-icon-114x114.png" />
 <link rel="apple-touch-icon" sizes="144x144" href="/apple-touch-icon-144x144.png" />
-
-<wicket:remove> <!--
-TODO: config for cometd 
---></wicket:remove>
-<script type="text/javascript">
-    var config = {
-        contextPath: ''
-    };
-</script>
-<wicket:remove> <!-- 
---></wicket:remove>
 
 </head>
 
@@ -116,39 +105,7 @@ THIS IS REALLY NEEDED for the page after the login to show (why?).
 </div>
 
 <div data-role="dialog" data-theme="a" id="page-dashboard">
-
-    <div data-role="header" data-theme="b" >
-        <h1 id="dashboard-title"/>
-    </div>
-     
-	<div class="ui-content">
-	
-	    <ul data-role="listview" id="dashboard-list" data-inset="true"
-	       class="ui-listview ui-listview-inset ui-corner-all ui-shadow"/>
-
-        <div data-role="controlgroup" data-type="horizontal">
-            <wicket:enclosure child="button-user-pw-dialog">                    
-	            <a wicket:id="button-user-pw-dialog" class="sp-internal-user ui-btn ui-btn-inline ui-btn-icon-left ui-icon-edit"
-	               href="#" id="button-user-pw-dialog"/>
-            </wicket:enclosure>
-
-            <wicket:enclosure child="button-user-pin-dialog">                    
-                <a wicket:id="button-user-pin-dialog" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-edit"
-                   href="#" id="button-user-pin-dialog" />
-            </wicket:enclosure>
-                            
-            <a href="#" data-rel="back" data-direction="reverse" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-back">
-                <wicket:message key="button-back"/>
-            </a>
-
-        </div>            
-            
-	</div>
-
-	<wicket:remove><!-- 
-	THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG 
-	--></wicket:remove>  
-	<div data-role="popup" data-position-to="window" class="sp-msg-popup ui-content"/>
+    <wicket:fragment wicket:id="page-dashboard-panel"></wicket:fragment>
 </div>
 
 <div data-role="dialog" data-theme="a" id="page-money-transfer">
@@ -179,6 +136,32 @@ THIS IS REALLY NEEDED for the page after the login to show (why?).
     <div class="ui-content">
 
         <div id="page-bitcoin-transfer-content"/>
+
+    </div>
+    
+    <wicket:remove><!-- 
+    THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG 
+    --></wicket:remove>  
+    <div data-role="popup" data-position-to="window" class="sp-msg-popup ui-content"/>
+</div>
+
+
+<div data-role="dialog" data-theme="a" id="page-user-internet-printer">
+
+    <div data-role="header" data-theme="b">
+        <h1><wicket:message key="internet-printer-title"/></h1>
+    </div>
+    
+    <div class="ui-content">
+
+        <div id="page-user-internet-printer-content"/>
+
+	<div data-role="controlgroup" data-type="horizontal">
+	
+       <a href="#" class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-back" data-rel="back" data-direction="reverse"
+           tabindex="3"><wicket:message key="button-back"/></a>
+	       
+	</div>
 
     </div>
     

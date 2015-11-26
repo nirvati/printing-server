@@ -9,11 +9,13 @@
     <entry key="sheets">sheets</entry>
 
     <entry key="copies">copies</entry>
+    <entry key="collate">Collate</entry>
     
     <entry key="duplex">Duplex</entry>
     <entry key="singlex">Simplex</entry>
     <entry key="color">Color</entry>
     <entry key="grayscale">Grayscale</entry>
+    <entry key="graphics-removed">Graphics removed</entry>
 
     <entry key="button-remove">Remove</entry>
 

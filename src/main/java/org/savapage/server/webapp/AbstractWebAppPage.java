@@ -35,9 +35,12 @@ import org.apache.wicket.markup.head.StringHeaderItem;
 import org.apache.wicket.markup.html.IHeaderContributor;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.VersionInfo;
+import org.savapage.core.community.CommunityDictEnum;
+import org.savapage.core.community.MemberCard;
 import org.savapage.server.CustomWebServlet;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
+import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.pages.AbstractPage;
 
 /**
@@ -108,6 +111,31 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      *
      */
     protected AbstractWebAppPage() {
+        super();
+    }
+
+    /**
+     *
+     * @param suffix
+     * @return
+     */
+    protected static String getWebAppTitle(final String suffix) {
+
+        final StringBuilder title = new StringBuilder();
+
+        title.append(CommunityDictEnum.SAVAPAGE.getWord());
+
+        final String organisation =
+                MemberCard.instance().getMemberOrganisation();
+
+        if (StringUtils.isNotBlank(organisation)) {
+            title.append(" :: ").append(organisation);
+        }
+
+        if (StringUtils.isNotBlank(suffix)) {
+            title.append(" :: ").append(suffix);
+        }
+        return title.toString();
     }
 
     /**
@@ -116,6 +144,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      *            The {@link PageParameters}.
      */
     protected AbstractWebAppPage(final PageParameters parameters) {
+
+        super(parameters);
 
         SpSession.get().setWebAppType(this.getWebAppType());
 
@@ -130,8 +160,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
     /**
      * Checks if the WebApp count is exceeded.
      * <p>
-     * Note: we do NOT check on mobile browsers, i.e. we always return
-     * {@code false} in this case.
+     * Note: we do NOT check on mobile and Mac OS X Safari browsers, i.e. we
+     * always return {@code false} in this case.
      * </p>
      *
      * @param parameters
@@ -141,9 +171,10 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
     protected final boolean isWebAppCountExceeded(
             final PageParameters parameters) {
 
-        final boolean isMobile = isMobileBrowser();
+        final UserAgentHelper userAgentHelper = createUserAgentHelper();
 
-        if (isMobile) {
+        if (userAgentHelper.isMobileBrowser()
+                || userAgentHelper.isSafariBrowserMacOsX()) {
             return false;
         }
 
@@ -275,8 +306,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      * @return the URL parameter.
      */
     protected final String getNoCacheUrlParm() {
-        return new StringBuilder().append("?").append(
-                System.currentTimeMillis()).toString();
+        return new StringBuilder().append("?")
+                .append(System.currentTimeMillis()).toString();
     }
 
     /**
@@ -431,9 +462,9 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
             response.render(WebApp
                     .getWebjarsJsRef(WEBJARS_PATH_JQUERY_JQPLOT_JS));
 
-            for (String plugin : new String[] { "jqplot.pieRenderer.js",
-                    "jqplot.json2.js", "jqplot.logAxisRenderer.js",
-                    "jqplot.dateAxisRenderer.js" }) {
+            for (String plugin : new String[] { "jqplot.highlighter.js",
+                    "jqplot.pieRenderer.js", "jqplot.json2.js",
+                    "jqplot.logAxisRenderer.js", "jqplot.dateAxisRenderer.js" }) {
 
                 response.render(WebApp.getWebjarsJsRef(String.format(
                         "jqplot/current/plugins/%s", plugin)));

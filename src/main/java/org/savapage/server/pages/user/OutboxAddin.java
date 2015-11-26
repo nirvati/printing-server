@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -66,7 +66,7 @@ public class OutboxAddin extends AbstractUserPage {
          * @param id
          * @param list
          */
-        public OutboxJobView(String id, List<? extends OutboxJob> list) {
+        public OutboxJobView(String id, List<OutboxJob> list) {
             super(id, list);
         }
 
@@ -143,8 +143,11 @@ public class OutboxAddin extends AbstractUserPage {
             mapVisible.put("duplex", null);
             mapVisible.put("singlex", null);
             mapVisible.put("color", null);
+            mapVisible.put("collate", null);
             mapVisible.put("grayscale", null);
             mapVisible.put("cost", null);
+            mapVisible.put("removeGraphics", null);
+            mapVisible.put("ecoPrint", null);
 
             /*
              *
@@ -163,7 +166,18 @@ public class OutboxAddin extends AbstractUserPage {
                 mapVisible.put("color", localized("color"));
             }
 
-            // mapVisible.put("papersize", obj.get);
+            if (job.isCollate() && job.getCopies() > 1 && job.getPages() > 1) {
+                mapVisible.put("collate", localized("collate"));
+            }
+
+            if (job.isRemoveGraphics()) {
+                mapVisible.put("removeGraphics", localized("graphics-removed"));
+            }
+            if (job.isEcoPrint()) {
+                mapVisible.put("ecoPrint", "Eco Print");
+            }
+
+            // mapVisible.put("papersize", );
 
             mapVisible.put("cost", job.getLocaleInfo().getCost());
 
@@ -188,7 +202,7 @@ public class OutboxAddin extends AbstractUserPage {
      */
     public OutboxAddin() {
 
-        //this.openServiceContext();
+        // this.openServiceContext();
 
         final OutboxService outboxService =
                 ServiceContext.getServiceFactory().getOutboxService();

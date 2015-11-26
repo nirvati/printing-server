@@ -58,6 +58,7 @@
 				propNames.forEach(function(name) {
 					props[name] = _view.isCheckedYN($('#' + name.replace(/\./g, '\\.')));
 				});
+				return props;
 			};
 
 			/**
@@ -67,6 +68,7 @@
 				propNames.forEach(function(name) {
 					props[name] = _view.getRadioValue(name);
 				});
+				return props;
 			};
 
 			/**
@@ -76,6 +78,7 @@
 				propNames.forEach(function(name) {
 					props[name] = $('#' + name.replace(/\./g, '\\.')).val();
 				});
+				return props;
 			};
 
 			/**
@@ -197,8 +200,6 @@
 				// Configures CometD (without starting it)
 				_cometd.configure(res.cometdMaxNetworkDelay);
 
-				_i18n.initValues(res.i18n_values);
-
 				language = _util.getUrlParam('language');
 				if (!language) {
 					language = _model.authToken.language || '';
@@ -234,6 +235,11 @@
 				_api.onDisconnected(function() {
 					_model.user.loggedIn = false;
 					_view.changePage($('#page-login'));
+				});
+
+				$(document).on('click', '.sp-collapse', null, function() {
+					$(this).closest('[data-role=collapsible]').collapsible('collapse');
+					return false;
 				});
 
 			};
@@ -517,6 +523,18 @@
 				_saveConfigProps(props);
 			};
 
+			_view.pages.admin.onFlipswitchInternetPrint = function(enabled) {
+				var res = _api.call({
+					request : 'queue-enable',
+					dto : JSON.stringify({
+						urlPath : 'internet',
+						enabled : enabled
+					})
+				});
+				_view.showApiMsg(res);
+				return (res.result.code === '0');
+			};
+
 			_view.pages.admin.onApplyWebPrint = function(enabled) {
 				var props = {};
 				props['web-print.enable'] = enabled ? 'Y' : 'N';
@@ -524,6 +542,19 @@
 					_fillConfigPropsText(props, ['web-print.max-file-mb', 'web-print.limit-ip-addresses']);
 				}
 				_saveConfigProps(props);
+			};
+
+			_view.pages.admin.onApplyEcoPrint = function(enabled) {
+				var props = {};
+				props['eco-print.enable'] = enabled ? 'Y' : 'N';
+				if (enabled) {
+					_fillConfigPropsText(props, ['eco-print.discount-percent', 'eco-print.auto-threshold.page-count', 'eco-print.resolution-dpi']);
+				}
+				_saveConfigProps(props);
+			};
+
+			_view.pages.admin.onApplyInternetPrint = function() {
+				_saveConfigProps(_fillConfigPropsText({}, ['ipp.internet-printer.uri-base']));
 			};
 
 			_view.pages.admin.onApplySmartSchool = function(enable1, enable2) {
@@ -535,10 +566,12 @@
 				_fillConfigPropsYN(props, ['smartschool.user.insert.lazy-print']);
 
 				if (enable1) {
-					_fillConfigPropsText(props, ['smartschool.1.soap.print.endpoint.url', 'smartschool.1.soap.print.endpoint.password', 'smartschool.1.soap.print.proxy-printer']);
+					_fillConfigPropsText(props, ['smartschool.1.soap.print.endpoint.url', 'smartschool.1.soap.print.endpoint.password', 'smartschool.1.soap.print.proxy-printer', 'smartschool.1.soap.print.proxy-printer-duplex', 'smartschool.1.soap.print.proxy-printer-grayscale', 'smartschool.1.soap.print.proxy-printer-grayscale-duplex']);
+					_fillConfigPropsYN(props, ['smartschool.1.soap.print.charge-to-students']);
 				}
 				if (enable2) {
-					_fillConfigPropsText(props, ['smartschool.2.soap.print.endpoint.url', 'smartschool.2.soap.print.endpoint.password', 'smartschool.2.soap.print.proxy-printer']);
+					_fillConfigPropsText(props, ['smartschool.2.soap.print.endpoint.url', 'smartschool.2.soap.print.endpoint.password', 'smartschool.2.soap.print.proxy-printer', 'smartschool.2.soap.print.proxy-printer-duplex', 'smartschool.2.soap.print.proxy-printer-grayscale', 'smartschool.2.soap.print.proxy-printer-grayscale-duplex']);
+					_fillConfigPropsYN(props, ['smartschool.2.soap.print.charge-to-students']);
 				}
 				_saveConfigProps(props);
 			};
@@ -549,10 +582,18 @@
 				props['smartschool.papercut.enable'] = enable ? 'Y' : 'N';
 
 				if (enable) {
-					_fillConfigPropsText(props, ['papercut.server.host', 'papercut.server.port', 'papercut.webservices.auth-token', 
-						'papercut.db.jdbc-driver', 'papercut.db.jdbc-url', 'papercut.db.user', 'papercut.db.password']);
+					_fillConfigPropsText(props, ['papercut.server.host', 'papercut.server.port', 'papercut.webservices.auth-token', 'papercut.db.jdbc-driver', 'papercut.db.jdbc-url', 'papercut.db.user', 'papercut.db.password']);
 				}
 				_saveConfigProps(props);
+			};
+
+			_view.pages.admin.onApplySmartSchoolPaperCutStudentCostCsv = function(timeFrom, timeTo, klassen) {
+				// SmartSchoolCostPeriodDto
+				_api.download("smartschool-papercut-student-cost-csv", null, JSON.stringify({
+					timeFrom : timeFrom,
+					timeTo : timeTo,
+					klassen : klassen
+				}));
 			};
 
 			_view.pages.admin.onApplyGcpEnable = function(_panel, enabled) {
@@ -713,13 +754,13 @@
 				return res;
 			};
 
-			_view.pages.admin.onPaymentGatewayOnline = function (bitcoin, online) {
+			_view.pages.admin.onPaymentGatewayOnline = function(bitcoin, online) {
 				_view.showApiMsg(_api.call({
 					request : "payment-gateway-online",
 					bitcoin : bitcoin,
 					online : online
 				}));
-			}; 
+			};
 
 			_view.pages.admin.onApplyUserCreate = function() {
 				var props = {};
@@ -729,7 +770,7 @@
 
 			_view.pages.admin.onApplyUserAuthModeLocal = function() {
 				var props = {};
-				_fillConfigPropsYN(props, ['auth-mode.name', 'auth-mode.name.show', 'auth-mode.id', 'auth-mode.id.show', 'auth-mode.id.is-masked', 'auth-mode.id.pin-required', 'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association', 'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
+				_fillConfigPropsYN(props, ['web-login.authtoken.enable', 'auth-mode.name', 'auth-mode.name.show', 'auth-mode.id', 'auth-mode.id.show', 'auth-mode.id.is-masked', 'auth-mode.id.pin-required', 'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association', 'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
 				_fillConfigPropsRadio(props, ['auth-mode-default', 'card.number.format', 'card.number.first-byte']);
 				_saveConfigProps(props);
 			};
@@ -832,6 +873,18 @@
 				}
 			};
 
+			_view.pages.user.onGenerateUserUuid = function() {
+				var res = _api.call({
+					request : 'generate-uuid'
+				});
+				if (res.result.code === '0') {
+					_model.editUser.uuid = res.dto.uuid;
+					$('#user-uuid').val(_model.editUser.uuid);
+				} else {
+					_view.showApiMsg(res);
+				}
+			};
+
 			/**
 			 *
 			 */
@@ -874,6 +927,7 @@
 				_model.editUser.card = $('#user-card-number').val();
 				_model.editUser.id = $('#user-id-number').val();
 				_model.editUser.pin = $('#user-pin').val();
+				_model.editUser.uuid = $('#user-uuid').val();
 
 				res = _api.call({
 					request : 'user-set',
@@ -997,9 +1051,12 @@
 					id : null,
 					urlpath : 'untitled',
 					ipallowed : '',
-					trusted : true,
+					trusted : false,
 					disabled : false,
-					deleted : false
+					deleted : false,
+					uiText : 'Untitled',
+            		reserved : null,
+            		fixedTrust : false					
 				};
 				_view.pages.queue.loadShowAsync(function() {
 					$('#title-queue').html(_model.editQueue.urlpath);
@@ -1009,10 +1066,12 @@
 			_view.pages.admin.onEditQueue = function(id) {
 				var res = _api.call({
 					request : 'queue-get',
-					id : id
+					dto : JSON.stringify({
+						id : id
+					})
 				});
 				if (res && res.result.code === '0') {
-					_model.editQueue = res.j_queue;
+					_model.editQueue = res.dto;
 					_view.pages.queue.loadShowAsync(function() {
 						$('#title-queue').html(_model.editQueue.urlpath);
 					});
@@ -1025,10 +1084,10 @@
 
 				_model.editQueue.urlpath = $('#queue-url-path').val();
 				_model.editQueue.ipallowed = $('#queue-ip-allowed').val();
-				_model.editQueue.trusted = $('#queue-trusted').is(':checked');
 				_model.editQueue.disabled = $('#queue-disabled').is(':checked');
 				_model.editQueue.deleted = $('#queue-deleted').is(':checked');
-
+				_model.editQueue.trusted = $('#queue-trusted').is(':checked');
+ 
 				var res = _api.call({
 					request : 'queue-set',
 					j_queue : JSON.stringify(_model.editQueue)

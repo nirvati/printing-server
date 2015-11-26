@@ -43,7 +43,9 @@ import org.savapage.core.jmx.JmxRemoteProperties;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.imap.ImapPrinter;
 import org.savapage.core.print.smartschool.SmartSchoolPrinter;
+import org.savapage.core.services.helpers.ExternalSupplierEnum;
 import org.savapage.core.util.BigDecimalUtil;
+import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.server.pages.FontOptionsPanel;
 import org.savapage.server.pages.MarkupHelper;
@@ -67,6 +69,7 @@ public class Options extends AbstractAdminPage {
     public Options() {
 
         final MarkupHelper helper = new MarkupHelper(this);
+        final ConfigManager cm = ConfigManager.instance();
 
         /*
          *
@@ -206,6 +209,10 @@ public class Options extends AbstractAdminPage {
                 IConfigProp.CARD_NUMBER_FIRSTBYTE_V_MSB);
 
         //
+        labelledCheckbox("browser-local-storage",
+                IConfigProp.Key.WEB_LOGIN_AUTHTOKEN_ENABLE);
+
+        //
         labelledCheckbox("users-can-change-pin",
                 IConfigProp.Key.USER_CAN_CHANGE_PIN);
 
@@ -259,7 +266,10 @@ public class Options extends AbstractAdminPage {
 
         if (ConfigManager.isSmartSchoolPrintModuleActivated()) {
 
-            helper.encloseLabel(headerId, "SmartSchool Print", true);
+            helper.encloseLabel(
+                    headerId,
+                    String.format("%s Print",
+                            ExternalSupplierEnum.SMARTSCHOOL.getUiText()), true);
 
             IConfigProp.Key keyWlk;
 
@@ -284,6 +294,31 @@ public class Options extends AbstractAdminPage {
                     "smartschool-print-proxyprinter", keyWlk);
             tagInput("smartschool-print-proxyprinter-1", keyWlk);
 
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_DUPLEX;
+            tagLabel("smartschool-print-proxyprinter-duplex-label-1",
+                    "smartschool-print-proxyprinter-duplex", keyWlk);
+            tagInput("smartschool-print-proxyprinter-duplex-1", keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE;
+            tagLabel("smartschool-print-proxyprinter-grayscale-label-1",
+                    "smartschool-print-proxyprinter-grayscale", keyWlk);
+            tagInput("smartschool-print-proxyprinter-grayscale-1", keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE_DUPLEX;
+            tagLabel("smartschool-print-proxyprinter-grayscale-duplex-label-1",
+                    "smartschool-print-proxyprinter-grayscale-duplex", keyWlk);
+            tagInput("smartschool-print-proxyprinter-grayscale-duplex-1",
+                    keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_1_SOAP_PRINT_CHARGE_TO_STUDENTS;
+            tagLabel("smartschool-print-charge-to-students-label-1",
+                    "smartschool-print-charge-to-students", keyWlk);
+            tagCheckbox("smartschool-print-charge-to-students-1", keyWlk);
+
             // SmartSchool #2
             keyWlk = IConfigProp.Key.SMARTSCHOOL_2_ENABLE;
             tagLabel("smartschool-print-enable-label-2",
@@ -304,6 +339,31 @@ public class Options extends AbstractAdminPage {
             tagLabel("smartschool-print-proxyprinter-label-2",
                     "smartschool-print-proxyprinter", keyWlk);
             tagInput("smartschool-print-proxyprinter-2", keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_DUPLEX;
+            tagLabel("smartschool-print-proxyprinter-duplex-label-2",
+                    "smartschool-print-proxyprinter-duplex", keyWlk);
+            tagInput("smartschool-print-proxyprinter-duplex-2", keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE;
+            tagLabel("smartschool-print-proxyprinter-grayscale-label-2",
+                    "smartschool-print-proxyprinter-grayscale", keyWlk);
+            tagInput("smartschool-print-proxyprinter-grayscale-2", keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE_DUPLEX;
+            tagLabel("smartschool-print-proxyprinter-grayscale-duplex-label-2",
+                    "smartschool-print-proxyprinter-grayscale-duplex", keyWlk);
+            tagInput("smartschool-print-proxyprinter-grayscale-duplex-2",
+                    keyWlk);
+
+            keyWlk =
+                    IConfigProp.Key.SMARTSCHOOL_2_SOAP_PRINT_CHARGE_TO_STUDENTS;
+            tagLabel("smartschool-print-charge-to-students-label-2",
+                    "smartschool-print-charge-to-students", keyWlk);
+            tagCheckbox("smartschool-print-charge-to-students-2", keyWlk);
 
             //
             keyWlk = IConfigProp.Key.SMARTSCHOOL_USER_INSERT_LAZY_PRINT;
@@ -470,10 +530,28 @@ public class Options extends AbstractAdminPage {
                 IConfigProp.Key.WEB_PRINT_LIMIT_IP_ADDRESSES);
 
         /*
+         * Eco Print
+         */
+        labelledCheckbox("ecoprint-enable", IConfigProp.Key.ECO_PRINT_ENABLE);
+
+        labelledInput("ecoprint-discount-perc",
+                IConfigProp.Key.ECO_PRINT_DISCOUNT_PERC);
+
+        labelledInput("ecoprint-auto-threshold-page-count",
+                IConfigProp.Key.ECO_PRINT_AUTO_THRESHOLD_SHADOW_PAGE_COUNT);
+
+        labelledInput("ecoprint-resolution-dpi",
+                IConfigProp.Key.ECO_PRINT_RESOLUTION_DPI);
+
+        /*
+         * Internet Print
+         */
+        tagInput("internetprint-base-uri",
+                IConfigProp.Key.IPP_INTERNET_PRINTER_URI_BASE);
+
+        /*
          * Google Cloud Print.
          */
-        final ConfigManager cm = ConfigManager.instance();
-
         labelledCheckbox("gcp-enable", IConfigProp.Key.GCP_ENABLE);
 
         helper.addTextInput("gcp-client-id", GcpPrinter.getOAuthClientId());
@@ -599,7 +677,7 @@ public class Options extends AbstractAdminPage {
 
         try {
             jmcRemoteProcess =
-                    ConfigManager.getServerHostAddress() + ":"
+                    InetUtils.getServerHostAddress() + ":"
                             + JmxRemoteProperties.getPort();
         } catch (UnknownHostException e) {
             throw new SpException("Server IP address could not be found", e);
