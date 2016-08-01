@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,17 +25,19 @@ import java.net.URISyntaxException;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.UserDao;
-import org.savapage.core.dao.helpers.ReservedIppQueueEnum;
-import org.savapage.core.dao.helpers.UserAttrEnum;
+import org.savapage.core.dao.enums.ReservedIppQueueEnum;
+import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
 import org.savapage.server.SpSession;
 import org.savapage.server.ipp.IppPrintServerUrlParms;
 import org.savapage.server.pages.AbstractAuthPage;
 import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  *
@@ -52,13 +54,15 @@ public final class UserInternetPrinter extends AbstractAuthPage {
     /**
     *
     */
-    private static final UserService USER_SERVICE = ServiceContext
-            .getServiceFactory().getUserService();
+    private static final UserService USER_SERVICE =
+            ServiceContext.getServiceFactory().getUserService();
 
     /**
      *
      */
-    public UserInternetPrinter() {
+    public UserInternetPrinter(final PageParameters parameters) {
+
+        super(parameters);
 
         if (isAuthErrorHandled()) {
             return;
@@ -68,7 +72,7 @@ public final class UserInternetPrinter extends AbstractAuthPage {
          * If this page is displayed in the Admin WebApp context, we check the
          * admin authentication (including the need for a valid Membership).
          */
-        if (isAdminRoleContext()) {
+        if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
             checkAdminAuthorization();
         }
 
@@ -86,9 +90,8 @@ public final class UserInternetPrinter extends AbstractAuthPage {
         final String userNumber = USER_SERVICE.getPrimaryIdNumber(user);
         final String userUuid =
                 USER_SERVICE.getUserAttrValue(user, UserAttrEnum.UUID);
-        final String uriBase =
-                ConfigManager.instance().getConfigValue(
-                        Key.IPP_INTERNET_PRINTER_URI_BASE);
+        final String uriBase = ConfigManager.instance()
+                .getConfigValue(Key.IPP_INTERNET_PRINTER_URI_BASE);
 
         String text;
 
@@ -99,8 +102,8 @@ public final class UserInternetPrinter extends AbstractAuthPage {
             final IppPrintServerUrlParms urlParms =
                     new IppPrintServerUrlParms(uriBase,
                             ReservedIppQueueEnum.IPP_PRINT_INTERNET
-                                    .getUrlPath(), userNumber,
-                            UUID.fromString(userUuid));
+                                    .getUrlPath(),
+                            userNumber, UUID.fromString(userUuid));
             try {
                 text = urlParms.asUri().toString();
             } catch (URISyntaxException e) {

@@ -36,7 +36,12 @@ public enum WebAppTypeEnum {
     /**
      * The Point-of-Sale WebApp.
      */
-    POS("Pos"),
+    JOBTICKETS("Job Tickets"),
+
+    /**
+     * The Point-of-Sale WebApp.
+     */
+    POS("POS"),
 
     /**
      * The User WebApp.
@@ -50,7 +55,7 @@ public enum WebAppTypeEnum {
 
     private final String uiText;
 
-    private WebAppTypeEnum(final String uiText) {
+    WebAppTypeEnum(final String uiText) {
         this.uiText = uiText;
     }
 

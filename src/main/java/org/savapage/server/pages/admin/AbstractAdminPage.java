@@ -21,6 +21,7 @@
  */
 package org.savapage.server.pages.admin;
 
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.server.pages.AbstractAuthPage;
 
 /**
@@ -28,10 +29,14 @@ import org.savapage.server.pages.AbstractAuthPage;
  * checks the SpSession to see if the user is administrator and authorized to
  * see the pages.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
 public abstract class AbstractAdminPage extends AbstractAuthPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     @Override
@@ -39,7 +44,12 @@ public abstract class AbstractAdminPage extends AbstractAuthPage {
         return false;
     }
 
-    public AbstractAdminPage() {
+    /**
+     *
+     */
+    public AbstractAdminPage(final PageParameters parameters) {
+
+        super(parameters);
 
         if (isAuthErrorHandled()) {
             return;

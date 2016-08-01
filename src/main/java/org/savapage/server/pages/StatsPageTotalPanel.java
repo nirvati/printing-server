@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
-import org.savapage.core.dao.helpers.UserAttrEnum;
+import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.jpa.UserAttr;
 import org.savapage.core.json.JsonRollingTimeSeries;
 import org.savapage.core.json.TimeSeriesInterval;
@@ -45,7 +45,7 @@ import org.savapage.core.services.UserService;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public class StatsPageTotalPanel extends Panel {

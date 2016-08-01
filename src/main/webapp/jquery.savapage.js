@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile Common | (c) 2011-2015 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile Common | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -44,6 +44,19 @@
 		}
 		//
 		;
+
+		/**
+		 * Common initializing actions for all Web App types.
+		 */
+		_ns.commonWebAppInit = function() {
+			/*
+			 * JQM dialogs that are pre-loaded are initially made invisible with
+			 * attribute style="display: none;". This is done inhibit display
+			 * when JavaScript is not supported or disabled.
+			 * We remove the attribute here. Mantis #701.
+			 */
+			$('.sp-initial-hidden').attr('style', '');
+		};
 
 		/*
 		 * Indicates if the WebApp was restarted by a WebApp action
@@ -184,14 +197,23 @@
 			_self.start = function(token) {
 				_isOn = true;
 				_self.onConnecting();
+
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('CometD: handshake...');
+				}
+
 				// See Java class: CometdConnectDto
-				$.cometd.handshake({
-					ext : {
-						'org.savapage.authn' : {
-							token : token
+				try {
+					$.cometd.handshake({
+						ext : {
+							'org.savapage.authn' : {
+								token : token
+							}
 						}
-					}
-				});
+					});
+				} catch (msg) {
+					_ns.logger.warn('CometD exception on handshake: ' + msg);
+				}
 			};
 
 			/**
@@ -204,7 +226,8 @@
 				try {
 					_self.onDisconnecting();
 					$.cometd.disconnect(sync);
-				} catch (ignore) {
+				} catch (msg) {
+					_ns.logger.warn('CometD exception on disconnect: ' + msg);
 				}
 			};
 
@@ -415,10 +438,15 @@
 			 * IE8 caches according to the /api?... URL, so although content differs
 			 * in subsequent calls the same old cached PDF is shown.
 			 */
-			this.getUrl4Pdf = function(ranges, removeGraphics, ecoprint, jobIndex) {
+			this.getUrl4Pdf = function(ranges, removeGraphics, ecoprint, grayscale, jobIndex) {
 				// number of milliseconds since 1970/01/01
 				var d = new Date();
-				return '/api?request=pdf&user=' + _user.id + '&jobIndex=' + jobIndex + '&ranges=' + ranges + '&removeGraphics=' + removeGraphics + '&ecoprint=' + ecoprint + '&unique=' + d.getTime().toString();
+				return '/api?webAppType=' + _ns.WEBAPP_TYPE + '&request=pdf&user=' + _user.id + '&jobIndex=' + jobIndex + '&ranges=' + ranges + '&removeGraphics=' + removeGraphics + '&ecoprint=' + ecoprint + '&grayscale=' + grayscale + '&unique=' + d.getTime().toString();
+			};
+
+			this.getUrl4PdfHoldJob = function(fileName, isJobTicket) {
+				var req = isJobTicket ? 'pdf-jobticket' : 'pdf-outbox';
+				return '/api?webAppType=' + _ns.WEBAPP_TYPE + '&request=' + req + '&user=' + _user.id + '&fileName=' + fileName;
 			};
 
 			/**
@@ -454,6 +482,12 @@
 
 				var res, json;
 
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug(_ns.WEBAPP_TYPE + ' /api : ' + apiData.request);
+				}
+
+				apiData.webAppType = _ns.WEBAPP_TYPE;
+
 				if (_user.loggedIn) {
 					apiData.user = _user.id;
 				}
@@ -476,6 +510,10 @@
 					res = $.parseJSON(json);
 				}
 
+				if (res && res.result && _ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('/api -> return [' + (res.result.code || '?') + '] ' + (res.result.txt === undefined ? '' : ('\"' + res.result.txt + '\"')));
+				}
+
 				if (!res) {
 					res = this.simulateDisconnectError();
 					if (_onDisconnected) {
@@ -486,6 +524,7 @@
 						_onExpired();
 					}
 				}
+
 				return res;
 			};
 
@@ -494,6 +533,12 @@
 			 */
 			this.callAsync = function(apiData, onSuccess, onFinished, onError) {
 				var _this = this;
+
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug(_ns.WEBAPP_TYPE + ' /api (async): ' + apiData.request);
+				}
+
+				apiData.webAppType = _ns.WEBAPP_TYPE;
 
 				$.mobile.loading("show");
 
@@ -557,13 +602,11 @@
 			 */
 			loadListPage : function(panel, wClassPage, jqId) {
 
-				var
+				var data = null, jsonData = null
 				//
-				data = null
-				//
-				, jsonData = null
-				//
-				;
+				, url = '/pages/' + wClassPage + _ns.WebAppTypeUrlParm();
+
+				_ns.logger.debug(url);
 
 				if (panel.getInput) {
 					data = panel.getInput(panel);
@@ -577,7 +620,7 @@
 				$.ajax({
 					type : "POST",
 					async : true,
-					url : '/pages/' + wClassPage,
+					url : url,
 					data : {
 						user : _ns.PanelCommon.userId,
 						data : jsonData
@@ -624,6 +667,7 @@
 				my.input.maxResults = 10;
 
 				my.input.select.user_id = null;
+				my.input.select.account_id = null;
 
 				my.input.select.text = null;
 
@@ -684,6 +728,11 @@
 				my.input.select.user_id = ( present ? val : null);
 
 				//
+				val = $('#sp-accounttrx-hidden-account-id').val();
+				present = (val.length > 0);
+				my.input.select.account_id = ( present ? val : null);
+
+				//
 				val = _view.getRadioValue('sp-accounttrx-select-type');
 				present = (val.length > 0);
 				my.input.select.trxType = ( present ? val : null);
@@ -708,6 +757,7 @@
 				maxResults : 10,
 				select : {
 					user_id : null,
+					account_id : null,
 					// See Java: org.savapage.core.jpa.AccountTrx.TrxType
 					trxType : null,
 					date_from : null,
@@ -787,6 +837,9 @@
 			clearHiddenUserid : function() {
 				$('#sp-doclog-hidden-user-id').val("");
 				$("#sp-doclog-user-title").html("");
+
+				$('#sp-doclog-hidden-account-id').val("");
+				$("#sp-doclog-account-title").html("");
 			},
 
 			/*
@@ -803,6 +856,9 @@
 				 */
 				my.input.select.user_id = null;
 
+				//
+				my.input.select.account_id = null;
+
 				// ALL, IN, OUT, PDF, PRINT
 				my.input.select.doc_type = "ALL";
 
@@ -815,12 +871,12 @@
 				my.input.select.signature = "";
 				my.input.select.destination = "";
 				// Boolean
-				my.input.select.letterhead = null;
+				my.input.select.letterhead = undefined;
 
 				my.input.select.printer_id = null;
 				my.input.select.job_state = null;
 				// Boolean
-				my.input.select.duplex = null;
+				my.input.select.duplex = undefined;
 
 				my.input.select.author = '';
 				my.input.select.subject = '';
@@ -828,7 +884,7 @@
 				my.input.select.userpw = '';
 				my.input.select.ownerpw = '';
 				// Boolean
-				my.input.select.encrypted = null;
+				my.input.select.encrypted = undefined;
 
 				my.input.sort.field = 'date';
 				my.input.sort.ascending = false;
@@ -905,13 +961,13 @@
 				_view.checkRadioValue('sp-doclog-select-type', my.input.select.doc_type);
 
 				val = my.input.select.letterhead;
-				_view.checkRadioValue('sp-doc-out-lh', val === null ? "" : ( val ? "1" : "0"));
+				_view.checkRadioValue('sp-doc-out-lh', val === undefined ? "" : ( val ? "1" : "0"));
 
 				val = my.input.select.duplex;
-				_view.checkRadioValue('sp-print-out-duplex', val === null ? "" : ( val ? "1" : "0"));
+				_view.checkRadioValue('sp-print-out-duplex', val === undefined ? "" : ( val ? "1" : "0"));
 
 				val = my.input.select.encrypted;
-				_view.checkRadioValue('sp-pdf-out-encrypt', val === null ? "" : ( val ? "1" : "0"));
+				_view.checkRadioValue('sp-pdf-out-encrypt', val === undefined ? "" : ( val ? "1" : "0"));
 
 				//---------------------------------
 				my.setVisibility(my);
@@ -935,6 +991,11 @@
 				val = $('#sp-doclog-hidden-user-id').val();
 				present = (val.length > 0);
 				my.input.select.user_id = ( present ? val : null);
+
+				//
+				val = $('#sp-doclog-hidden-account-id').val();
+				present = (val.length > 0);
+				my.input.select.account_id = ( present ? val : null);
 
 				//
 				date = _view.mobipickGetDate(sel);
@@ -980,11 +1041,11 @@
 
 				//
 				val = _view.getRadioValue('sp-doc-out-lh');
-				my.input.select.letterhead = (val === "" ? null : (val === "1"));
+				my.input.select.letterhead = (val === "" ? undefined : (val === "1"));
 
 				//
 				val = _view.getRadioValue('sp-print-out-duplex');
-				my.input.select.duplex = (val === "" ? null : (val === "1"));
+				my.input.select.duplex = (val === "" ? undefined : (val === "1"));
 
 				//
 				sel = $('#sp-pdf-out-author');
@@ -1009,7 +1070,7 @@
 
 				//
 				val = _view.getRadioValue('sp-pdf-out-encrypt');
-				my.input.select.encrypted = (val === "" ? null : (val === "1"));
+				my.input.select.encrypted = (val === "" ? undefined : (val === "1"));
 
 			},
 
@@ -1101,6 +1162,76 @@
 			}
 		};
 
+		// =========================================================================
+		/**
+		 * Constructor
+		 */
+		_ns.QuickUserSearch = function(_view, _api) {
+
+			var _this, _quickUserCache = [], _quickUserSelected
+			//
+			, _onQuickUserSearch = function(target, filter) {
+				/* QuickSearchFilterDto */
+				var res, html = "";
+
+				_quickUserCache = [];
+				_quickUserSelected = undefined;
+
+				if (filter && filter.length > 0) {
+					res = _api.call({
+						request : "user-quick-search",
+						dto : JSON.stringify({
+							filter : filter,
+							maxResults : 5
+						})
+					});
+					if (res.result.code === '0') {
+						_quickUserCache = res.dto.items;
+						$.each(_quickUserCache, function(key, item) {
+							html += "<li class=\"ui-mini\" data-savapage=\"" + key + "\"><a tabindex=\"2\" href=\"#\">" + item.text + " &bull; " + (item.email || "&nbsp;") + "</a></li>";
+						});
+					} else {
+						_view.showApiMsg(res);
+					}
+				} else {
+					if (_this.onClearUser) {
+						_this.onClearUser();
+					}
+				}
+				target.html(html).filterable("refresh");
+			}
+			//
+			;
+
+			this.onCreate = function(parent, filterId, onSelectUser, onClearUser, onQuickSearchBefore) {
+				var filterableUserId = $("#" + filterId);
+
+				_this = this;
+
+				this.onSelectUser = onSelectUser;
+				this.onClearUser = onClearUser;
+				this.onQuickSearchBefore = onQuickSearchBefore;
+
+				filterableUserId.on("filterablebeforefilter", function(e, data) {
+					e.preventDefault();
+					if (_this.onQuickSearchBefore) {
+						onQuickSearchBefore();
+					}
+					_onQuickUserSearch($(this), data.input.get(0).value);
+				});
+
+				parent.on('click', '#' + filterId + ' li', null, function() {
+					var attr = "data-savapage";
+					_quickUserSelected = _quickUserCache[$(this).attr(attr)];
+					filterableUserId.empty().filterable("refresh");
+					if (_this.onSelectUser) {
+						_this.onSelectUser(_quickUserSelected);
+					}
+				});
+
+			};
+		};
+
 		/**
 		 * Constructor
 		 *
@@ -1117,14 +1248,14 @@
 				return _id;
 			};
 
-			this.loadShowAsync = function(onDone) {
+			this.loadShowAsync = function(onDone, jsonData) {
 				var _this = this;
 				_view.showPageAsync($(_id), _class, function() {
 					_this.isLoaded = true;
 					if (onDone) {
 						onDone();
 					}
-				});
+				}, jsonData);
 			};
 
 			this.load = function() {
@@ -1314,6 +1445,12 @@
 				if (nextPageId === 'page-zero') {
 					_self.show();
 				}
+			};
+
+			_self.loadShow = function(webAppType) {
+				_self.loadShowAsync(null, {
+					webAppType : webAppType
+				});
 			};
 
 			_self.onLogin = function(foo) {
@@ -1769,7 +1906,7 @@
 				_onShow(event, ui);
 
 				// Pick up URL parameters
-				$('#sp-login-user-name').val(_util.getUrlParam('user'));
+				$('#sp-login-user-name').val(_util.getUrlParam(_ns.URL_PARM.USER));
 				$('#sp-login-user-password').val('');
 
 			});
@@ -2010,7 +2147,9 @@
 			 */
 			this.getPageHtml = function(page, data) {
 
-				var html;
+				var html, url = '/pages/' + page + _ns.WebAppTypeUrlParm();
+
+				_ns.logger.debug(url);
 
 				// Since this is a synchronous call, this does NOT show in
 				// Chrome browser (at the moment of the call).
@@ -2019,7 +2158,7 @@
 				html = $.ajax({
 					type : "POST",
 					async : false,
-					url : '/pages/' + page,
+					url : url,
 					dataType : 'json',
 					data : data || {}
 				}).responseText;
@@ -2035,7 +2174,7 @@
 				 * the login window is showed as a response.
 				 */
 				this.message(_i18n.string('msg-disconnected'));
-				this.onDisconnected();
+				_api.onDisconnected();
 				return false;
 			};
 
@@ -2089,18 +2228,23 @@
 				this.showPageAsync(sel, 'user/' + page, onDone);
 			};
 
-			this.showPageAsync = function(sel, page, onDone) {
-				var _this = this;
+			this.showPageAsync = function(sel, page, onDone, jsonData) {
+				var _this = this, url;
 
 				if ($(sel).children().length === 0) {
+
+					url = '/pages/' + page + _ns.WebAppTypeUrlParm();
+
+					_ns.logger.debug(url);
 
 					$.mobile.loading("show");
 
 					$.ajax({
 						type : "POST",
 						async : true,
-						dataType : "html",
-						url : '/pages/' + page
+						dataType : 'html',
+						data : jsonData || {},
+						url : url
 					}).done(function(html) {
 						$(sel).html(html).page();
 						_view.changePage($(sel));
@@ -2110,11 +2254,10 @@
 					}).fail(function() {
 						/*
 						 * Do NOT use this.showApiMsg(), since it will NOT show,
-						 * since
-						 * the login window is showed as a response.
+						 * since the login window is showed as a response.
 						 */
 						_this.message(_i18n.string('msg-disconnected'));
-						_this.onDisconnected();
+						_api.onDisconnected();
 					}).always(function() {
 						$.mobile.loading("hide");
 					});
@@ -2203,7 +2346,7 @@
 				sel = _view.activePage().find('.sp-msg-popup');
 
 				// remove CR/LF, CR and replace all multiple spaces with one single space
-				txt = txt.replace(/\r?\n|\r/g, "").replace(/ +(?= )/g, '');
+				txt = txt ? txt.replace(/\r?\n|\r/g, "").replace(/ +(?= )/g, '') : '';
 
 				html = '<a href="#" data-rel="back" class="ui-btn ui-corner-all ui-shadow ui-btn-a ui-icon-delete ui-btn-icon-notext ui-btn-right">Close</a>';
 				html += '<h3 class="ui-title ' + cssClass + '">' + title + '</h3>';
@@ -2215,6 +2358,23 @@
 
 				sel.html(html);
 				sel.enhanceWithin().popup("open");
+			};
+
+			this.msgDialogBox = function(txt, cssClass) {
+				var sel = _view.activePage().find('.sp-msg-popup'), html;
+
+				html = '<a href="#" data-rel="back" class="ui-btn ui-corner-all ui-shadow ui-btn-a ui-icon-delete ui-btn-icon-notext ui-btn-right">Close</a>';
+				html += '<p class="sp-txt-wrap ' + cssClass + '">' + txt + '</p>';
+
+				sel.html(html);
+				sel.enhanceWithin().popup("open");
+			};
+
+			/**
+			 *
+			 */
+			this.isLoginPageActive = function() {
+				return this.activePage().attr('id') === 'page-login';
 			};
 
 			/**
@@ -2238,6 +2398,27 @@
 			};
 
 			/**
+			 * (Un)checks a checkbox button.
+			 */
+			this.checkCbSel = function(sel, isChecked) {
+				sel.prop("checked", isChecked).checkboxradio("refresh");
+			};
+
+			/**
+			 * Toggles a checkbox button.
+			 */
+			this.toggleCb = function(sel) {
+				this.checkCb(sel, !this.isCbChecked(sel));
+			};
+
+			/**
+			 * Returns boolean.
+			 */
+			this.isCbDisabled = function(sel) {
+				return sel.checkboxradio("option", "disabled");
+			};
+
+			/**
 			 * Returns boolean.
 			 */
 			this.isCbChecked = function(sel) {
@@ -2252,12 +2433,32 @@
 			};
 
 			/**
+			 * Get array with values of :checked children of input selector.
+			 */
+			this.checkedValues = function(sel) {
+				var values = [], i = 0;
+				$.each(sel.find(':checked'), function() {
+					values[i++] = $(this).val();
+				});
+				return values;
+			};
+
+			/**
 			 * Checks a radiobutton.
 			 */
 			this.checkRadio = function(name, id) {
 				var sel = $('input[name="' + name + '"]');
 				sel.prop('checked', false);
 				$('#' + id).prop('checked', true);
+				sel.checkboxradio("refresh");
+			};
+
+			/**
+			 * Checks first a radio button.
+			 */
+			this.checkRadioFirst = function(name) {
+				var sel = $('input[name="' + name + '"]');
+				sel.prop('checked', false).first().prop('checked', true);
 				sel.checkboxradio("refresh");
 			};
 
@@ -2281,6 +2482,22 @@
 
 			this.isRadioIdSelected = function(name, id) {
 				return ($("input:radio[name='" + name + "']:checked").attr('id') === id);
+			};
+
+			/**
+			 * Get array with selected values from (multiple) "select" element.
+			 */
+			this.selectedValues = function(id) {
+				var values = [], i = 0;
+				$.each($("select[id='" + id + "']").find(':selected'), function() {
+					values[i++] = $(this).val();
+				});
+				return values;
+			};
+
+			this.countSelectedValues = function(id) {
+				var val = this.selectedValues(id);
+				return val ? val.length : 0;
 			};
 
 			this.showApiMsg = function(res) {
@@ -2319,7 +2536,7 @@
 			};
 
 			/**
-			 * Enables/Disables jQuery selector.
+			 * Enables/Disables jQuery selector (this does not work for radio buttons).
 			 */
 			this.enable = function(jqsel, enable) {
 				var attr = "disabled";
@@ -2328,6 +2545,10 @@
 				} else {
 					jqsel.attr(attr, "");
 				}
+			};
+
+			this.enableCheckboxRadio = function(jqsel, enable) {
+				jqsel.checkboxradio( enable ? 'enable' : 'disable');
 			};
 
 			/**

@@ -101,32 +101,17 @@ img.active {
     border: 1px #006600 dotted;
 }
 
-.sp-outbox-remaining-time {
-    color: #DC5C05;
-    padding: 0px;
-}
-.sp-outbox-jobs {
-    color: #444444;
-    padding: 2px 5px 2px 5px;
-    border: 1px #DDDDDD solid;
-}
-.sp-outbox-pages {
-    color: #888888;
-    padding: 2px 5px 2px 5px;
-    border: 1px #DDDDDD solid;
-}
-.sp-outbox-cost {
-    color: #888888;
-    padding: 2px 5px 2px 5px;
-    border: 1px #DDDDDD solid;
-}
-
 .sp-thumbnail-cut {
     background: red;
 }
 .sp-thumbnail-selected {
     background: orange;
 }
+
+.sp-thumbnail-subscript-job-expired {
+    background: #fff2e6 !important;
+}
+
 .thumbnail_reel img {
 }
 .thumbnail_reel p {
@@ -231,6 +216,29 @@ a:hover.poll_button {
     -webkit-border-radius: 3px;
     -khtml-border-radius: 3px;
     border-radius: 3px; 
+}
+
+#page-print-delegation .ui-dialog-contain {
+  width: 92.5%;
+  max-width: 1920px;
+  margin: 15px auto 15px auto;
+  padding: 0;
+  position: relative;
+  top: 15px;
+}
+
+#page-doclog .ui-content {
+	margin-left: auto;
+	margin-right: auto;
+	width: 90%;
+	max-width: 700px;
+}
+
+#page-accounttrx .ui-content {
+	margin-left: auto;
+	margin-right: auto;
+	width: 90%;
+	max-width: 700px;
 }
 
 /* end-of-file */

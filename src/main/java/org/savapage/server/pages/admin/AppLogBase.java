@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,21 +21,28 @@
  */
 package org.savapage.server.pages.admin;
 
-import org.savapage.core.dao.helpers.AppLogLevelEnum;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.server.pages.MarkupHelper;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class AppLogBase extends AbstractAdminPage {
+public final class AppLogBase extends AbstractAdminPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
      *
      */
-    public AppLogBase() {
+    public AppLogBase(final PageParameters parameters) {
+
+        super(parameters);
 
         MarkupHelper helper = new MarkupHelper(this);
 

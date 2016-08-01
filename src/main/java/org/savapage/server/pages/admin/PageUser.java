@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,33 +21,49 @@
  */
 package org.savapage.server.pages.admin;
 
+import java.util.EnumSet;
+
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.UserAccountingDto;
 import org.savapage.server.pages.MarkupHelper;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class PageUser extends AbstractAdminPage {
+public final class PageUser extends AbstractAdminPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
      *
      */
-    public PageUser() {
+    public PageUser(final PageParameters parameters) {
+
+        super(parameters);
+
         final MarkupHelper helper = new MarkupHelper(this);
 
         //
-        Label labelWrk =
-                new Label("internal-user", getLocalizer().getString(
-                        "internal-user", this));
+        Label labelWrk = new Label("internal-user",
+                getLocalizer().getString("internal-user", this));
         labelWrk.add(new AttributeModifier("class",
                 MarkupHelper.CSS_TXT_INTERNAL_USER));
         add(labelWrk);
+
+        //
+        final ACLRoleEnumPanel aclRolePanel =
+                new ACLRoleEnumPanel("ACLRoleEnumCheckboxes");
+        aclRolePanel.populate(EnumSet.noneOf(ACLRoleEnum.class));
+
+        add(aclRolePanel);
 
         //
         helper.addModifyLabelAttr("credit-limit-none", "value",
@@ -58,6 +74,5 @@ public class PageUser extends AbstractAdminPage {
 
         helper.addModifyLabelAttr("credit-limit-individual", "value",
                 UserAccountingDto.CreditLimitEnum.INDIVIDUAL.toString());
-
     }
 }

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,10 +33,14 @@ import org.apache.wicket.markup.head.JavaScriptHeaderItem;
 import org.apache.wicket.markup.head.PriorityHeaderItem;
 import org.apache.wicket.markup.head.StringHeaderItem;
 import org.apache.wicket.markup.html.IHeaderContributor;
+import org.apache.wicket.request.mapper.parameter.INamedParameters.NamedPair;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.VersionInfo;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp;
+import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.server.CustomWebServlet;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
@@ -45,11 +49,11 @@ import org.savapage.server.pages.AbstractPage;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public abstract class AbstractWebAppPage extends AbstractPage implements
-        IHeaderContributor {
+public abstract class AbstractWebAppPage extends AbstractPage
+        implements IHeaderContributor {
 
     /**
      * .
@@ -69,8 +73,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
             "jquery-mobile/current/jquery.mobile.css";
 
     /**
-     * Stylesheet to be used with custom jQuery Mobile theme as produced with <a
-     * href="http://themeroller.jquerymobile.com/">themeroller</a>.
+     * Stylesheet to be used with custom jQuery Mobile theme as produced with
+     * <a href="http://themeroller.jquerymobile.com/">themeroller</a>.
      */
     public static final String WEBJARS_PATH_JQUERY_MOBILE_STRUCTURE_CSS =
             "jquery-mobile/current/jquery.mobile.structure.css";
@@ -106,6 +110,14 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
         /** */
         SPARKLINE
     }
+
+    private static final String CSS_FILE_WICKET_SAVAPAGE =
+            "wicket.savapage.css";
+    private static final String CSS_FILE_JQUERY_SAVAPAGE =
+            "jquery.savapage.css";
+
+    static final String JS_FILE_JQUERY_SAVAPAGE_PAGE_PRINT_DELEGATION =
+            "jquery.savapage-page-print-delegation.js";
 
     /**
      *
@@ -147,14 +159,21 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
 
         super(parameters);
 
-        SpSession.get().setWebAppType(this.getWebAppType());
-
         final String language = parameters.get("language").toString();
 
         if (language != null) {
             getSession().setLocale(new Locale(language));
         }
+    }
 
+    /**
+     * Sets {@link WebAppCountExceededMsg} as response page with
+     * {@link WebAppTypeEnum} as {@link PageParameter}.
+     */
+    protected final void setWebAppCountExceededResponse() {
+        final PageParameters parms = new PageParameters();
+        parms.set(WebAppCountExceededMsg.PARM_WEBAPPTYPE, this.getWebAppType());
+        setResponsePage(WebAppCountExceededMsg.class, parms);
     }
 
     /**
@@ -168,8 +187,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      *            The {@link PageParameters}.
      * @return {@code true} when WebApp count is exceeded.
      */
-    protected final boolean isWebAppCountExceeded(
-            final PageParameters parameters) {
+    protected final boolean
+            isWebAppCountExceeded(final PageParameters parameters) {
 
         final UserAgentHelper userAgentHelper = createUserAgentHelper();
 
@@ -179,12 +198,14 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
         }
 
         final boolean isZeroPanel =
-                !parameters.get(ZeroPagePanel.PARM_SUBMIT_INIDICATOR).isEmpty();
+                !parameters.get(ZeroPagePanel.PARM_SUBMIT_INDICATOR).isEmpty();
 
-        return !isZeroPanel && (SpSession.get().getAuthWebAppCount() > 0);
+        return !isZeroPanel && SpSession.get().getAuthWebAppCount() > 0;
     }
 
-    @Override
+    /**
+     * @return The {@link WebAppTypeEnum} of this Web App.
+     */
     protected abstract WebAppTypeEnum getWebAppType();
 
     /**
@@ -212,11 +233,11 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      * JavaScript snippet format to render initially. The %s is the mountPath of
      * this page.
      */
-    private static final String INITIAL_JAVASCRIPT_FORMAT = "(function(){"
-            + "if(window.location.href.search('#')>0){"
-            + "window.location.replace("
-            + "window.location.protocol+\"//\"+window.location.host+\"" + "/"
-            + "%s" + "\");}})();";
+    private static final String INITIAL_JAVASCRIPT_FORMAT =
+            "(function(){" + "if(window.location.href.search('#')>0){"
+                    + "window.location.replace("
+                    + "window.location.protocol+\"//\"+window.location.host+\""
+                    + "/" + "%s" + "\");}})();";
 
     /**
      * {@link StringHeaderItem} pattern to render initially. The %s is the
@@ -225,6 +246,16 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
     private static final String INITIAL_HEADERITEM_FORMAT =
             "\n<script type=\"text/javascript\">\n" + "/*<![CDATA[*/" + "\n"
                     + "%s" + "\n" + "/*]]>*/" + "\n</script>\n";
+
+    /**
+     * The prefix for SavaPage URL parameters.
+     */
+    private static final String URL_PARM_PFX = "sp-";
+
+    /**
+     * URL parameter to pass user id.
+     */
+    public static final String URL_PARM_USER = URL_PARM_PFX + "user";
 
     /**
      * Renders tiny JavaScript snippet at the very start of the page to
@@ -259,16 +290,32 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
             renderInitialJavaScript(final IHeaderResponse response) {
 
         /*
-         * Use the current URL path as mount path.
+         * Use the current URL path as mount path ...
          */
-        final String mountPath = this.getRequest().getUrl().getPath();
+        final StringBuilder mountPath = new StringBuilder();
+        mountPath.append(this.getRequest().getUrl().getPath());
+
+        /*
+         * ... and append our own sp-* URL parameters.
+         */
+        for (final NamedPair pair : this.getPageParameters().getAllNamed()) {
+            if (pair.getKey().startsWith(URL_PARM_PFX)) {
+                if (mountPath.length() > 0) {
+                    mountPath.append("?");
+                } else {
+                    mountPath.append("&");
+                }
+                mountPath.append(pair.getKey()).append("=")
+                        .append(pair.getValue());
+            }
+        }
 
         final String javascript =
-                String.format(INITIAL_JAVASCRIPT_FORMAT, mountPath);
+                String.format(INITIAL_JAVASCRIPT_FORMAT, mountPath.toString());
 
         final HeaderItem firstItem =
-                new PriorityHeaderItem(new StringHeaderItem(String.format(
-                        INITIAL_HEADERITEM_FORMAT, javascript)));
+                new PriorityHeaderItem(new StringHeaderItem(
+                        String.format(INITIAL_HEADERITEM_FORMAT, javascript)));
 
         response.render(firstItem);
     }
@@ -319,12 +366,13 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
     abstract boolean isJqueryCoreRenderedByWicket();
 
     /**
+     * The file name from the web property file.
      *
      * @param key
-     * @param path
-     * @return
+     *            The property key.
+     * @return {@code null} when not found (or empty).
      */
-    private static File getCssCustomFile(final String key, final String path) {
+    private static String getCssCustomFile(final String key) {
 
         if (key == null) {
             return null;
@@ -335,34 +383,99 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
         if (StringUtils.isBlank(cssFile)) {
             return null;
         }
-
-        return new File(String.format("%s/%s/%s",
-                CustomWebServlet.CONTENT_HOME, path, cssFile));
+        return cssFile;
     }
 
     /**
+     * The file name from configuration property.
+     *
+     * @param key
+     *            The property key.
+     * @return {@code null} when not found (or empty).
+     */
+    private static String getCssFileName(IConfigProp.Key key) {
+        final String fileName = ConfigManager.instance().getConfigValue(key);
+        if (StringUtils.isNotBlank(fileName)) {
+            return fileName;
+        }
+        return null;
+    }
+
+    /**
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @return The jQuery Mobile Theme CSS {@link File}, or {@code null} when
      *         not applicable.
      */
-    private File getCssThemeFile() {
+    private String getCssThemeFileName(final WebAppTypeEnum webAppType) {
+
+        final IConfigProp.Key configKey;
+        switch (webAppType) {
+        case ADMIN:
+            configKey = Key.WEBAPP_THEME_ADMIN;
+            break;
+        case JOBTICKETS:
+            configKey = Key.WEBAPP_THEME_JOBTICKETS;
+            break;
+        case POS:
+            configKey = Key.WEBAPP_THEME_POS;
+            break;
+        case USER:
+            configKey = Key.WEBAPP_THEME_USER;
+            break;
+        default:
+            configKey = null;
+            break;
+        }
+
+        if (configKey != null) {
+            final String cssFile = getCssFileName(configKey);
+            if (cssFile != null) {
+                return cssFile;
+            }
+        }
 
         final StringBuilder key = new StringBuilder();
-        key.append("webapp.theme.").append(
-                this.getWebAppType().toString().toLowerCase());
-
-        return getCssCustomFile(key.toString(),
-                CustomWebServlet.PATH_BASE_THEMES);
+        key.append(Key.WEBAPP_THEME_PFX)
+                .append(webAppType.toString().toLowerCase());
+        return getCssCustomFile(key.toString());
     }
 
     /**
-     * @return The custom CSS {@link File}, or {@code null} when not applicable.
+     * @return The custom CSS filename, or {@code null} when not applicable.
      */
-    private File getCssCustomFile() {
-        final StringBuilder key = new StringBuilder();
-        key.append("webapp.custom.").append(
-                this.getWebAppType().toString().toLowerCase());
+    private String getCssCustomFileName(final WebAppTypeEnum webAppType) {
 
-        return getCssCustomFile(key.toString(), CustomWebServlet.PATH_BASE);
+        final IConfigProp.Key configKey;
+        switch (webAppType) {
+        case ADMIN:
+            configKey = Key.WEBAPP_CUSTOM_ADMIN;
+            break;
+        case JOBTICKETS:
+            configKey = Key.WEBAPP_CUSTOM_JOBTICKETS;
+            break;
+        case POS:
+            configKey = Key.WEBAPP_CUSTOM_POS;
+            break;
+        case USER:
+            configKey = Key.WEBAPP_CUSTOM_USER;
+            break;
+        default:
+            configKey = null;
+            break;
+        }
+
+        if (configKey != null) {
+            final String cssFile = getCssFileName(configKey);
+            if (cssFile != null) {
+                return cssFile;
+            }
+        }
+
+        final StringBuilder key = new StringBuilder();
+        key.append(Key.WEBAPP_CUSTOM_PFX)
+                .append(webAppType.toString().toLowerCase());
+        return getCssCustomFile(key.toString());
     }
 
     /**
@@ -392,27 +505,35 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
 
         final Set<JavaScriptLibrary> jsToRender = getJavaScriptToRender();
 
+        WebAppTypeEnum webAppType = this.getWebAppType();
+
+        if (webAppType == null) {
+            webAppType = this.getSessionWebAppType();
+        }
+        if (webAppType == null) {
+            webAppType = WebAppTypeEnum.UNDEFINED;
+        }
         /*
          * jQuery Mobile CSS files.
          */
-        final File customThemeCss = getCssThemeFile();
+        final String customThemeCssFileName = getCssThemeFileName(webAppType);
 
-        if (customThemeCss != null && customThemeCss.isFile()) {
+        if (customThemeCssFileName != null) {
 
-            response.render(CssHeaderItem.forUrl(String.format("/%s/%s%s",
-                    CustomWebServlet.PATH_BASE_THEMES,
-                    customThemeCss.getName(), nocache)));
+            response.render(CssHeaderItem.forUrl(
+                    String.format("/%s/%s%s", CustomWebServlet.PATH_BASE_THEMES,
+                            customThemeCssFileName, nocache)));
 
-            response.render(CssHeaderItem.forUrl(String.format("%s/%s%s",
-                    CustomWebServlet.PATH_BASE_THEMES,
-                    "jquery.mobile.icons.min.css", nocache)));
+            response.render(CssHeaderItem.forUrl(
+                    String.format("%s/%s%s", CustomWebServlet.PATH_BASE_THEMES,
+                            "jquery.mobile.icons.min.css", nocache)));
 
-            response.render(WebApp
-                    .getWebjarsCssRef(WEBJARS_PATH_JQUERY_MOBILE_STRUCTURE_CSS));
+            response.render(WebApp.getWebjarsCssRef(
+                    WEBJARS_PATH_JQUERY_MOBILE_STRUCTURE_CSS));
 
         } else {
-            response.render(WebApp
-                    .getWebjarsCssRef(WEBJARS_PATH_JQUERY_MOBILE_CSS));
+            response.render(
+                    WebApp.getWebjarsCssRef(WEBJARS_PATH_JQUERY_MOBILE_CSS));
         }
 
         /*
@@ -420,11 +541,15 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
          */
 
         if (jsToRender.contains(JavaScriptLibrary.JQPLOT)) {
-            response.render(WebApp
-                    .getWebjarsCssRef(WEBJARS_PATH_JQUERY_JQPLOT_CSS));
+            response.render(
+                    WebApp.getWebjarsCssRef(WEBJARS_PATH_JQUERY_JQPLOT_CSS));
         }
 
-        response.render(CssHeaderItem.forUrl("jquery.savapage.css" + nocache));
+        response.render(CssHeaderItem.forUrl(
+                String.format("%s%s", CSS_FILE_WICKET_SAVAPAGE, nocache)));
+
+        response.render(CssHeaderItem.forUrl(
+                String.format("%s%s", CSS_FILE_JQUERY_SAVAPAGE, nocache)));
 
         final String specializedCssFile = getSpecializedCssFileName();
 
@@ -433,41 +558,42 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
         }
 
         if (jsToRender.contains(JavaScriptLibrary.MOBIPICK)) {
-            response.render(CssHeaderItem.forUrl(WebApp.getJqMobiPickLocation()
-                    + "mobipick.css"));
+            response.render(CssHeaderItem
+                    .forUrl(WebApp.getJqMobiPickLocation() + "mobipick.css"));
         }
 
         // Custom CSS as last.
-        final File customCss = getCssCustomFile();
+        final String customCssFileName = getCssCustomFileName(webAppType);
 
-        if (customCss != null && customCss.isFile()) {
+        if (customCssFileName != null) {
             response.render(CssHeaderItem.forUrl(String.format("/%s/%s%s",
-                    CustomWebServlet.PATH_BASE, customCss.getName(), nocache)));
+                    CustomWebServlet.PATH_BASE, customCssFileName, nocache)));
         }
 
         /*
          * JS files
          */
         if (!isJqueryCoreRenderedByWicket()) {
-            response.render(WebApp
-                    .getWebjarsJsRef(WebApp.WEBJARS_PATH_JQUERY_CORE_JS));
+            response.render(
+                    WebApp.getWebjarsJsRef(WebApp.WEBJARS_PATH_JQUERY_CORE_JS));
         }
 
         if (jsToRender.contains(JavaScriptLibrary.SPARKLINE)) {
-            response.render(WebApp
-                    .getWebjarsJsRef(WEBJARS_PATH_JQUERY_SPARKLINE));
+            response.render(
+                    WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_SPARKLINE));
         }
 
         if (jsToRender.contains(JavaScriptLibrary.JQPLOT)) {
-            response.render(WebApp
-                    .getWebjarsJsRef(WEBJARS_PATH_JQUERY_JQPLOT_JS));
+            response.render(
+                    WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_JQPLOT_JS));
 
             for (String plugin : new String[] { "jqplot.highlighter.js",
                     "jqplot.pieRenderer.js", "jqplot.json2.js",
-                    "jqplot.logAxisRenderer.js", "jqplot.dateAxisRenderer.js" }) {
+                    "jqplot.logAxisRenderer.js",
+                    "jqplot.dateAxisRenderer.js" }) {
 
-                response.render(WebApp.getWebjarsJsRef(String.format(
-                        "jqplot/current/plugins/%s", plugin)));
+                response.render(WebApp.getWebjarsJsRef(
+                        String.format("jqplot/current/plugins/%s", plugin)));
 
             }
         }
@@ -479,8 +605,9 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
             renderJs(response, "jquery/jquery.cometd.js");
         }
 
-        renderJs(response, "savapage.js" + nocache);
-        renderJs(response, "jquery.savapage.js" + nocache);
+        renderJs(response, String.format("%s%s", "savapage.js", nocache));
+        renderJs(response,
+                String.format("%s%s", "jquery.savapage.js", nocache));
 
         renderWebAppTypeJsFiles(response, nocache);
 
@@ -494,9 +621,12 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
          * Render after JQM.
          */
         if (jsToRender.contains(JavaScriptLibrary.MOBIPICK)) {
-            renderJs(response, WebApp.getJqMobiPickLocation() + "xdate.js");
-            renderJs(response, WebApp.getJqMobiPickLocation() + "xdate.i18n.js");
-            renderJs(response, WebApp.getJqMobiPickLocation() + "mobipick.js");
+            renderJs(response, String.format("%s%s",
+                    WebApp.getJqMobiPickLocation(), "xdate.js"));
+            renderJs(response, String.format("%s%s",
+                    WebApp.getJqMobiPickLocation(), "xdate.i18n.js"));
+            renderJs(response, String.format("%s%s",
+                    WebApp.getJqMobiPickLocation(), "mobipick.js"));
         }
     }
 
@@ -504,8 +634,8 @@ public abstract class AbstractWebAppPage extends AbstractPage implements
      *
      */
     protected final void addFileDownloadApiPanel() {
-        FileDownloadApiPanel apiPanel =
-                new FileDownloadApiPanel("file-download-api-panel");
+        FileDownloadApiPanel apiPanel = new FileDownloadApiPanel(
+                "file-download-api-panel", this.getWebAppType());
         add(apiPanel);
     }
 

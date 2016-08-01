@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -49,11 +49,12 @@ import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.RunMode;
+import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.jpa.tools.DatabaseTypeEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
-import org.savapage.core.services.helpers.ExternalSupplierEnum;
+import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.payment.PaymentMethodEnum;
@@ -68,9 +69,11 @@ import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.admin.AbstractAdminPage;
 import org.savapage.server.pages.user.AbstractUserPage;
 import org.savapage.server.raw.RawPrintServer;
-import org.savapage.server.webapp.WebAppAdminPage;
-import org.savapage.server.webapp.WebAppAdminPosPage;
-import org.savapage.server.webapp.WebAppUserPage;
+import org.savapage.server.webapp.WebAppAdmin;
+import org.savapage.server.webapp.WebAppJobTickets;
+import org.savapage.server.webapp.WebAppPos;
+import org.savapage.server.webapp.WebAppTypeEnum;
+import org.savapage.server.webapp.WebAppUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,7 +86,8 @@ import de.agilecoders.wicket.webjars.request.resource.WebjarsJavaScriptResourceR
  * application without deploying, run
  * {@link org.savapage.server.WebServer#main(String[])}.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
 public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
@@ -108,11 +112,6 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String MOUNT_PATH_WEBAPP_USER = "/user";
 
     /**
-     * URL parameter to pass user id.
-     */
-    public static final String URL_PARM_USER = "user";
-
-    /**
      * Used in this class to set mountPage().
      */
     public static final String MOUNT_PATH_WEBAPP_ADMIN = "/admin";
@@ -121,6 +120,11 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * The Point-of-Sale mount path.
      */
     public static final String MOUNT_PATH_WEBAPP_POS = "/pos";
+
+    /**
+     * The Job Tickets mount path.
+     */
+    public static final String MOUNT_PATH_WEBAPP_JOBTICKETS = "/jobtickets";
 
     /**
      * Used in this class to set mountPage().
@@ -144,10 +148,16 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String PATH_IMAGES_PAYMENT = PATH_IMAGES + "/payment";
 
     /**
-    *
-    */
-    public static final String PATH_IMAGES_EXT_SUPPLIER = PATH_IMAGES
-            + "/ext-supplier";
+     * .
+     */
+    public static final String PATH_IMAGES_EXT_SUPPLIER =
+            PATH_IMAGES + "/ext-supplier";
+
+    /**
+     * .
+     */
+    public static final String PATH_IMAGES_THIRDPARTY =
+            PATH_IMAGES + "/thirdparty";
 
     /**
      * Basename of the properties file for web customization.
@@ -251,8 +261,25 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             final ExternalSupplierEnum extSupplierEnum) {
 
         final StringBuilder url =
-                new StringBuilder().append(PATH_IMAGES_EXT_SUPPLIER)
-                        .append("/").append(extSupplierEnum.getImageFileName());
+                new StringBuilder().append(PATH_IMAGES_EXT_SUPPLIER).append("/")
+                        .append(extSupplierEnum.getImageFileName());
+
+        return url.toString();
+    }
+
+    /**
+     * Gets the relative image URL of an {@link ThirdPartyEnum}.
+     *
+     * @param extSupplierEnum
+     *            The {@link ThirdPartyEnum}.
+     * @return The relative URL as string.
+     */
+    public static String
+            getThirdPartyEnumImgUrl(final ThirdPartyEnum extSupplierEnum) {
+
+        final StringBuilder url =
+                new StringBuilder().append(PATH_IMAGES_THIRDPARTY).append("/")
+                        .append(extSupplierEnum.getImageFileName());
 
         return url.toString();
     }
@@ -285,17 +312,18 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * Adds authenticated entry in IP User Session cache. When a user is already
      * present on the IP address it is replaced by the user offered here.
      *
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @param sessionId
      *            The session ID as key.
      * @param ipAddr
      *            The IP address of the remote host.
      * @param user
      *            The authenticated user.
-     * @param isAdmin
-     *            {@code true} when user is an administrator.
      */
-    public synchronized void onAuthenticatedUser(final String sessionId,
-            final String ipAddr, final String user, final boolean isAdmin) {
+    public synchronized void onAuthenticatedUser(
+            final WebAppTypeEnum webAppType, final String sessionId,
+            final String ipAddr, final String user) {
 
         /*
          * Removing the old session on same IP address
@@ -307,8 +335,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              * ADD first-time authenticated user on IP address
              */
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("IP User Session [" + ipAddr + "] [" + user
-                        + "] [" + sessionId + "] added. Sessions ["
+                LOGGER.debug("IP User Session [" + ipAddr + "] [" + user + "] ["
+                        + sessionId + "] added. Sessions ["
                         + (theDictIpAddrUser.size() + 1) + "].");
             }
 
@@ -321,9 +349,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
             if (oldSession == null) {
 
-                LOGGER.error("addSessionIpUser: no session for "
-                        + "IP address [" + ipAddr + "] of old user [" + oldUser
-                        + "]");
+                LOGGER.error(
+                        "addSessionIpUser: no session for " + "IP address ["
+                                + ipAddr + "] of old user [" + oldUser + "]");
 
             } else {
 
@@ -352,16 +380,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
         /*
          *
          */
-        final String msgKey;
-
-        if (isAdmin) {
-            msgKey = "pub-admin-login-success";
-        } else {
-            msgKey = "pub-user-login-success";
-        }
-
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
-                localize(msgKey, user, ipAddr));
+                localize("pub-user-login-success", webAppType.getUiText(), user,
+                        ipAddr));
         /*
          *
          */
@@ -375,20 +396,18 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      *            Action string used for logging.
      * @return {@code true} if the cache is in-sync.
      */
-    private static synchronized boolean checkIpUserSessionCache(
-            final String action) {
+    private static synchronized boolean
+            checkIpUserSessionCache(final String action) {
 
-        boolean inSync =
-                theDictIpAddrUser.size() == theDictSessionIpAddr.size()
-                        && theDictSessionIpAddr.size() == theDictIpAddrSession
-                                .size();
+        boolean inSync = theDictIpAddrUser.size() == theDictSessionIpAddr.size()
+                && theDictSessionIpAddr.size() == theDictIpAddrSession.size();
 
         if (!inSync) {
             LOGGER.error(action + ": SessionIpUserCache is out-of-sync:"
                     + " IPaddr->User [" + theDictIpAddrUser.size() + "]"
-                    + " IPaddr->SessionId [" + theDictIpAddrSession.size()
-                    + "]" + " SessionId->IPaddr ["
-                    + theDictSessionIpAddr.size() + "]");
+                    + " IPaddr->SessionId [" + theDictIpAddrSession.size() + "]"
+                    + " SessionId->IPaddr [" + theDictSessionIpAddr.size()
+                    + "]");
         }
         return inSync;
     }
@@ -492,8 +511,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * @param namePath
      * @return
      */
-    public static JavaScriptReferenceHeaderItem getWebjarsJsRef(
-            final String namePath) {
+    public static JavaScriptReferenceHeaderItem
+            getWebjarsJsRef(final String namePath) {
         return JavaScriptHeaderItem
                 .forReference(new WebjarsJavaScriptResourceReference(namePath));
     }
@@ -505,8 +524,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      */
     public static CssReferenceHeaderItem
             getWebjarsCssRef(final String namePath) {
-        return CssHeaderItem.forReference(new WebjarsCssResourceReference(
-                namePath));
+        return CssHeaderItem
+                .forReference(new WebjarsCssResourceReference(namePath));
     }
 
     /**
@@ -544,10 +563,11 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              *
              * http://wicketinaction.com/2011/07/wicket-1-5-mounting-pages/
              */
-            mountPage(MOUNT_PATH_WEBAPP_ADMIN, WebAppAdminPage.class);
-            mountPage(MOUNT_PATH_WEBAPP_POS, WebAppAdminPosPage.class);
+            mountPage(MOUNT_PATH_WEBAPP_ADMIN, WebAppAdmin.class);
+            mountPage(MOUNT_PATH_WEBAPP_JOBTICKETS, WebAppJobTickets.class);
+            mountPage(MOUNT_PATH_WEBAPP_POS, WebAppPos.class);
+            mountPage(MOUNT_PATH_WEBAPP_USER, WebAppUser.class);
 
-            mountPage(MOUNT_PATH_WEBAPP_USER, WebAppUserPage.class);
             mountPage(MOUNT_PATH_API, JsonApiServer.class);
             mountPage(MOUNT_PATH_PRINTERS, IppPrintServer.class);
 
@@ -564,7 +584,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              * the parameters can be get with PageParameters.get(String) (e.g.
              * parameters.get("a") will return "1")
              *
-             * https://cwiki.apache.org/confluence/display/WICKET/Request+mapping
+             * https://cwiki.apache.org/confluence/display/WICKET/Request+
+             * mapping
              */
             mount(new MountedMapper(ImageUrl.MOUNT_PATH, ImageServer.class,
                     new UrlPathPageParametersEncoder()));
@@ -593,8 +614,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              * Web server.
              */
             final StringBuilder logMsg = new StringBuilder();
-            logMsg.append("Web Server started on port ").append(
-                    WebServer.getServerPort());
+            logMsg.append("Web Server started on port ")
+                    .append(WebServer.getServerPort());
             logMsg.append(" and ").append(WebServer.getServerPortSsl())
                     .append(" (SSL)");
 
@@ -603,11 +624,10 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              *
              */
-            final Long maxnetworkdelay =
-                    Long.parseLong(theServerProps.getProperty(
-                            "cometd.client.maxnetworkdelay.msec", String
-                                    .valueOf(AbstractEventService
-                                            .getMaxNetworkDelayMsecDefault())));
+            final Long maxnetworkdelay = Long.parseLong(theServerProps
+                    .getProperty("cometd.client.maxnetworkdelay.msec",
+                            String.valueOf(AbstractEventService
+                                    .getMaxNetworkDelayMsecDefault())));
 
             AbstractEventService.setMaxNetworkDelay(maxnetworkdelay);
 
@@ -619,9 +639,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              * Server plug-in manager.
              */
-            this.pluginManager =
-                    ServerPluginManager
-                            .create(ConfigManager.getServerExtHome());
+            this.pluginManager = ServerPluginManager
+                    .create(ConfigManager.getServerExtHome());
 
             this.pluginManager.start();
 
@@ -635,9 +654,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              * IP Print Server (RAW)
              */
-            final int iRawPrintPort =
-                    Integer.valueOf(theServerProps.getProperty(
-                            ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
+            final int iRawPrintPort = Integer.valueOf(theServerProps
+                    .getProperty(ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
                             ConfigManager.PRINTER_RAW_PORT_DEFAULT));
 
             this.rawPrintServer = new RawPrintServer(iRawPrintPort);
@@ -695,15 +713,16 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * </p>
      */
     private void applyWicketApplicationSettings() {
+        getApplicationSettings().setUploadProgressUpdatesEnabled(true);
     }
 
     /**
      * Replaces the built-in jQuery Core library with the one we need for JQuery
      * Mobile and other jQuery plugins.
      * <p>
-     * See <a
-     * href="http://wicketinaction.com/2012/07/wicket-6-resource-management/">
-     * Wicket 6 resource management</a>.
+     * See <a href=
+     * "http://wicketinaction.com/2012/07/wicket-6-resource-management/"> Wicket
+     * 6 resource management</a>.
      * </p>
      */
     private void replaceJQueryCore() {
@@ -713,7 +732,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
         addResourceReplacement(
                 (JavaScriptResourceReference) getJavaScriptLibrarySettings()
-                        .getJQueryReference(), replacement.getReference());
+                        .getJQueryReference(),
+                replacement.getReference());
     }
 
     /**
@@ -753,17 +773,21 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     @Override
     public Session newSession(final Request request, final Response response) {
 
-        final String remoteAddr =
-                ((ServletWebRequest) request).getContainerRequest()
-                        .getRemoteAddr();
+        final String remoteAddr = ((ServletWebRequest) request)
+                .getContainerRequest().getRemoteAddr();
 
         final String urlPath = request.getUrl().getPath();
 
-        final String msg =
-                "newSession: URL path [" + urlPath + "] IP [" + remoteAddr
-                        + "]";
+        final String debugMsg;
 
-        Session session = null;
+        if (LOGGER.isDebugEnabled()) {
+            debugMsg = String.format("newSession: URL path [%s] IP [%s]",
+                    urlPath, remoteAddr);
+        } else {
+            debugMsg = null;
+        }
+
+        final Session session;
 
         /*
          * Mind the "/" at the beginning of the MOUNT_PATH_PRINTERS constant.
@@ -773,12 +797,15 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              * IMPORTANT: do NOT bind() since we want print request sessions to
              * be temporary.
+             *
+             * Note that our own SpSession object is used. This is because the
+             * PPD download needs a SpSession.
              */
-            session = super.newSession(request, response);
+            session = new SpSession(request);
             session.invalidateNow();
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(msg + " [TEMP]");
+                LOGGER.debug(String.format("%s [TEMP]", debugMsg));
             }
 
         } else if (urlPath.startsWith(MOUNT_PATH_COMETD.substring(1))) {
@@ -798,7 +825,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             session = super.newSession(request, response);
 
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(msg + " [TEMP]");
+                LOGGER.trace(String.format("%s [TEMP]", debugMsg));
             }
 
         } else {
@@ -813,10 +840,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             session.bind();
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(msg + "] [" + session.getId() + "]. Sessions ["
-                        + theDictIpAddrUser.size() + "].");
+                LOGGER.debug(String.format("%s [%s]. Sessions [%d]", debugMsg,
+                        session.getId(), theDictIpAddrUser.size()));
             }
-
         }
         return session;
     }
@@ -834,8 +860,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("IP User Session [?.?.?.?] [" + sessionId
-                            + "] unbound. Sessions ["
-                            + theDictIpAddrUser.size() + "].");
+                            + "] unbound. Sessions [" + theDictIpAddrUser.size()
+                            + "].");
                 }
 
             } else {
@@ -855,12 +881,14 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                 } else {
 
                     if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("IP User Session [" + ipAddr + "] ["
-                                + user + "] [" + sessionId
-                                + "] removed. Sessions ["
+                        LOGGER.debug("IP User Session [" + ipAddr + "] [" + user
+                                + "] [" + sessionId + "] removed. Sessions ["
                                 + (theDictIpAddrUser.size()) + "].");
                     }
 
+                    /*
+                     * TODO: how to get the WebAppTypEnum?
+                     */
                     AdminPublisher.instance().publish(PubTopicEnum.USER,
                             PubLevelEnum.INFO,
                             localize("pub-user-logout", user, ipAddr));

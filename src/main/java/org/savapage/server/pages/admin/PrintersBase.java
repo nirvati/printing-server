@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,17 +23,19 @@ package org.savapage.server.pages.admin;
 
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class PrintersBase extends AbstractAdminPage {
+public final class PrintersBase extends AbstractAdminPage {
 
     /**
-     *
+     * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
 
@@ -46,7 +48,9 @@ public class PrintersBase extends AbstractAdminPage {
     /**
      *
      */
-    public PrintersBase() {
+    public PrintersBase(final PageParameters parameters) {
+
+        super(parameters);
 
         final Label labelWrk = new Label("button-cups", "CUPS");
         labelWrk.add(new AttributeModifier("href", PROXY_PRINT_SERVICE

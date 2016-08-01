@@ -25,11 +25,10 @@ import java.io.IOException;
 
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.IppQueueDao;
-import org.savapage.core.dao.helpers.ReservedIppQueueEnum;
+import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.jpa.IppQueue;
 import org.savapage.core.jpa.User;
-import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 
 /**
@@ -38,12 +37,6 @@ import org.savapage.core.services.ServiceContext;
  *
  */
 public final class ReqQueueGet extends ApiRequestMixin {
-
-    /**
-     * .
-     */
-    private static final QueueService QUEUE_SERVICE = ServiceContext
-            .getServiceFactory().getQueueService();
 
     /**
      *
@@ -58,6 +51,7 @@ public final class ReqQueueGet extends ApiRequestMixin {
             return id;
         }
 
+        @SuppressWarnings("unused")
         public void setId(Long id) {
             this.id = id;
         }
@@ -66,7 +60,7 @@ public final class ReqQueueGet extends ApiRequestMixin {
     /**
      * The response.
      */
-    private static class DtoRsp extends AbstractDto {
+    public static class DtoRsp extends AbstractDto {
 
         private Long id;
         private String urlpath;

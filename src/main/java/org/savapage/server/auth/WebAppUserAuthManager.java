@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,47 +23,55 @@ package org.savapage.server.auth;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+
+import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  * Singleton manager of WebApp User Authentications Tokens.
  * <p>
- * Separate cache dictionaries for User and Admin context are maintained.
+ * A separate cache dictionarie for each Web App context is maintained (User,
+ * Admin, POS, Jobticket).
  * </p>
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public final class WebAppUserAuthManager {
 
-    private static final int IDX_CONTEXT_USER = 0;
-    private static final int IDX_CONTEXT_ADMIN = 1;
+    /**
+     * Number of indexes
+     */
+    private static final int IDX_CONTEXT_COUNT = 4;
+
+    private static final int IDX_CONTEXT_USER = IDX_CONTEXT_COUNT - 4;
+    private static final int IDX_CONTEXT_ADMIN = IDX_CONTEXT_COUNT - 3;
+    private static final int IDX_CONTEXT_POS = IDX_CONTEXT_COUNT - 2;
+    private static final int IDX_CONTEXT_JOBTICKET = IDX_CONTEXT_COUNT - 1;
 
     /**
      * WebApp User/Admin Context Dictionary of {@link UserAuthToken} objects
      * with 'token' key.
      */
-    private final List<Map<String, UserAuthToken>> dictTokenAuthToken =
-            new ArrayList<Map<String, UserAuthToken>>(2);
+    private final ArrayList<Map<String, UserAuthToken>> dictTokenAuthToken =
+            new ArrayList<Map<String, UserAuthToken>>(IDX_CONTEXT_COUNT);
 
     /**
      * WebApp User Context Dictionary of {@link UserAuthToken} objects with
      * 'user' key.
      */
-    private final List<Map<String, UserAuthToken>> dictUserAuthToken =
-            new ArrayList<Map<String, UserAuthToken>>(2);
+    private final ArrayList<Map<String, UserAuthToken>> dictUserAuthToken =
+            new ArrayList<Map<String, UserAuthToken>>(IDX_CONTEXT_COUNT);
 
     /**
      *
      */
     private WebAppUserAuthManager() {
 
-        dictTokenAuthToken.add(new HashMap<String, UserAuthToken>());
-        dictTokenAuthToken.add(new HashMap<String, UserAuthToken>());
-
-        dictUserAuthToken.add(new HashMap<String, UserAuthToken>());
-        dictUserAuthToken.add(new HashMap<String, UserAuthToken>());
+        for (int i = 0; i < IDX_CONTEXT_COUNT; i++) {
+            dictTokenAuthToken.add(i, new HashMap<String, UserAuthToken>());
+            dictUserAuthToken.add(i, new HashMap<String, UserAuthToken>());
+        }
     }
 
     /**
@@ -77,7 +85,8 @@ public final class WebAppUserAuthManager {
      * </p>
      */
     private static class SingletonHolder {
-        public static final WebAppUserAuthManager INSTANCE = new WebAppUserAuthManager();
+        public static final WebAppUserAuthManager INSTANCE =
+                new WebAppUserAuthManager();
     }
 
     /**
@@ -94,11 +103,23 @@ public final class WebAppUserAuthManager {
      * @param isAdminContext
      * @return
      */
-    private int getDictIndex(final boolean isAdminContext) {
-        if (isAdminContext) {
+    private int getDictIndex(final WebAppTypeEnum webAppType) {
+
+        switch (webAppType) {
+        case ADMIN:
             return IDX_CONTEXT_ADMIN;
+        case JOBTICKETS:
+            return IDX_CONTEXT_JOBTICKET;
+        case POS:
+            return IDX_CONTEXT_POS;
+        case USER:
+            return IDX_CONTEXT_USER;
+        default:
+            throw new IllegalArgumentException(
+                    String.format("%s.%s is NOT supported.",
+                            WebAppTypeEnum.class.getSimpleName(),
+                            webAppType.toString()));
         }
-        return IDX_CONTEXT_USER;
     }
 
     /**
@@ -106,14 +127,16 @@ public final class WebAppUserAuthManager {
      *
      * @param token
      *            The token string.
-     * @param isAdminContext
-     *            {@code true} if the token is needed in a "admin-only" context,
-     *            i.e. an Admin WebApp session.
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @return {@code null} when token is NOT found.
      */
     public synchronized UserAuthToken getUserAuthToken(final String token,
-            final boolean isAdminContext) {
-        return dictTokenAuthToken.get(getDictIndex(isAdminContext)).get(token);
+            final WebAppTypeEnum webAppType) {
+        if (webAppType == WebAppTypeEnum.UNDEFINED) {
+            return null;
+        }
+        return dictTokenAuthToken.get(getDictIndex(webAppType)).get(token);
     }
 
     /**
@@ -121,14 +144,17 @@ public final class WebAppUserAuthManager {
      *
      * @param user
      *            The user id.
-     * @param isAdminContext
-     *            {@code true} if the token is needed in a "admin-only" context,
-     *            i.e. an Admin WebApp session.
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @return {@code null} when token is NOT found.
      */
     public synchronized UserAuthToken getAuthTokenOfUser(final String user,
-            final boolean isAdminContext) {
-        return dictUserAuthToken.get(getDictIndex(isAdminContext)).get(user);
+            final WebAppTypeEnum webAppType) {
+
+        if (webAppType == WebAppTypeEnum.UNDEFINED) {
+            return null;
+        }
+        return dictUserAuthToken.get(getDictIndex(webAppType)).get(user);
     }
 
     /**
@@ -137,15 +163,14 @@ public final class WebAppUserAuthManager {
      *
      * @param token
      *            The token to add.
-     * @param isAdminContext
-     *            {@code true} if the token is needed in a "admin-only" context,
-     *            i.e. an Admin WebApp session.
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @return the old token or {@code null} when no old token was replaced.
      */
     public synchronized UserAuthToken putUserAuthToken(
-            final UserAuthToken token, final boolean isAdminContext) {
+            final UserAuthToken token, final WebAppTypeEnum webAppType) {
 
-        final int i = getDictIndex(isAdminContext);
+        final int i = getDictIndex(webAppType);
 
         UserAuthToken oldToken = dictUserAuthToken.get(i).get(token.getUser());
 
@@ -165,15 +190,18 @@ public final class WebAppUserAuthManager {
      *
      * @param token
      *            The token.
-     * @param isAdminContext
-     *            {@code true} if the token is needed in a "admin-only" context,
-     *            i.e. an Admin WebApp session.
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
      * @return the removed token or {@code null} when not found.
      */
     public synchronized UserAuthToken removeUserAuthToken(final String token,
-            final boolean isAdminContext) {
+            final WebAppTypeEnum webAppType) {
 
-        final int i = getDictIndex(isAdminContext);
+        if (webAppType == WebAppTypeEnum.UNDEFINED) {
+            return null;
+        }
+
+        final int i = getDictIndex(webAppType);
 
         final UserAuthToken oldToken = dictTokenAuthToken.get(i).remove(token);
 

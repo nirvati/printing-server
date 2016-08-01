@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ import org.savapage.core.jpa.PrintOut;
 /**
  * TODO: move this class to savapage-common project.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public enum UserEventEnum {
@@ -37,9 +37,19 @@ public enum UserEventEnum {
     ACCOUNT("Account"),
 
     /**
-     * SafaPages are printed.
+     * Job Ticket message.
+     */
+    JOBTICKET("Job Ticket"),
+
+    /**
+     * SafePages are printed.
      */
     PRINT_IN("Print"),
+
+    /**
+     * SafePages are expired.
+     */
+    PRINT_IN_EXPIRED("Print-in Expired"),
 
     /**
      * {@link PrintOut} notification message.

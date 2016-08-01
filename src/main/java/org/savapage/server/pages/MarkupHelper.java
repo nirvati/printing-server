@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,6 +33,9 @@ import org.apache.wicket.Localizer;
 import org.apache.wicket.MarkupContainer;
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.markup.html.basic.Label;
+import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.ipp.IppJobStateEnum;
+import org.savapage.core.jpa.Account.AccountTypeEnum;
 
 /**
  * Helper methods for a {@link MarkupContainer}.
@@ -43,10 +46,13 @@ import org.apache.wicket.markup.html.basic.Label;
  * INVARIANT: CSS_* constants MUST match CSS classes in jquery.savapage.css
  * </p>
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public final class MarkupHelper {
+
+    public static final String ATTR_DATA_SAVAPAGE = "data-savapage";
+    public static final String ATTR_DATA_SAVAPAGE_TYPE = "data-savapage-type";
 
     public static final String CSS_AMOUNT_MIN = "sp-amount-min";
 
@@ -64,6 +70,11 @@ public final class MarkupHelper {
     public static final String CSS_PRINT_IN_QUEUE = "sp-print-in-queue";
     public static final String CSS_PRINT_OUT_PRINTER = "sp-print-out-printer";
     public static final String CSS_PRINT_OUT_PDF = "sp-print-out-pdf";
+
+    /**
+     * HTML entity for ⦦ : OBLIQUE ANGLE OPENING UP).
+     */
+    public static final String HTML_ENT_OBL_ANGLE_OPENING_UP = "&#x29A6;";
 
     /**
      *
@@ -85,9 +96,8 @@ public final class MarkupHelper {
         this.container = container;
         this.fmNumber =
                 NumberFormat.getInstance(container.getSession().getLocale());
-        this.dfLongDate =
-                DateFormat.getDateInstance(DateFormat.LONG, container
-                        .getSession().getLocale());
+        this.dfLongDate = DateFormat.getDateInstance(DateFormat.LONG,
+                container.getSession().getLocale());
     }
 
     /**
@@ -120,17 +130,6 @@ public final class MarkupHelper {
     public String localized(final String key, final Object... objects) {
         return MessageFormat.format(getLocalizer().getString(key, container),
                 objects);
-    }
-
-    /**
-     * Gives the localized string for a key.
-     *
-     * @param key
-     *            The key from the XML resource file
-     * @return The localized string.
-     */
-    private String localized(final String key) {
-        return getLocalizer().getString(key, container);
     }
 
     /**
@@ -189,8 +188,8 @@ public final class MarkupHelper {
      *            {@code true} if the checkbox must be checked.
      * @return The added checkbox.
      */
-    public Label labelledCheckbox(final String wicketId,
-            final String attrIdFor, final boolean checked) {
+    public Label labelledCheckbox(final String wicketId, final String attrIdFor,
+            final boolean checked) {
         tagLabel(wicketId + "-label", wicketId, attrIdFor);
         return addCheckbox(wicketId, attrIdFor, checked);
     }
@@ -293,7 +292,8 @@ public final class MarkupHelper {
      * @return The added {@link Label}.
      */
     public Label tagRadio(final String wicketId, final String attrName,
-            final String attrId, final String attrValue, final boolean checked) {
+            final String attrId, final String attrValue,
+            final boolean checked) {
 
         final Label labelWrk = new Label(wicketId);
 
@@ -329,9 +329,8 @@ public final class MarkupHelper {
      */
     public Label tagLabel(final String wicketId, final String localizerKey,
             final String attrFor) {
-        final Label labelWrk =
-                new Label(wicketId, getLocalizer().getString(localizerKey,
-                        container));
+        final Label labelWrk = new Label(wicketId,
+                getLocalizer().getString(localizerKey, container));
         labelWrk.add(new AttributeModifier("for", attrFor));
         add(labelWrk);
         return labelWrk;
@@ -381,7 +380,7 @@ public final class MarkupHelper {
      */
     public Label addModifyLabelAttr(final String wicketId,
             final String attribute, final String value) {
-        final Label labelWrk = new Label(wicketId);
+        final Label labelWrk = new Label(wicketId, "");
         modifyLabelAttr(labelWrk, attribute, value);
         add(labelWrk);
         return labelWrk;
@@ -438,7 +437,7 @@ public final class MarkupHelper {
      */
     public Label addAppendLabelAttr(final String wicketId,
             final String attribute, final String value) {
-        final Label labelWrk = new Label(wicketId);
+        final Label labelWrk = new Label(wicketId, "");
         add(appendLabelAttr(labelWrk, attribute, value));
         return labelWrk;
     }
@@ -456,8 +455,8 @@ public final class MarkupHelper {
      */
     public static Label appendLabelAttr(final Label label,
             final String attribute, final String value) {
-        label.add(new AttributeAppender(attribute, String.format(" %s",
-                value.trim())));
+        label.add(new AttributeAppender(attribute,
+                String.format(" %s", value.trim())));
         return label;
     }
 
@@ -535,4 +534,86 @@ public final class MarkupHelper {
         };
     }
 
+    /**
+     * Gets CSS_TXT_* class of enum value.
+     *
+     * @param status
+     *            The {@link ExternalSupplierStatusEnum}.
+     * @return the CSS_TXT_* class of the enum value.
+     */
+    public static String
+            getCssTxtClass(final ExternalSupplierStatusEnum status) {
+
+        switch (status) {
+
+        case COMPLETED:
+            return CSS_TXT_VALID;
+
+        case PENDING:
+        case PENDING_COMPLETE:
+        case PENDING_EXT:
+            return CSS_TXT_WARN;
+
+        case CANCELLED:
+        case PENDING_CANCEL:
+        case EXPIRED:
+        case ERROR:
+        default:
+            return CSS_TXT_ERROR;
+        }
+
+    }
+
+    /**
+     * Gets CSS_TXT_* class of enum value.
+     *
+     * @param state
+     *            The {@link IppJobStateEnum}.
+     * @return the CSS_TXT_* class of the enum value.
+     */
+    public static String getCssTxtClass(final IppJobStateEnum state) {
+        switch (state) {
+        case IPP_JOB_ABORTED:
+        case IPP_JOB_STOPPED:
+        case IPP_JOB_CANCELED:
+            return CSS_TXT_ERROR;
+
+        case IPP_JOB_COMPLETED:
+            return CSS_TXT_VALID;
+
+        case IPP_JOB_HELD:
+        case IPP_JOB_PENDING:
+        case IPP_JOB_PROCESSING:
+            return CSS_TXT_WARN;
+
+        default:
+            return "";
+        }
+    }
+
+    /**
+     * Gets the URL image path of {@link AccountTypeEnum}.
+     *
+     * @param accountType
+     *            The enum value.
+     * @return The {@code /} prefixed URL path.
+     */
+    public static String getImgUrlPath(final AccountTypeEnum accountType) {
+
+        final String imageSrc;
+
+        switch (accountType) {
+        case GROUP:
+            imageSrc = "group.png";
+            break;
+        case SHARED:
+            imageSrc = "tag_green.png";
+            break;
+        default:
+            imageSrc = "user_gray.png";
+            break;
+        }
+
+        return String.format("/%s/%s", "famfamfam-silk", imageSrc);
+    }
 }

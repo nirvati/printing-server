@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,8 +22,6 @@
 package org.savapage.server.pages.admin;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -35,49 +33,42 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
-import org.savapage.core.SpException;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.UserDao;
+import org.savapage.core.dao.UserGroupDao;
+import org.savapage.core.dao.enums.ReservedUserGroupEnum;
 import org.savapage.core.dao.helpers.UserPagerReq;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
-import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.server.SpSession;
 import org.savapage.server.pages.MarkupHelper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class UsersPage extends AbstractAdminListPage {
+public final class UsersPage extends AbstractAdminListPage {
 
     /**
-     *
+     * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
 
     /**
-     *
-     */
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(UsersPage.class);
-
-    /**
     *
     */
-    private static final AccountingService ACCOUNTING_SERVICE = ServiceContext
-            .getServiceFactory().getAccountingService();
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
     /**
      *
      */
-    private static final UserService USER_SERVICE = ServiceContext
-            .getServiceFactory().getUserService();
+    private static final UserService USER_SERVICE =
+            ServiceContext.getServiceFactory().getUserService();
 
     /**
      *
@@ -90,11 +81,6 @@ public class UsersPage extends AbstractAdminListPage {
     private final String currencySymbol;
 
     /**
-     * Number of currency decimals to display.
-     */
-    private final int currencyDecimals;
-
-    /**
      * @return {@code false} to give Admin a chance to inspect the users.
      */
     @Override
@@ -105,12 +91,13 @@ public class UsersPage extends AbstractAdminListPage {
     /**
      *
      */
-    public UsersPage() {
+    public UsersPage(final PageParameters parameters) {
+
+        super(parameters);
 
         // this.openServiceContext();
 
         this.currencySymbol = SpSession.getAppCurrencySymbol();
-        this.currencyDecimals = ConfigManager.getUserBalanceDecimals();
 
         /*
          * We need a transaction because of the lazy creation of UserAccount
@@ -133,9 +120,27 @@ public class UsersPage extends AbstractAdminListPage {
 
         final UserDao.ListFilter filter = new UserDao.ListFilter();
 
+        //
+        final Long userGroupId = req.getSelect().getUserGroupId();
+
+        if (userGroupId != null) {
+
+            final UserGroupDao userGroupDao =
+                    ServiceContext.getDaoContext().getUserGroupDao();
+
+            final ReservedUserGroupEnum reservedGroup =
+                    userGroupDao.findReservedGroup(userGroupId);
+
+            if (reservedGroup == null) {
+                filter.setUserGroupId(req.getSelect().getUserGroupId());
+            } else {
+                filter.setInternal(reservedGroup.isInternalExternal());
+            }
+        }
+
+        //
         filter.setContainingIdText(req.getSelect().getIdContainingText());
         filter.setContainingEmailText(req.getSelect().getEmailContainingText());
-        filter.setInternal(req.getSelect().getInternal());
         filter.setAdmin(req.getSelect().getAdmin());
         filter.setPerson(req.getSelect().getPerson());
         filter.setDisabled(req.getSelect().getDisabled());
@@ -156,7 +161,6 @@ public class UsersPage extends AbstractAdminListPage {
                         req.getMaxResults(), sortField, sortAscending);
 
         final String myCurrencySymbol = this.currencySymbol;
-        final int myCurrencyDecimals = this.currencyDecimals;
 
         final Locale locale = getSession().getLocale();
 
@@ -164,21 +168,6 @@ public class UsersPage extends AbstractAdminListPage {
         add(new PropertyListView<User>("users-view", entryList) {
 
             private static final long serialVersionUID = 1L;
-
-            /**
-             * Decodes an encoded decimal to a localized string.
-             *
-             * @param value
-             * @return
-             */
-            private final String localizedDecimal(final BigDecimal value) {
-                try {
-                    return BigDecimalUtil.localize(value, myCurrencyDecimals,
-                            locale, true);
-                } catch (ParseException e) {
-                    throw new SpException(e);
-                }
-            }
 
             /**
              *
@@ -206,9 +195,8 @@ public class UsersPage extends AbstractAdminListPage {
             @Override
             protected void populateItem(final ListItem<User> item) {
 
-                /*
-                 *
-                 */
+                final MarkupHelper helper = new MarkupHelper(item);
+
                 final Map<String, String> mapVisible = new HashMap<>();
                 mapVisible.put("balance-currency", null);
 
@@ -240,8 +228,8 @@ public class UsersPage extends AbstractAdminListPage {
                  *
                  */
                 item.add(new Label("fullName"));
-                item.add(new Label("email", userService
-                        .getPrimaryEmailAddress(user)));
+                item.add(new Label("email",
+                        userService.getPrimaryEmailAddress(user)));
 
                 /*
                  * Signal
@@ -284,19 +272,20 @@ public class UsersPage extends AbstractAdminListPage {
                 /*
                  * Period + Totals
                  */
-                String period = ""; // localized("period") + ": ";
-                String totals = "";
+                final StringBuilder period = new StringBuilder();
+                final StringBuilder totals = new StringBuilder();
 
                 if (user.getResetDate() == null) {
-                    period += localizedMediumDate(user.getCreatedDate());
+                    period.append(localizedMediumDate(user.getCreatedDate()));
                 } else {
-                    period += localizedMediumDate(user.getResetDate());
+                    period.append(localizedMediumDate(user.getResetDate()));
                 }
 
-                period += " ~ ";
+                period.append(" ~ ");
 
                 if (user.getLastUserActivity() != null) {
-                    period += localizedMediumDate(user.getLastUserActivity());
+                    period.append(
+                            localizedMediumDate(user.getLastUserActivity()));
 
                     //
                     String key = null;
@@ -304,26 +293,24 @@ public class UsersPage extends AbstractAdminListPage {
 
                     //
                     total = user.getNumberOfPrintInJobs();
-                    totals += localizedNumber(total);
+                    totals.append(helper.localizedNumber(total));
                     key = (total == 1) ? "job" : "jobs";
-                    totals += " " + localized(key);
+                    totals.append(" ").append(localized(key));
 
                     //
                     total = user.getNumberOfPrintInPages();
-                    totals += ", " + localizedNumber(total);
+                    totals.append(", ").append(helper.localizedNumber(total));
                     key = (total == 1) ? "page" : "pages";
-                    totals += " " + localized(key);
+                    totals.append(" ").append(localized(key));
 
                     //
-                    totals +=
-                            ", "
-                                    + NumberUtil.humanReadableByteCount(
-                                            user.getNumberOfPrintInBytes(),
-                                            true);
+                    totals.append(", ")
+                            .append(NumberUtil.humanReadableByteCount(
+                                    user.getNumberOfPrintInBytes(), true));
                 }
 
-                item.add(new Label("period", period));
-                item.add(new Label("totals", totals));
+                item.add(new Label("period", period.toString()));
+                item.add(new Label("totals", totals.toString()));
 
                 /*
                  *
@@ -331,15 +318,13 @@ public class UsersPage extends AbstractAdminListPage {
                 String homeSize = "-";
                 if (user.getPerson()) {
                     try {
-                        final long size =
-                                ConfigManager.getUserHomeDirSize(user
-                                        .getUserId());
+                        final long size = ConfigManager
+                                .getUserHomeDirSize(user.getUserId());
                         if (size > 0) {
                             // homeSize =
                             // FileUtils.byteCountToDisplaySize(size);
-                            homeSize =
-                                    NumberUtil.humanReadableByteCount(size,
-                                            true);
+                            homeSize = NumberUtil.humanReadableByteCount(size,
+                                    true);
                         }
                     } catch (IOException e) {
                         homeSize = "-";
@@ -354,42 +339,39 @@ public class UsersPage extends AbstractAdminListPage {
                  */
                 final boolean visible = !user.getDeleted();
 
-                labelWrk =
-                        new Label("button-edit", getLocalizer().getString(
-                                "button-edit", this)) {
+                labelWrk = new Label("button-edit",
+                        getLocalizer().getString("button-edit", this)) {
 
-                            private static final long serialVersionUID = 1L;
+                    private static final long serialVersionUID = 1L;
 
-                            @Override
-                            public boolean isVisible() {
-                                return visible;
-                            }
+                    @Override
+                    public boolean isVisible() {
+                        return visible;
+                    }
 
-                        };
+                };
 
-                labelWrk.add(new AttributeModifier("data-savapage", user
-                        .getUserId()));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, user.getUserId()));
 
                 item.add(labelWrk);
 
                 /*
                  *
                  */
-                labelWrk =
-                        new Label("button-log", getLocalizer().getString(
-                                "button-log", this));
-                labelWrk.add(new AttributeModifier("data-savapage", user
-                        .getId()));
+                labelWrk = new Label("button-log",
+                        getLocalizer().getString("button-log", this));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, user.getId()));
                 item.add(labelWrk);
 
                 /*
                  *
                  */
-                labelWrk =
-                        new Label("button-transaction", getLocalizer()
-                                .getString("button-transaction", this));
-                labelWrk.add(new AttributeModifier("data-savapage", user
-                        .getId()));
+                labelWrk = new Label("button-transaction",
+                        getLocalizer().getString("button-transaction", this));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, user.getId()));
                 item.add(labelWrk);
 
                 /*
@@ -406,5 +388,4 @@ public class UsersPage extends AbstractAdminListPage {
         createNavBarResponse(req, userCount, MAX_PAGES_IN_NAVBAR,
                 "sp-users-page", new String[] { "nav-bar-1", "nav-bar-2" });
     }
-
 }

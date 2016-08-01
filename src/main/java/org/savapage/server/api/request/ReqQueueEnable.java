@@ -30,7 +30,6 @@ import org.savapage.core.dao.IppQueueDao;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.jpa.IppQueue;
 import org.savapage.core.jpa.User;
-import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.AppLogHelper;
 
@@ -40,12 +39,6 @@ import org.savapage.core.util.AppLogHelper;
  *
  */
 public final class ReqQueueEnable extends ApiRequestMixin {
-
-    /**
-    *
-    */
-    private static final QueueService QUEUE_SERVICE = ServiceContext
-            .getServiceFactory().getQueueService();
 
     /**
      *
@@ -61,6 +54,7 @@ public final class ReqQueueEnable extends ApiRequestMixin {
             return urlPath;
         }
 
+        @SuppressWarnings("unused")
         public void setUrlPath(String urlPath) {
             this.urlPath = urlPath;
         }
@@ -69,6 +63,7 @@ public final class ReqQueueEnable extends ApiRequestMixin {
             return enabled;
         }
 
+        @SuppressWarnings("unused")
         public void setEnabled(Boolean enabled) {
             this.enabled = enabled;
         }

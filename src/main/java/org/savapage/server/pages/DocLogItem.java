@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -31,14 +31,17 @@ import javax.persistence.Query;
 
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.SpException;
+import org.savapage.core.config.ConfigManager;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.PrintOutDao;
+import org.savapage.core.dao.enums.DaoEnumHelper;
+import org.savapage.core.dao.enums.ExternalSupplierEnum;
+import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
+import org.savapage.core.dao.enums.PrintModeEnum;
+import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
-import org.savapage.core.dao.helpers.DocLogProtocolEnum;
-import org.savapage.core.dao.helpers.PrintInDeniedReasonEnum;
-import org.savapage.core.dao.helpers.PrintModeEnum;
-import org.savapage.core.dao.helpers.ReservedIppQueueEnum;
 import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.DocIn;
@@ -55,10 +58,13 @@ import org.savapage.server.WebApp;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class DocLogItem {
+public final class DocLogItem {
+
+    private ExternalSupplierEnum extSupplier;
+    private ExternalSupplierStatusEnum extSupplierStatus;
 
     private String userId;
     private String userName;
@@ -106,6 +112,23 @@ public class DocLogItem {
     private Boolean ownerPw;
 
     private List<AccountTrx> transactions;
+
+    public ExternalSupplierEnum getExtSupplier() {
+        return extSupplier;
+    }
+
+    public void setExtSupplier(ExternalSupplierEnum extSupplier) {
+        this.extSupplier = extSupplier;
+    }
+
+    public ExternalSupplierStatusEnum getExtSupplierStatus() {
+        return extSupplierStatus;
+    }
+
+    public void
+            setExtSupplierStatus(ExternalSupplierStatusEnum extSupplierStatus) {
+        this.extSupplierStatus = extSupplierStatus;
+    }
 
     public List<AccountTrx> getTransactions() {
         return transactions;
@@ -205,7 +228,7 @@ public class DocLogItem {
 
             final StringBuilder jpql = new StringBuilder();
 
-            jpql.append(getSelectCommon(count));
+            jpql.append(getSelectCommon(count, req));
 
             //
             final String join = getExtraJoin();
@@ -245,16 +268,17 @@ public class DocLogItem {
 
             final String jpql = getSelectString(em, true, userId, req);
 
-            Query query = em.createQuery(jpql);
+            final Query query = em.createQuery(jpql);
 
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
             final String titleText = req.getSelect().getDocName();
+            final Long accountId = req.getSelect().getAccountId();
 
-            setParmsCommon(query, userId, dayFrom, dayTo, titleText);
+            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText);
             setExtraParms(query, req);
 
-            Number countResult = (Number) query.getSingleResult();
+            final Number countResult = (Number) query.getSingleResult();
             return countResult.longValue();
         }
 
@@ -263,8 +287,8 @@ public class DocLogItem {
          * @param orderBy
          * @return
          */
-        protected abstract String getOrderByField(
-                final DocLogDao.FieldEnum orderBy);
+        protected abstract String
+                getOrderByField(final DocLogDao.FieldEnum orderBy);
 
         /**
          *
@@ -320,8 +344,9 @@ public class DocLogItem {
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
             final String titleText = req.getSelect().getDocName();
+            final Long accountId = req.getSelect().getAccountId();
 
-            setParmsCommon(query, userId, dayFrom, dayTo, titleText);
+            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText);
             setExtraParms(query, req);
 
             Integer startPosition = req.calcStartPosition();
@@ -342,6 +367,10 @@ public class DocLogItem {
             for (final DocLog docLog : ((List<DocLog>) query.getResultList())) {
 
                 DocLogItem log = new DocLogItem();
+
+                log.setExtSupplier(DaoEnumHelper.getExtSupplier(docLog));
+                log.setExtSupplierStatus(
+                        DaoEnumHelper.getExtSupplierStatus(docLog));
 
                 log.setUserId(docLog.getUser().getUserId());
                 log.setUserName(docLog.getUser().getFullName());
@@ -364,13 +393,15 @@ public class DocLogItem {
                     log.setTransactions(docLog.getTransactions());
                 }
 
-                if (!log.getTransactions().isEmpty()) {
-                    log.setCurrencyCode(log.getTransactions().get(0)
-                            .getCurrencyCode());
+                if (log.getTransactions().isEmpty()) {
+                    log.setCurrencyCode(ConfigManager.getAppCurrencyCode());
+                } else {
+                    log.setCurrencyCode(
+                            log.getTransactions().get(0).getCurrencyCode());
                 }
 
-                log.setHumanReadableByteCount(NumberUtil
-                        .humanReadableByteCount(docLog.getNumberOfBytes(), true));
+                log.setHumanReadableByteCount(NumberUtil.humanReadableByteCount(
+                        docLog.getNumberOfBytes(), true));
 
                 final DocIn docIn = docLog.getDocIn();
                 final DocOut docOut = docLog.getDocOut();
@@ -385,13 +416,9 @@ public class DocLogItem {
 
                     if (printIn != null) {
 
-                        final DocLogProtocolEnum protocol =
-                                DocLogProtocolEnum.asEnum(docLog
-                                        .getDeliveryProtocol());
-
                         ReservedIppQueueEnum reservedQueue =
-                                queueService.getReservedQueue(printIn
-                                        .getQueue().getUrlPath());
+                                queueService.getReservedQueue(
+                                        printIn.getQueue().getUrlPath());
 
                         if (reservedQueue == null) {
                             reservedQueue = ReservedIppQueueEnum.IPP_PRINT;
@@ -400,9 +427,9 @@ public class DocLogItem {
                         if (reservedQueue == ReservedIppQueueEnum.IPP_PRINT) {
 
                             log.setHeader(
-                            // reservedQueue.getUiText() + " " +
-                            WebApp.MOUNT_PATH_PRINTERS + "/"
-                                    + printIn.getQueue().getUrlPath());
+                                    // reservedQueue.getUiText() + " " +
+                                    WebApp.MOUNT_PATH_PRINTERS + "/"
+                                            + printIn.getQueue().getUrlPath());
 
                         } else {
                             log.setHeader(reservedQueue.getUiText());
@@ -448,13 +475,13 @@ public class DocLogItem {
                         log.setTotalSheets(printOut.getNumberOfSheets());
                         log.setCopies(printOut.getNumberOfCopies());
 
-                        log.setPrintMode(PrintModeEnum.valueOf(printOut
-                                .getPrintMode()));
+                        log.setPrintMode(
+                                PrintModeEnum.valueOf(printOut.getPrintMode()));
 
                         if (printOut.getCupsCompletedTime() != null) {
-                            log.setCompletedDate(new Date(printOut
-                                    .getCupsCompletedTime()
-                                    * DateUtil.DURATION_MSEC_SECOND));
+                            log.setCompletedDate(
+                                    new Date(printOut.getCupsCompletedTime()
+                                            * DateUtil.DURATION_MSEC_SECOND));
                         }
 
                     } else if (pdfOut != null) {
@@ -466,10 +493,10 @@ public class DocLogItem {
                         log.setSubject(pdfOut.getSubject());
                         log.setKeywords(pdfOut.getKeywords());
                         log.setEncrypted(pdfOut.getEncrypted());
-                        log.setOwnerPw(StringUtils.isNotBlank(pdfOut
-                                .getPasswordOwner()));
-                        log.setUserPw(StringUtils.isNotBlank(pdfOut
-                                .getPasswordUser()));
+                        log.setOwnerPw(StringUtils
+                                .isNotBlank(pdfOut.getPasswordOwner()));
+                        log.setUserPw(StringUtils
+                                .isNotBlank(pdfOut.getPasswordUser()));
                     }
                 }
 
@@ -482,7 +509,8 @@ public class DocLogItem {
         /**
          *
          */
-        protected final String getSelectCommon(final boolean count) {
+        protected final String getSelectCommon(final boolean count,
+                final DocLogPagerReq req) {
 
             final StringBuilder jpql = new StringBuilder();
 
@@ -494,7 +522,12 @@ public class DocLogItem {
                 jpql.append("D");
             }
 
-            jpql.append(" FROM DocLog D JOIN D.user U");
+            if (req.getSelect().getAccountId() != null) {
+                jpql.append(" FROM AccountTrx TRX JOIN TRX.docLog D");
+
+            } else {
+                jpql.append(" FROM DocLog D JOIN D.user U");
+            }
 
             return jpql.toString();
         }
@@ -515,6 +548,14 @@ public class DocLogItem {
             int nWhere = 0;
 
             final StringBuilder where = new StringBuilder();
+
+            if (req.getSelect().getAccountId() != null) {
+                if (nWhere > 0) {
+                    where.append(" AND ");
+                }
+                nWhere++;
+                where.append("TRX.id = :accountId");
+            }
 
             if (userId != null) {
                 if (nWhere > 0) {
@@ -559,16 +600,20 @@ public class DocLogItem {
          *
          * @param query
          * @param userId
+         * @param accountId
          * @param dayFrom
          * @param dayTo
          * @param titleText
          */
         protected final void setParmsCommon(final Query query,
-                final Long userId, final Date dayFrom, final Date dayTo,
-                final String titleText) {
+                final Long userId, final Long accountId, final Date dayFrom,
+                final Date dayTo, final String titleText) {
 
             if (userId != null) {
                 query.setParameter("userId", userId);
+            }
+            if (accountId != null) {
+                query.setParameter("accountId", accountId);
             }
             if (dayFrom != null) {
                 query.setParameter("dayFrom", dayFrom);
@@ -600,8 +645,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void
-                setExtraParms(final Query query, final DocLogPagerReq req) {
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
             // no code intended
         }
 
@@ -632,8 +677,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void
-                setExtraParms(final Query query, final DocLogPagerReq req) {
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
             Long id = req.getSelect().getQueueId();
             if (id != null && id > 0) {
                 query.setParameter("queue_id", id);
@@ -703,8 +748,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void
-                setExtraParms(final Query query, final DocLogPagerReq req) {
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
 
             final String selSignature = req.getSelect().getSignature();
             final String selDestination = req.getSelect().getDestination();
@@ -810,8 +855,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void
-                setExtraParms(final Query query, final DocLogPagerReq req) {
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
 
             super.setExtraParms(query, req);
 
@@ -892,15 +937,25 @@ public class DocLogItem {
                 where.append("P.duplex = :duplex");
             }
 
+            //
             if (selState == DocLogDao.JobState.ACTIVE) {
+
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("P.cupsJobState <= ").append(
-                        IppJobStateEnum.IPP_JOB_STOPPED.asInt());
+                where.append("(P.cupsJobState <= ")
+                        .append(IppJobStateEnum.IPP_JOB_STOPPED.asInt());
+
+                where.append(" OR D.externalStatus IN(").append("\'")
+                        .append(ExternalSupplierStatusEnum.PENDING.toString())
+                        .append("\', \'")
+                        .append(ExternalSupplierStatusEnum.PENDING_EXT
+                                .toString())
+                        .append("\'").append("))");
 
             } else if (selState == DocLogDao.JobState.UNFINISHED) {
+
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
@@ -908,18 +963,37 @@ public class DocLogItem {
                 where.append("(P.cupsJobState = ")
                         .append(IppJobStateEnum.IPP_JOB_CANCELED.asInt())
                         .append(" OR P.cupsJobState = ")
-                        .append(IppJobStateEnum.IPP_JOB_ABORTED.asInt())
-                        .append(")");
+                        .append(IppJobStateEnum.IPP_JOB_ABORTED.asInt());
+
+                where.append(" OR D.externalStatus IN(").append("\'")
+                        .append(ExternalSupplierStatusEnum.CANCELLED.toString())
+                        .append("\', \'")
+                        .append(ExternalSupplierStatusEnum.PENDING_CANCEL
+                                .toString())
+                        .append("\', \'")
+                        .append(ExternalSupplierStatusEnum.EXPIRED.toString())
+                        .append("\', \'")
+                        .append(ExternalSupplierStatusEnum.ERROR.toString())
+                        .append("\'))");
 
             } else if (selState == DocLogDao.JobState.COMPLETED) {
+
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("P.cupsJobState = ").append(
-                        IppJobStateEnum.IPP_JOB_COMPLETED.asInt());
-            }
+                where.append("P.cupsJobState = ")
+                        .append(IppJobStateEnum.IPP_JOB_COMPLETED.asInt());
 
+                where.append(" AND (D.externalStatus IS NULL "
+                        + "OR D.externalStatus IN(").append("\'")
+                        .append(ExternalSupplierStatusEnum.COMPLETED.toString())
+                        .append("\', \'")
+                        .append(ExternalSupplierStatusEnum.PENDING_COMPLETE
+                                .toString())
+                        .append("\'))");
+            }
+            //
             if (nWhere == 0) {
                 return null;
             }
@@ -932,8 +1006,8 @@ public class DocLogItem {
         }
 
         @Override
-        protected void
-                setExtraParms(final Query query, final DocLogPagerReq req) {
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
 
             super.setExtraParms(query, req);
 
@@ -989,8 +1063,8 @@ public class DocLogItem {
         case PRINT:
             return new QPrint();
         default:
-            throw new SpException(String.format("Unknown doctype [%s]",
-                    docType.toString()));
+            throw new SpException(
+                    String.format("Unknown doctype [%s]", docType.toString()));
         }
     }
 

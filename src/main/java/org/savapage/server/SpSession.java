@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,18 +30,25 @@ import org.apache.wicket.Session;
 import org.apache.wicket.protocol.http.WebSession;
 import org.apache.wicket.request.Request;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.crypto.OneTimeAuthToken;
 import org.savapage.core.jpa.User;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  * Customized {@link WebSession}.
+ *
  * <p>
- * Note that methods are synchronized, because sessions aren’t thread-safe.
+ * <i>A session instance is shared by all Web Apps across multiple tabs in a
+ * single browser</i>.
+ * </p>
+ * <p>
+ * NOTE: methods are synchronized, because sessions aren’t thread-safe.
  * </p>
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class SpSession extends WebSession {
+public final class SpSession extends WebSession {
 
     /**
      *
@@ -57,6 +64,11 @@ public class SpSession extends WebSession {
     *
     */
     private User user;
+
+    /**
+     * {@code true} when authenticated by {@link OneTimeAuthToken}.
+     */
+    private boolean oneTimeAuthToken = false;
 
     /**
      *
@@ -76,8 +88,9 @@ public class SpSession extends WebSession {
     /**
      *
      * @param request
+     *            The {@link Request}.
      */
-    public SpSession(Request request) {
+    public SpSession(final Request request) {
         super(request);
         this.creationTime = System.currentTimeMillis();
         this.lastValidateTime = creationTime;
@@ -90,22 +103,31 @@ public class SpSession extends WebSession {
      * session instance without casting (you can do SpSession s =
      * SpSession.get() instead of SpSession s = (SpSession)SpSession.get())
      *
-     * @return
+     * @return The session.
      */
     public static SpSession get() {
         return (SpSession) Session.get();
     }
 
+    /**
+     * Increments the authenticated Web App counter.
+     */
     public void incrementAuthWebApp() {
         this.authWebAppCount++;
     }
 
+    /**
+     * Decrements the authenticated Web App counter.
+     */
     public void decrementAuthWebApp() {
         if (this.authWebAppCount > 0) {
             this.authWebAppCount--;
         }
     }
 
+    /**
+     * @return The authenticated Web App counter.
+     */
     public int getAuthWebAppCount() {
         return this.authWebAppCount;
     }
@@ -127,16 +149,15 @@ public class SpSession extends WebSession {
      * @return The decimal separator.
      */
     public static String getDecimalSeparator() {
-        DecimalFormat format =
-                (DecimalFormat) NumberFormat.getNumberInstance(get()
-                        .getLocale());
+        DecimalFormat format = (DecimalFormat) NumberFormat
+                .getNumberInstance(get().getLocale());
         DecimalFormatSymbols symbols = format.getDecimalFormatSymbols();
         return String.valueOf(symbols.getDecimalSeparator());
     }
 
     /**
      *
-     * @return
+     * @return The user.
      */
     public synchronized User getUser() {
         return user;
@@ -144,7 +165,7 @@ public class SpSession extends WebSession {
 
     /**
      *
-     * @return
+     * @return {@code true} if authenticated.
      */
     public synchronized boolean isAuthenticated() {
         return user != null;
@@ -152,10 +173,19 @@ public class SpSession extends WebSession {
 
     /**
      *
-     * @return
+     * @return {@code true} if user is an administrator.
      */
     public synchronized boolean isAdmin() {
         return user != null && user.getAdmin();
+    }
+
+    /**
+     *
+     * @return {@code true} if {@link User} was authenticated by
+     *         {@link OneTimeAuthToken}.
+     */
+    public synchronized boolean isOneTimeAuthToken() {
+        return this.user != null && this.oneTimeAuthToken;
     }
 
     /**
@@ -179,8 +209,12 @@ public class SpSession extends WebSession {
      * the authenticated webapp counter.
      */
     public synchronized void logout() {
+
         setUser(null);
+        setWebAppType(WebAppTypeEnum.UNDEFINED);
+
         decrementAuthWebApp();
+
         this.creationTime = System.currentTimeMillis();
         this.lastValidateTime = this.creationTime;
     }
@@ -188,16 +222,31 @@ public class SpSession extends WebSession {
     /**
      * Sets the authenticated user for this session.
      *
-     * Note that this method calls dirty so that any clustering is properly
-     * performed.
-     *
      * @param authUser
      *            The authenticated user. A {@code null} user makes the session
      *            unauthenticated. See {@link #isAuthenticated()}
      */
+    public void setUser(final User authUser) {
+        this.setUser(authUser, false);
+    }
 
-    public final synchronized void setUser(final User authUser) {
+    /**
+     * Sets the authenticated user for this session.
+     * <p>
+     * Note that this method calls dirty so that any clustering is properly
+     * performed.
+     * </p>
+     *
+     * @param authUser
+     *            The authenticated user. A {@code null} user makes the session
+     *            unauthenticated. See {@link #isAuthenticated()}
+     * @param authToken
+     *            {@code true} when authenticated by {@link OneTimeAuthToken}.
+     */
+    public synchronized void setUser(final User authUser,
+            final boolean authToken) {
         this.user = authUser;
+        this.oneTimeAuthToken = authToken;
         dirty();
     }
 
@@ -207,8 +256,7 @@ public class SpSession extends WebSession {
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
      */
-    public final synchronized void
-            setWebAppType(final WebAppTypeEnum webAppType) {
+    public synchronized void setWebAppType(final WebAppTypeEnum webAppType) {
         this.setAttribute(SESSION_ATTR_WEBAPP_TYPE, webAppType.toString());
     }
 
@@ -217,7 +265,7 @@ public class SpSession extends WebSession {
      *
      * @return The {@link WebAppTypeEnum}.
      */
-    public final synchronized WebAppTypeEnum getWebAppType() {
+    public synchronized WebAppTypeEnum getWebAppType() {
         WebAppTypeEnum webAppType = WebAppTypeEnum.UNDEFINED;
         final String value =
                 (String) this.getAttribute(SESSION_ATTR_WEBAPP_TYPE);

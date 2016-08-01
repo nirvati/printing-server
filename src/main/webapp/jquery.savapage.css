@@ -1,8 +1,8 @@
-/*! SavaPage | (c) 2011-2015 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -123,3 +123,75 @@
 .sp-msg-popup-info {
     color: #666666;
 }
+
+.ui-btn.sp-tooltip-btn,
+.ui-btn.sp-tooltip-btn:hover,
+.ui-btn.sp-tooltip-btn:active {
+    background: none;
+    border: 0;
+    opacity: 0.4;
+}
+
+/* Classes for tri-state checkbox */
+.sp-checkbox-tristate-label {
+}
+.sp-tristate-null {
+    /* IE 8 */
+    -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=30)";
+    /* IE 5-7 */
+    filter: alpha(opacity=30);
+    /* Netscape */
+    -moz-opacity: 0.3;
+    /* Safari 1.x */
+    -khtml-opacity: 0.3;
+    /* Good browsers */
+    opacity: 0.3;
+}
+.sp-tristate-on {
+}
+.sp-tristate-off {	
+}
+
+.sp-outbox-remaining-time {
+    color: #DC5C05;
+    padding: 0px;
+}
+.sp-outbox-jobs {
+    color: #444444;
+    padding: 2px 5px 2px 5px;
+    border: 1px #DDDDDD solid;
+}
+.sp-outbox-pages {
+    color: #888888;
+    padding: 2px 5px 2px 5px;
+    border: 1px #DDDDDD solid;
+}
+.sp-outbox-cost {
+    color: #888888;
+    padding: 2px 5px 2px 5px;
+    border: 1px #DDDDDD solid;
+}
+
+.sp-outbox-job-entry {
+	background-color: #fcfcfc;
+    padding: 0px 5px 5px 8px;
+	margin: 10px; 
+    border: 1px #DDDDDD solid;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+    -khtml-border-radius: 8px;
+    border-radius: 8px;
+}
+
+.sp-outbox-jobticket-remark {
+    padding: 5px 5px 5px 5px;
+	margin: 8px; 
+    border: 2px orange dotted;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+    -khtml-border-radius: 8px;
+    border-radius: 8px;
+}
+
+
+/* end-of-file */

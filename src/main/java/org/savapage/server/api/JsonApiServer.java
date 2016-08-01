@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,49 +25,36 @@ import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.UUID;
 
 import javax.mail.MessagingException;
-import javax.persistence.EntityManager;
 import javax.print.attribute.standard.MediaSizeName;
-import javax.servlet.http.HttpSession;
 
-import net.sf.jasperreports.engine.JREmptyDataSource;
-import net.sf.jasperreports.engine.JRException;
-import net.sf.jasperreports.engine.JasperCompileManager;
-import net.sf.jasperreports.engine.JasperExportManager;
-import net.sf.jasperreports.engine.JasperFillManager;
-import net.sf.jasperreports.engine.JasperPrint;
-import net.sf.jasperreports.engine.JasperReport;
-import net.sf.jasperreports.engine.design.JasperDesign;
-
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.lang3.time.DateUtils;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.IRequestHandler;
 import org.apache.wicket.request.IRequestParameters;
-import org.apache.wicket.request.Request;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.handler.TextRequestHandler;
 import org.apache.wicket.request.handler.resource.ResourceStreamRequestHandler;
-import org.apache.wicket.request.http.WebRequest;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.request.resource.ContentDisposition;
+import org.apache.wicket.util.resource.FileResourceStream;
 import org.apache.wicket.util.resource.ResourceStreamNotFoundException;
 import org.apache.wicket.util.resource.StringBufferResourceStream;
 import org.apache.wicket.util.time.Duration;
@@ -77,6 +64,7 @@ import org.savapage.core.LetterheadNotFoundException;
 import org.savapage.core.PerformanceLogger;
 import org.savapage.core.PostScriptDrmException;
 import org.savapage.core.SpException;
+import org.savapage.core.circuitbreaker.CircuitBreaker;
 import org.savapage.core.circuitbreaker.CircuitBreakerException;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.CometdClientMixin;
@@ -88,26 +76,20 @@ import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.OnOffEnum;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.AccountTrxDao;
-import org.savapage.core.dao.ConfigPropertyDao;
 import org.savapage.core.dao.DaoContext;
-import org.savapage.core.dao.DeviceDao;
-import org.savapage.core.dao.IppQueueDao;
 import org.savapage.core.dao.PrinterDao;
-import org.savapage.core.dao.PrinterGroupDao;
 import org.savapage.core.dao.UserAccountDao;
 import org.savapage.core.dao.UserDao;
-import org.savapage.core.dao.helpers.AccountTrxTypeEnum;
-import org.savapage.core.dao.helpers.DeviceAttrEnum;
-import org.savapage.core.dao.helpers.DeviceTypeEnum;
-import org.savapage.core.dao.helpers.DocLogProtocolEnum;
-import org.savapage.core.dao.helpers.ProxyPrintAuthModeEnum;
-import org.savapage.core.dao.helpers.UserAttrEnum;
+import org.savapage.core.dao.enums.DeviceAttrEnum;
+import org.savapage.core.dao.enums.DeviceTypeEnum;
+import org.savapage.core.dao.enums.DocLogProtocolEnum;
+import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.dao.impl.DaoContextImpl;
 import org.savapage.core.doc.DocContent;
 import org.savapage.core.dto.AbstractDto;
-import org.savapage.core.dto.AccountDisplayInfoDto;
 import org.savapage.core.dto.AccountVoucherBatchDto;
 import org.savapage.core.dto.AccountVoucherRedeemDto;
 import org.savapage.core.dto.JrPageSizeDto;
@@ -117,13 +99,7 @@ import org.savapage.core.dto.PrimaryKeyDto;
 import org.savapage.core.dto.ProxyPrinterCostDto;
 import org.savapage.core.dto.ProxyPrinterDto;
 import org.savapage.core.dto.ProxyPrinterMediaSourcesDto;
-import org.savapage.core.dto.QuickSearchFilterDto;
-import org.savapage.core.dto.QuickSearchItemDto;
-import org.savapage.core.dto.QuickSearchPosPurchaseItemDto;
-import org.savapage.core.dto.QuickSearchPrinterItemDto;
-import org.savapage.core.dto.QuickSearchUserItemDto;
 import org.savapage.core.dto.UserCreditTransferDto;
-import org.savapage.core.dto.UserDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
 import org.savapage.core.imaging.EcoPrintPdfTask;
@@ -133,24 +109,16 @@ import org.savapage.core.inbox.InboxInfoDto;
 import org.savapage.core.inbox.OutputProducer;
 import org.savapage.core.inbox.PageImages;
 import org.savapage.core.inbox.PageImages.PageImage;
+import org.savapage.core.ipp.IppSyntaxException;
+import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jmx.JmxRemoteProperties;
 import org.savapage.core.job.SpJobScheduler;
-import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
-import org.savapage.core.jpa.ConfigProperty;
-import org.savapage.core.jpa.Device;
-import org.savapage.core.jpa.DeviceAttr;
 import org.savapage.core.jpa.DocLog;
-import org.savapage.core.jpa.Entity;
-import org.savapage.core.jpa.IppQueue;
-import org.savapage.core.jpa.PosPurchase;
 import org.savapage.core.jpa.Printer;
-import org.savapage.core.jpa.PrinterGroup;
 import org.savapage.core.jpa.User;
 import org.savapage.core.json.JsonAbstractBase;
-import org.savapage.core.json.JsonPrinter;
 import org.savapage.core.json.JsonPrinterDetail;
-import org.savapage.core.json.JsonPrinterList;
 import org.savapage.core.json.PdfProperties;
 import org.savapage.core.json.rpc.AbstractJsonRpcMethodResponse;
 import org.savapage.core.json.rpc.ErrorDataBasic;
@@ -158,10 +126,6 @@ import org.savapage.core.json.rpc.JsonRpcConfig;
 import org.savapage.core.json.rpc.JsonRpcError;
 import org.savapage.core.json.rpc.ResultDataBasic;
 import org.savapage.core.json.rpc.impl.ResultPosDeposit;
-import org.savapage.core.msg.UserMsgIndicator;
-import org.savapage.core.outbox.OutboxInfoDto;
-import org.savapage.core.papercut.PaperCutDbProxy;
-import org.savapage.core.papercut.PaperCutServerProxy;
 import org.savapage.core.print.gcp.GcpClient;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.gcp.GcpRegisterPrinterRsp;
@@ -169,54 +133,44 @@ import org.savapage.core.print.imap.ImapListener;
 import org.savapage.core.print.imap.ImapPrinter;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
 import org.savapage.core.print.proxy.ProxyPrintInboxReq;
-import org.savapage.core.print.smartschool.SmartSchoolCostPeriodDto;
-import org.savapage.core.print.smartschool.SmartSchoolPrintMonitor;
-import org.savapage.core.print.smartschool.SmartSchoolPrinter;
 import org.savapage.core.reports.JrPosDepositReceipt;
 import org.savapage.core.reports.JrVoucherPageDesign;
 import org.savapage.core.reports.impl.AccountTrxListReport;
 import org.savapage.core.reports.impl.ReportCreator;
 import org.savapage.core.reports.impl.UserListReport;
-import org.savapage.core.rfid.RfidNumberFormat;
 import org.savapage.core.services.AccountVoucherService;
 import org.savapage.core.services.AccountingService;
-import org.savapage.core.services.DeviceService;
-import org.savapage.core.services.DeviceService.DeviceAttrLookup;
 import org.savapage.core.services.DocLogService;
 import org.savapage.core.services.EmailService;
 import org.savapage.core.services.InboxService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.OutboxService;
 import org.savapage.core.services.ProxyPrintService;
-import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
 import org.savapage.core.services.helpers.IppLogger;
 import org.savapage.core.services.helpers.UserAuth;
 import org.savapage.core.services.helpers.email.EmailMsgParms;
-import org.savapage.core.users.IExternalUserAuthenticator;
-import org.savapage.core.users.IUserSource;
-import org.savapage.core.users.InternalUserAuthenticator;
-import org.savapage.core.users.UserAliasList;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.DateUtil;
-import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.core.util.Messages;
-import org.savapage.core.util.QuickSearchDate;
+import org.savapage.ext.papercut.DelegatedPrintPeriodDto;
+import org.savapage.ext.papercut.PaperCutDbProxy;
+import org.savapage.ext.papercut.PaperCutServerProxy;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentGatewayPlugin;
 import org.savapage.ext.payment.PaymentGatewayPlugin.PaymentRequest;
 import org.savapage.ext.payment.PaymentGatewayTrx;
+import org.savapage.ext.smartschool.SmartschoolPrintMonitor;
+import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.request.ApiRequestHandler;
+import org.savapage.server.api.request.ApiRequestHelper;
 import org.savapage.server.api.request.ApiResultCodeEnum;
-import org.savapage.server.auth.ClientAppUserAuthManager;
-import org.savapage.server.auth.UserAuthToken;
-import org.savapage.server.auth.WebAppUserAuthManager;
 import org.savapage.server.cometd.AbstractEventService;
-import org.savapage.server.cometd.UserEventService;
 import org.savapage.server.dto.MoneyTransferDto;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.AbstractPage;
@@ -225,10 +179,19 @@ import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.sf.jasperreports.engine.JREmptyDataSource;
+import net.sf.jasperreports.engine.JRException;
+import net.sf.jasperreports.engine.JasperCompileManager;
+import net.sf.jasperreports.engine.JasperExportManager;
+import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.design.JasperDesign;
+
 /**
  * Implements the private JSON interface of the Server.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public final class JsonApiServer extends AbstractPage {
@@ -236,14 +199,14 @@ public final class JsonApiServer extends AbstractPage {
     /**
      * The logger.
      */
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(JsonApiServer.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(JsonApiServer.class);
 
     /**
      *
      */
-    private static final AccountingService ACCOUNTING_SERVICE = ServiceContext
-            .getServiceFactory().getAccountingService();
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
 
     /**
      *
@@ -252,52 +215,46 @@ public final class JsonApiServer extends AbstractPage {
             ServiceContext.getServiceFactory().getAccountVoucherService();
 
     /**
+     * .
+     */
+    private static final EmailService EMAIL_SERVICE =
+            ServiceContext.getServiceFactory().getEmailService();
+
+    /**
+     *
+     */
+    private static final DocLogService DOC_LOG_SERVICE =
+            ServiceContext.getServiceFactory().getDocLogService();
+
+    /**
+     *
+     */
+    private static final InboxService INBOX_SERVICE =
+            ServiceContext.getServiceFactory().getInboxService();
+
+    /**
     *
     */
-    private static final DeviceService DEVICE_SERVICE = ServiceContext
-            .getServiceFactory().getDeviceService();
+    private static final JobTicketService JOBTICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
+
+    /**
+    *
+    */
+    private static final OutboxService OUTBOX_SERVICE =
+            ServiceContext.getServiceFactory().getOutboxService();
 
     /**
      * .
      */
-    private static final EmailService EMAIL_SERVICE = ServiceContext
-            .getServiceFactory().getEmailService();
+    private static final ProxyPrintService PROXY_PRINT_SERVICE =
+            ServiceContext.getServiceFactory().getProxyPrintService();
 
     /**
      *
      */
-    private static final DocLogService DOC_LOG_SERVICE = ServiceContext
-            .getServiceFactory().getDocLogService();
-
-    /**
-     *
-     */
-    private static final InboxService INBOX_SERVICE = ServiceContext
-            .getServiceFactory().getInboxService();
-
-    /**
-     *
-     */
-    private static final OutboxService OUTBOX_SERVICE = ServiceContext
-            .getServiceFactory().getOutboxService();
-
-    /**
-     * .
-     */
-    private static final ProxyPrintService PROXY_PRINT_SERVICE = ServiceContext
-            .getServiceFactory().getProxyPrintService();
-
-    /**
-     *
-     */
-    private static final QueueService QUEUE_SERVICE = ServiceContext
-            .getServiceFactory().getQueueService();
-
-    /**
-     *
-     */
-    private static final UserService USER_SERVICE = ServiceContext
-            .getServiceFactory().getUserService();
+    private static final UserService USER_SERVICE =
+            ServiceContext.getServiceFactory().getUserService();
 
     /**
      *
@@ -311,14 +268,8 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
-     */
-    private static final String USER_ROLE_ADMIN = "admin";
-
-    // private static final String USER_ROLE_USER = "user";
-
-    /**
-     *
      * @param parameters
+     *            The {@link PageParameters}.
      */
     public JsonApiServer(final PageParameters parameters) {
 
@@ -345,6 +296,10 @@ public final class JsonApiServer extends AbstractPage {
         final String requestingUser =
                 getParmValue(parameters, isGetAction, JsonApiDict.PARM_USER);
 
+        final WebAppTypeEnum requestingWebAppType =
+                EnumUtils.getEnum(WebAppTypeEnum.class, getParmValue(parameters,
+                        isGetAction, JsonApiDict.PARM_WEBAPP_TYPE));
+
         if (LOGGER.isInfoEnabled()) {
             LOGGER.info("Request: " + requestId);
         }
@@ -352,9 +307,8 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * Get the user from the session.
          */
-        final boolean isInternalAdmin =
-                (requestingUser != null)
-                        && ConfigManager.isInternalAdmin(requestingUser);
+        final boolean isInternalAdmin = (requestingUser != null)
+                && ConfigManager.isInternalAdmin(requestingUser);
 
         /*
          *
@@ -384,8 +338,8 @@ public final class JsonApiServer extends AbstractPage {
              * Is the request valid and the requesting user authorized for the
              * request?
              */
-            Map<String, Object> returnData =
-                    checkValidAndAuthorized(requestId, requestingUser);
+            Map<String, Object> returnData = checkValidAndAuthorized(requestId,
+                    requestingUser, requestingWebAppType);
 
             final boolean isValidAndAuthorizedRequest = returnData == null;
 
@@ -394,9 +348,8 @@ public final class JsonApiServer extends AbstractPage {
                 /*
                  * Application level locks ...
                  */
-                letterheadLock =
-                        API_DICTIONARY.getLetterheadLockNeeded(requestId,
-                                SpSession.get().isAdmin());
+                letterheadLock = API_DICTIONARY.getLetterheadLockNeeded(
+                        requestId, SpSession.get().isAdmin());
                 dbClaim = API_DICTIONARY.getDbClaimNeeded(requestId);
 
                 API_DICTIONARY.lock(letterheadLock);
@@ -442,6 +395,10 @@ public final class JsonApiServer extends AbstractPage {
 
                 case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_PRINT:
                     // no break intended
+                case JsonApiDict.REQ_PDF_JOBTICKET:
+                    // no break intended
+                case JsonApiDict.REQ_PDF_OUTBOX:
+                    // no break intended
                 case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
                     // no break intended
                 case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
@@ -450,31 +407,33 @@ public final class JsonApiServer extends AbstractPage {
                     // no break intended
                 case JsonApiDict.REQ_REPORT_USER:
                     // no break intended
+                case JsonApiDict.REQ_PAPERCUT_DELEGATOR_COST_CSV:
+                    // no break intended
                 case JsonApiDict.REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
                     handleExportFile(requestId, parameters, requestingUser,
                             isGetAction);
                     break;
 
                 case JsonApiDict.REQ_PRINTER_OPT_DOWNLOAD:
-                    requestCycle.scheduleRequestHandlerAfterCurrent(this
-                            .exportPrinterOpt(parameters.get(
-                                    JsonApiDict.PARM_REQ_SUB).toLongObject()));
+                    requestCycle.scheduleRequestHandlerAfterCurrent(
+                            this.exportPrinterOpt(
+                                    parameters.get(JsonApiDict.PARM_REQ_SUB)
+                                            .toLongObject()));
                     break;
 
                 case JsonApiDict.REQ_PDF:
-                    requestCycle.scheduleRequestHandlerAfterCurrent(this
-                            .handleExportSafePages(lockedUser, parameters,
+                    requestCycle.scheduleRequestHandlerAfterCurrent(
+                            this.handleExportSafePages(lockedUser, parameters,
                                     isGetAction));
                     commitDbTransaction = true;
                     break;
 
                 default:
-                    returnData =
-                            handleRequest(requestId, parameters, isGetAction,
-                                    requestingUser, lockedUser);
+                    returnData = handleRequest(requestId, parameters,
+                            isGetAction, requestingUser, lockedUser);
 
-                    commitDbTransaction =
-                            (returnData != null && !isApiResultError(returnData));
+                    commitDbTransaction = (returnData != null
+                            && !isApiResultError(returnData));
                     break;
                 }
 
@@ -488,9 +447,12 @@ public final class JsonApiServer extends AbstractPage {
 
                     String urlPath;
 
-                    switch (getWebAppType()) {
+                    switch (getSessionWebAppType()) {
                     case ADMIN:
                         urlPath = WebApp.MOUNT_PATH_WEBAPP_ADMIN;
+                        break;
+                    case JOBTICKETS:
+                        urlPath = WebApp.MOUNT_PATH_WEBAPP_JOBTICKETS;
                         break;
                     case POS:
                         urlPath = WebApp.MOUNT_PATH_WEBAPP_POS;
@@ -500,20 +462,20 @@ public final class JsonApiServer extends AbstractPage {
                         break;
                     }
 
-                    requestCycle
-                            .scheduleRequestHandlerAfterCurrent(new TextRequestHandler(
-                                    "text/html",
-                                    "UTF-8",
-                                    "<h2 style='color: red;'>"
-                                            + CommunityDictEnum.SAVAPAGE
-                                                    .getWord()
-                                            + " Authorisation Error</h2>"
-                                            + "<p>Please login again.</p>"
-                                            + "<p><form action='"
-                                            + urlPath
-                                            + "'>"
-                                            + "<input type='submit'value='Login'/>"
-                                            + "</form></p>"));
+                    final StringBuilder html = new StringBuilder();
+
+                    html.append("<h2 style='color: red;'>")
+                            .append(CommunityDictEnum.SAVAPAGE.getWord())
+                            .append(" Authorisation Error</h2>"
+                                    + "<p>Please login again.</p>"
+                                    + "<p><form action='")
+                            .append(urlPath)
+                            .append("'>" + "<input type='submit'value='Login'/>"
+                                    + "</form></p>");
+
+                    requestCycle.scheduleRequestHandlerAfterCurrent(
+                            new TextRequestHandler("text/html", "UTF-8",
+                                    html.toString()));
                     /*
                      * Reset to null.
                      */
@@ -530,9 +492,8 @@ public final class JsonApiServer extends AbstractPage {
         } catch (Exception t) {
 
             try {
-                jsonArray =
-                        new ObjectMapper()
-                                .writeValueAsString(handleException(t));
+                jsonArray = new ObjectMapper()
+                        .writeValueAsString(handleException(t));
             } catch (Exception e1) {
                 LOGGER.error(e1.getMessage());
             }
@@ -556,9 +517,8 @@ public final class JsonApiServer extends AbstractPage {
 
             } catch (Exception ex) {
                 try {
-                    jsonArray =
-                            new ObjectMapper()
-                                    .writeValueAsString(handleException(ex));
+                    jsonArray = new ObjectMapper()
+                            .writeValueAsString(handleException(ex));
                 } catch (Exception e1) {
                     LOGGER.error(e1.getMessage());
                 }
@@ -586,10 +546,9 @@ public final class JsonApiServer extends AbstractPage {
                 LOGGER.trace(jsonArray);
             }
 
-            requestCycle
-                    .scheduleRequestHandlerAfterCurrent(new TextRequestHandler(
-                            JsonRpcConfig.INTERNET_MEDIA_TYPE, "UTF-8",
-                            jsonArray));
+            requestCycle.scheduleRequestHandlerAfterCurrent(
+                    new TextRequestHandler(JsonRpcConfig.INTERNET_MEDIA_TYPE,
+                            "UTF-8", jsonArray));
         }
 
         PerformanceLogger.log(this.getClass(), "constructor", perfStartTime,
@@ -622,44 +581,55 @@ public final class JsonApiServer extends AbstractPage {
             switch (request) {
 
             case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_PRINT:
-                requestHandler =
-                        exportVoucherBatchPrint(tempExportFile,
-                                parameters.get(JsonApiDict.PARM_REQ_SUB)
-                                        .toString());
+                requestHandler = exportVoucherBatchPrint(tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toString());
+                break;
+
+            case JsonApiDict.REQ_PDF_JOBTICKET:
+            case JsonApiDict.REQ_PDF_OUTBOX:
+                requestHandler = this.exportOutboxPdf(requestingUser,
+                        getParmValue(parameters, isGetAction,
+                                JsonApiDict.PARM_REQ_SUB),
+                        request.equals(JsonApiDict.REQ_PDF_JOBTICKET));
                 break;
 
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
-                requestHandler =
-                        exportPosPurchaseReceipt(
-                                tempExportFile,
-                                parameters.get(JsonApiDict.PARM_REQ_SUB)
-                                        .toLongObject(),
-                                requestingUser,
-                                request.equals(JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD));
+                requestHandler = exportPosPurchaseReceipt(tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toLongObject(),
+                        requestingUser,
+                        request.equals(JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD));
                 break;
 
             case JsonApiDict.REQ_REPORT:
             case JsonApiDict.REQ_REPORT_USER:
-                requestHandler =
-                        exportReport(tempExportFile,
-                                parameters.get(JsonApiDict.PARM_REQ_SUB)
-                                        .toString(),
-                                parameters.get(JsonApiDict.PARM_DATA)
-                                        .toString(), requestingUser,
-                                request.equals(JsonApiDict.REQ_REPORT));
+                requestHandler = exportReport(tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toString(),
+                        parameters.get(JsonApiDict.PARM_DATA).toString(),
+                        requestingUser, request.equals(JsonApiDict.REQ_REPORT));
+                break;
+
+            case JsonApiDict.REQ_PAPERCUT_DELEGATOR_COST_CSV:
+                requestHandler = exportPapercutDelegatorCost(
+                        ConfigManager.instance().getConfigValue(
+                                Key.PROXY_PRINT_DELEGATE_PAPERCUT_ACCOUNT_PERSONAL_TYPE),
+                        "papercut-delegator-cost.csv", tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toString(),
+                        requestingUser);
                 break;
 
             case JsonApiDict.REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
-                requestHandler =
-                        exportSmartschoolPapercutStudentCost(tempExportFile,
-                                parameters.get(JsonApiDict.PARM_REQ_SUB)
-                                        .toString(), requestingUser);
-
+                requestHandler = exportPapercutDelegatorCost(
+                        ConfigManager.instance().getConfigValue(
+                                Key.SMARTSCHOOL_PAPERCUT_ACCOUNT_PERSONAL_TYPE),
+                        "smartschool-papercut-student-cost.csv", tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toString(),
+                        requestingUser);
                 break;
 
             default:
-                throw new SpException("request [" + request + "] not supported");
+                throw new SpException(
+                        "request [" + request + "] not supported");
             }
 
         } catch (Exception e) {
@@ -715,7 +685,8 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * INVARIANT: A user can only create his own receipts.
          */
-        if (!requestingUserAdmin && !receipt.getUserId().equals(requestingUser)) {
+        if (!requestingUserAdmin
+                && !receipt.getUserId().equals(requestingUser)) {
             throw new SpException("User [" + requestingUser
                     + "] is not autherized to access receipt of user ["
                     + receipt.getUserId() + "].");
@@ -732,19 +703,17 @@ public final class JsonApiServer extends AbstractPage {
             pageSizeDto = JrPageSizeDto.A4_PORTRAIT;
         }
 
-        final JasperReport jasperReport =
-                JasperCompileManager
-                        .compileReport(JrPosDepositReceipt.create(
-                                pageSizeDto,
-                                ConfigManager
-                                        .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY),
-                                reportLocale));
+        final JasperReport jasperReport = JasperCompileManager
+                .compileReport(JrPosDepositReceipt.create(pageSizeDto,
+                        ConfigManager.getConfigFontFamily(
+                                Key.REPORTS_PDF_INTERNAL_FONT_FAMILY),
+                        reportLocale));
 
         //
-        final JasperPrint jasperPrint =
-                JasperFillManager.fillReport(jasperReport, JrPosDepositReceipt
-                        .getParameters(receipt, reportLocale),
-                        new JREmptyDataSource());
+        final JasperPrint jasperPrint = JasperFillManager.fillReport(
+                jasperReport,
+                JrPosDepositReceipt.getParameters(receipt, reportLocale),
+                new JREmptyDataSource());
 
         JasperExportManager.exportReportToPdfFile(jasperPrint,
                 pdfFile.getAbsolutePath());
@@ -770,18 +739,16 @@ public final class JsonApiServer extends AbstractPage {
             boolean isAdminRequest) throws JRException, MessagingException,
             IOException, InterruptedException, CircuitBreakerException {
 
-        final File tempPdfFile =
-                new File(OutputProducer.createUniqueTempPdfName(requestingUser,
-                        "deposit-receipt"));
+        final File tempPdfFile = new File(OutputProducer
+                .createUniqueTempPdfName(requestingUser, "deposit-receipt"));
         try {
 
             final PosDepositReceiptDto receipt =
                     createPosPurchaseReceipt(tempPdfFile, accountTrxDbId,
                             requestingUser, isAdminRequest);
 
-            final String subject =
-                    localize("msg-deposit-email-subject",
-                            receipt.getReceiptNumber());
+            final String subject = localize("msg-deposit-email-subject",
+                    receipt.getReceiptNumber());
             final String body = localize("msg-deposit-email-body");
 
             final EmailMsgParms emailParms = new EmailMsgParms();
@@ -836,8 +803,8 @@ public final class JsonApiServer extends AbstractPage {
         final StringBufferResourceStream stream =
                 new StringBufferResourceStream("text/text");
 
-        stream.append(IppLogger.logIppPrinterOpt(printer, getSession()
-                .getLocale()));
+        stream.append(
+                IppLogger.logIppPrinterOpt(printer, getSession().getLocale()));
 
         final ResourceStreamRequestHandler handler =
                 new ResourceStreamRequestHandler(stream);
@@ -863,9 +830,8 @@ public final class JsonApiServer extends AbstractPage {
             final Long accountTrxDbId, final String requestingUser,
             final boolean requestingUserAdmin) throws JRException {
 
-        final PosDepositReceiptDto receipt =
-                createPosPurchaseReceipt(tempFile, accountTrxDbId,
-                        requestingUser, requestingUserAdmin);
+        final PosDepositReceiptDto receipt = createPosPurchaseReceipt(tempFile,
+                accountTrxDbId, requestingUser, requestingUserAdmin);
 
         final ResourceStreamRequestHandler handler =
                 new DownloadRequestHandler(tempFile);
@@ -891,9 +857,8 @@ public final class JsonApiServer extends AbstractPage {
         final VoucherBatchPrintDto dto =
                 AbstractDto.create(VoucherBatchPrintDto.class, jsonDto);
 
-        final InternalFontFamilyEnum font =
-                ConfigManager
-                        .getConfigFontFamily(Key.FINANCIAL_VOUCHER_CARD_FONT_FAMILY);
+        final InternalFontFamilyEnum font = ConfigManager
+                .getConfigFontFamily(Key.FINANCIAL_VOUCHER_CARD_FONT_FAMILY);
 
         final JasperDesign design =
                 dto.getDesign().createDesign(font, reportlocale);
@@ -909,10 +874,9 @@ public final class JsonApiServer extends AbstractPage {
         parameters.put(JrVoucherPageDesign.PARM_FOOTER,
                 cm.getConfigValue(Key.FINANCIAL_VOUCHER_CARD_FOOTER));
 
-        JasperPrint jasperPrint =
-                JasperFillManager.fillReport(jasperReport, parameters,
-                        JrVoucherPageDesign.createDataSource(dto.getBatchId(),
-                                reportlocale));
+        JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport,
+                parameters, JrVoucherPageDesign
+                        .createDataSource(dto.getBatchId(), reportlocale));
 
         JasperExportManager.exportReportToPdfFile(jasperPrint,
                 tempFile.getAbsolutePath());
@@ -920,9 +884,8 @@ public final class JsonApiServer extends AbstractPage {
         final ResourceStreamRequestHandler handler =
                 new DownloadRequestHandler(tempFile);
 
-        final String userFriendlyFilename =
-                CommunityDictEnum.SAVAPAGE.getWord() + "-voucher-batch-"
-                        + dto.getBatchId() + ".pdf";
+        final String userFriendlyFilename = CommunityDictEnum.SAVAPAGE.getWord()
+                + "-voucher-batch-" + dto.getBatchId() + ".pdf";
 
         handler.setContentDisposition(ContentDisposition.ATTACHMENT);
         handler.setFileName(userFriendlyFilename);
@@ -962,19 +925,17 @@ public final class JsonApiServer extends AbstractPage {
 
         if (reportId.equals(AccountTrxListReport.REPORT_ID)) {
 
-            report =
-                    new AccountTrxListReport(requestingUser,
-                            requestingUserAdmin, jsonData, locale);
+            report = new AccountTrxListReport(requestingUser,
+                    requestingUserAdmin, jsonData, locale);
 
         } else if (reportId.equals(UserListReport.REPORT_ID)) {
 
-            report =
-                    new UserListReport(requestingUser, requestingUserAdmin,
-                            jsonData, locale);
+            report = new UserListReport(requestingUser, requestingUserAdmin,
+                    jsonData, locale);
 
         } else {
-            throw new UnsupportedOperationException("Report [" + reportId
-                    + "] is NOT supported");
+            throw new UnsupportedOperationException(
+                    "Report [" + reportId + "] is NOT supported");
         }
 
         report.create(tempPdfFile);
@@ -995,27 +956,38 @@ public final class JsonApiServer extends AbstractPage {
     /**
      * <p>
      * Handles the {@link JsonApiDict#REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV}
-     * request by returning the {@link IRequestHandler}.
+     * or oor {@link JsonApiDict#REQ_PAPERCUT_DELEGATOR_COST_CSV} request by
+     * returning the {@link IRequestHandler}.
      * </p>
      *
+     * @param personalAccountType
+     *            The value of
+     *            {@link Key#PROXY_PRINT_DELEGATE_PAPERCUT_ACCOUNT_PERSONAL_TYPE}
+     *            or {@link Key#SMARTSCHOOL_PAPERCUT_ACCOUNT_PERSONAL_TYPE}.
+     * @param csvFileName
+     *            The name of the CSV file as shown to the user.
      * @param tempCsvFile
      *            The temporary CSV {@link File}.
      * @param jsonData
+     *            JSON data.
      * @param requestingUser
-     * @return
+     *            The requesting user.
+     * @return The {@link IRequestHandler}.
      * @throws IOException
+     *             When IO error.
      */
-    private IRequestHandler exportSmartschoolPapercutStudentCost(
+    private IRequestHandler exportPapercutDelegatorCost(
+            final String personalAccountType, final String csvFileName,
             final File tempCsvFile, final String jsonData,
             final String requestingUser) throws IOException {
 
-        final SmartSchoolCostPeriodDto dto =
-                AbstractDto.create(SmartSchoolCostPeriodDto.class, jsonData);
+        final DelegatedPrintPeriodDto dto =
+                AbstractDto.create(DelegatedPrintPeriodDto.class, jsonData);
 
-        ServiceContext
-                .getServiceFactory()
-                .getPaperCutService()
-                .createSmartschoolStudentCostCsv(
+        dto.setPersonalAccountType(personalAccountType);
+
+        ServiceContext.getServiceFactory().getPaperCutService()
+                .createDelegatorPrintCostCsv(
                         PaperCutDbProxy.create(ConfigManager.instance(), true),
                         tempCsvFile, dto);
 
@@ -1023,7 +995,74 @@ public final class JsonApiServer extends AbstractPage {
                 new DownloadRequestHandler(tempCsvFile);
 
         handler.setContentDisposition(ContentDisposition.ATTACHMENT);
-        handler.setFileName("smartschool-papercut-student-cost.csv");
+        handler.setFileName(csvFileName);
+        handler.setCacheDuration(Duration.NONE);
+
+        return handler;
+    }
+
+    /**
+     * Exports user outbox or job ticket PDF.
+     *
+     * @param fileName
+     *            The base file name.
+     * @param requestingUser
+     *            The user requesting the export.
+     * @param isJobTicket
+     *            {@code true} when PDF is a job ticket.
+     * @return The {@link IRequestHandler}}
+     */
+    private IRequestHandler exportOutboxPdf(final String requestingUser,
+            final String fileName, final boolean isJobTicket) {
+
+        final File pdfFile;
+
+        if (isJobTicket) {
+
+            /*
+             * INVARIANT: A user can only see his own job ticket.
+             */
+            final WebAppTypeEnum webAppType = this.getSessionWebAppType();
+
+            if (webAppType != WebAppTypeEnum.JOBTICKETS
+                    && webAppType != WebAppTypeEnum.ADMIN
+                    && JOBTICKET_SERVICE.getTicket(
+                            SpSession.get().getUser().getId(),
+                            fileName) == null) {
+                pdfFile = null;
+            } else {
+                pdfFile =
+                        Paths.get(ConfigManager.getJobTicketsHome().toString(),
+                                fileName).toFile();
+            }
+
+        } else {
+            pdfFile = OUTBOX_SERVICE.getOutboxFile(requestingUser, fileName);
+        }
+
+        if (pdfFile == null || !pdfFile.exists()) {
+
+            final StringBuilder html = new StringBuilder();
+
+            html.append("<h2 style='color: red;'>");
+
+            if (isJobTicket) {
+                html.append("Job Ticket");
+            } else {
+                html.append("Hold Job");
+            }
+
+            html.append(" not found.</h2>");
+            return new TextRequestHandler("text/html", "UTF-8",
+                    html.toString());
+        }
+
+        final ResourceStreamRequestHandler handler =
+                new ResourceStreamRequestHandler(
+                        new FileResourceStream(pdfFile));
+
+        handler.setContentDisposition(ContentDisposition.ATTACHMENT);
+        handler.setFileName(fileName);
         handler.setCacheDuration(Duration.NONE);
 
         return handler;
@@ -1044,13 +1083,11 @@ public final class JsonApiServer extends AbstractPage {
     private IRequestHandler handleExportSafePages(final User lockedUser,
             final PageParameters parameters, final boolean isGetAction) {
 
-        final boolean removeGraphics =
-                Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                        "removeGraphics"));
+        final boolean removeGraphics = Boolean.parseBoolean(
+                getParmValue(parameters, isGetAction, "removeGraphics"));
 
-        final boolean ecoPrint =
-                Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                        "ecoprint"));
+        final boolean ecoPrint = Boolean.parseBoolean(
+                getParmValue(parameters, isGetAction, "ecoprint"));
 
         if (removeGraphics && ecoPrint) {
             return new TextRequestHandler("text/html", "UTF-8",
@@ -1071,17 +1108,19 @@ public final class JsonApiServer extends AbstractPage {
 
         try {
 
+            final boolean grayscalePdf = Boolean.parseBoolean(
+                    getParmValue(parameters, isGetAction, "grayscale"));
+
             final DocLog docLog = new DocLog();
 
             /*
              * (1) Generate the PDF
              */
-            pdfTemp =
-                    generatePdfForExport(lockedUser,
-                            Integer.parseInt(getParmValue(parameters,
-                                    isGetAction, "jobIndex")),
-                            getParmValue(parameters, isGetAction, "ranges"),
-                            removeGraphics, ecoPrint, docLog, "download");
+            pdfTemp = generatePdfForExport(lockedUser,
+                    Integer.parseInt(
+                            getParmValue(parameters, isGetAction, "jobIndex")),
+                    getParmValue(parameters, isGetAction, "ranges"),
+                    removeGraphics, ecoPrint, grayscalePdf, docLog, "download");
 
             /*
              * (2) Write log to database.
@@ -1119,9 +1158,8 @@ public final class JsonApiServer extends AbstractPage {
                 msg = e.getMessage();
             }
 
-            requestHandler =
-                    new TextRequestHandler("text/html", "UTF-8",
-                            "<h2 style='color: red;'>" + msg + "</h2>");
+            requestHandler = new TextRequestHandler("text/html", "UTF-8",
+                    "<h2 style='color: red;'>" + msg + "</h2>");
         }
 
         return requestHandler;
@@ -1148,16 +1186,16 @@ public final class JsonApiServer extends AbstractPage {
         switch (request) {
 
         case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_CREATE:
-            return reqVoucherBatchCreate(getParmValue(parameters, isGetAction,
-                    "dto"));
+            return reqVoucherBatchCreate(
+                    getParmValue(parameters, isGetAction, "dto"));
 
         case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_DELETE:
-            return reqVoucherBatchDelete(getParmValue(parameters, isGetAction,
-                    "batch"));
+            return reqVoucherBatchDelete(
+                    getParmValue(parameters, isGetAction, "batch"));
 
         case JsonApiDict.REQ_ACCOUNT_VOUCHER_BATCH_EXPIRE:
-            return reqVoucherBatchExpire(getParmValue(parameters, isGetAction,
-                    "batch"));
+            return reqVoucherBatchExpire(
+                    getParmValue(parameters, isGetAction, "batch"));
 
         case JsonApiDict.REQ_ACCOUNT_VOUCHER_DELETE_EXPIRED:
             return reqVoucherDeleteExpired();
@@ -1170,34 +1208,13 @@ public final class JsonApiServer extends AbstractPage {
             return reqBitcoinWalletRefresh();
 
         case JsonApiDict.REQ_CARD_IS_REGISTERED:
-            return reqCardIsRegistered(getParmValue(parameters, isGetAction,
-                    "card"));
+            return reqCardIsRegistered(
+                    getParmValue(parameters, isGetAction, "card"));
 
         case JsonApiDict.REQ_CONSTANTS:
 
-            return reqConstants(getParmValue(parameters, isGetAction,
-                    "authMode"));
-
-        case JsonApiDict.REQ_CONFIG_GET_PROP:
-
-            return reqConfigGetProp(getParmValue(parameters, isGetAction,
-                    "name"));
-
-        case JsonApiDict.REQ_CONFIG_SET_PROPS:
-
-            return reqConfigSetProps(requestingUser,
-                    getParmValue(parameters, isGetAction, "props"));
-
-        case JsonApiDict.REQ_DEVICE_DELETE:
-
-            return reqDeviceDelete(requestingUser,
-                    getParmValue(parameters, isGetAction, "id"),
-                    getParmValue(parameters, isGetAction, "deviceName"));
-
-        case JsonApiDict.REQ_DEVICE_GET:
-
-            return reqDeviceGet(requestingUser,
-                    getParmValue(parameters, isGetAction, "id"));
+            return reqConstants(
+                    getParmValue(parameters, isGetAction, "authMode"));
 
         case JsonApiDict.REQ_DEVICE_NEW_CARD_READER:
 
@@ -1206,11 +1223,6 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_DEVICE_NEW_TERMINAL:
 
             return reqDeviceNew(DeviceTypeEnum.TERMINAL);
-
-        case JsonApiDict.REQ_DEVICE_SET:
-
-            return reqDeviceSet(requestingUser,
-                    getParmValue(parameters, isGetAction, "j_device"));
 
         case JsonApiDict.REQ_EXIT_EVENT_MONITOR:
 
@@ -1229,8 +1241,8 @@ public final class JsonApiServer extends AbstractPage {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug(String.format(
                             "using default language [%s] country [%s] "
-                                    + "for user [%s]", language, country,
-                            requestingUser));
+                                    + "for user [%s]",
+                            language, country, requestingUser));
                 }
             } else {
                 if (LOGGER.isDebugEnabled()) {
@@ -1240,34 +1252,14 @@ public final class JsonApiServer extends AbstractPage {
             }
             return reqLanguage(language, country);
 
-        case JsonApiDict.REQ_LOGIN:
-
-            final String role = getParmValue(parameters, isGetAction, "role");
-            final boolean isAdminLogin =
-                    role != null && role.equals(USER_ROLE_ADMIN);
-
-            return reqLogin(UserAuth.mode(getParmValue(parameters, isGetAction,
-                    "authMode")),
-                    getParmValue(parameters, isGetAction, "authId"),
-                    getParmValue(parameters, isGetAction, "authPw"),
-                    getParmValue(parameters, isGetAction, "authToken"),
-                    getParmValue(parameters, isGetAction, "assocCardNumber"),
-                    isAdminLogin);
-
-        case JsonApiDict.REQ_LOGOUT:
-
-            return reqLogout(requestingUser,
-                    getParmValue(parameters, isGetAction, "authToken"));
-
         case JsonApiDict.REQ_WEBAPP_UNLOAD:
 
-            return reqWebAppUnload();
+            SpSession.get().decrementAuthWebApp();
+            return createApiResultOK();
 
         case JsonApiDict.REQ_WEBAPP_CLOSE_SESSION:
 
-            return reqWebAppCloseSession(
-                    getParmValue(parameters, isGetAction, "authTokenUser"),
-                    getParmValue(parameters, isGetAction, "authTokenAdmin"));
+            return reqWebAppCloseSession();
 
         case JsonApiDict.REQ_MAIL_TEST:
 
@@ -1292,10 +1284,11 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_PAYMENT_GATEWAY_ONLINE:
 
-            return reqPaymentGatewayOnline(Boolean.parseBoolean(getParmValue(
-                    parameters, isGetAction, "bitcoin")),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "online")));
+            return reqPaymentGatewayOnline(
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "bitcoin")),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "online")));
 
         case JsonApiDict.REQ_SMARTSCHOOL_TEST:
 
@@ -1317,8 +1310,8 @@ public final class JsonApiServer extends AbstractPage {
 
             return apiResultFromBasicRpcResponse(ACCOUNTING_SERVICE
                     .transferUserCredit(JsonAbstractBase.create(
-                            UserCreditTransferDto.class,
-                            getParmValue(parameters, isGetAction, "dto"))));
+                            UserCreditTransferDto.class, getParmValue(
+                                    parameters, isGetAction, "dto"))));
 
         case JsonApiDict.REQ_USER_MONEY_TRANSFER_REQUEST:
 
@@ -1330,11 +1323,6 @@ public final class JsonApiServer extends AbstractPage {
             return reqPosDeposit(requestingUser,
                     getParmValue(parameters, isGetAction, "dto"));
 
-        case JsonApiDict.REQ_POS_DEPOSIT_QUICK_SEARCH:
-
-            return reqPosDepositQuickSearch(getParmValue(parameters,
-                    isGetAction, "dto"));
-
         case JsonApiDict.REQ_POS_RECEIPT_SENDMAIL:
 
             return reqPosReceiptSendMail(requestingUser,
@@ -1342,13 +1330,13 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_RESET_ADMIN_PASSWORD:
 
-            return reqAdminPasswordReset(getParmValue(parameters, isGetAction,
-                    "password"));
+            return reqAdminPasswordReset(
+                    getParmValue(parameters, isGetAction, "password"));
 
         case JsonApiDict.REQ_RESET_JMX_PASSWORD:
 
-            return reqJmxPasswordReset(getParmValue(parameters, isGetAction,
-                    "password"));
+            return reqJmxPasswordReset(
+                    getParmValue(parameters, isGetAction, "password"));
 
         case JsonApiDict.REQ_PAGOMETER_RESET:
 
@@ -1371,46 +1359,32 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqInboxIsVanilla(requestingUser);
 
-        case JsonApiDict.REQ_JOB_DELETE:
+        case JsonApiDict.REQ_INBOX_JOB_DELETE:
 
-            return reqInboxJobDelete(requestingUser,
-                    Integer.valueOf(getParmValue(parameters, isGetAction,
-                            "ijob")));
+            return reqInboxJobDelete(requestingUser, Integer
+                    .valueOf(getParmValue(parameters, isGetAction, "ijob")));
 
-        case JsonApiDict.REQ_JOB_EDIT:
+        case JsonApiDict.REQ_INBOX_JOB_EDIT:
 
             return reqInboxJobEdit(requestingUser,
-                    Integer.valueOf(getParmValue(parameters, isGetAction,
-                            "ijob")),
+                    Integer.valueOf(
+                            getParmValue(parameters, isGetAction, "ijob")),
                     getParmValue(parameters, isGetAction, "data"));
 
-        case JsonApiDict.REQ_JOB_PAGES:
+        case JsonApiDict.REQ_INBOX_JOB_PAGES:
 
             return reqInboxJobPages(requestingUser,
                     getParmValue(parameters, isGetAction, "first-detail-page"),
                     getParmValue(parameters, isGetAction, "unique-url-value"),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "base64")));
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "base64")));
 
         case JsonApiDict.REQ_JQPLOT:
 
-            return reqJqPlot(
-                    getParmValue(parameters, isGetAction, "chartType"),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "isGlobal")), mySessionUser);
-
-        case JsonApiDict.REQ_OUTBOX_CLEAR:
-
-            return reqOutboxClear(lockedUser);
-
-        case JsonApiDict.REQ_OUTBOX_DELETE_JOB:
-
-            return reqOutboxRemoveJob(lockedUser,
-                    getParmValue(parameters, isGetAction, "jobId"));
-
-        case JsonApiDict.REQ_OUTBOX_EXTEND:
-
-            return reqOutboxExtend(lockedUser);
+            return reqJqPlot(getParmValue(parameters, isGetAction, "chartType"),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "isGlobal")),
+                    mySessionUser);
 
         case JsonApiDict.REQ_PAGE_DELETE:
 
@@ -1442,43 +1416,29 @@ public final class JsonApiServer extends AbstractPage {
             return reqPrinterGet(requestingUser,
                     getParmValue(parameters, isGetAction, "id"));
 
-        case JsonApiDict.REQ_PRINTER_LIST:
-
-            return reqPrinterList(requestingUser);
-
         case JsonApiDict.REQ_PRINT_AUTH_CANCEL:
-            return reqPrintAuthCancel(Long.parseLong(getParmValue(parameters,
-                    isGetAction, "idUser")),
+            return reqPrintAuthCancel(
+                    Long.parseLong(
+                            getParmValue(parameters, isGetAction, "idUser")),
                     getParmValue(parameters, isGetAction, "printer"));
 
         case JsonApiDict.REQ_PRINT_FAST_RENEW:
             return reqPrintFastRenew(requestingUser);
-
-        case JsonApiDict.REQ_PRINTER_QUICK_SEARCH:
-
-            return reqPrinterQuickSearch(
-                    getParmValue(parameters, isGetAction, "dto"),
-                    requestingUser);
 
         case JsonApiDict.REQ_PRINTER_RENAME:
 
             return reqPrinterRename(requestingUser,
                     getParmValue(parameters, isGetAction, "j_printer"));
 
-        case JsonApiDict.REQ_PRINTER_SET:
-
-            return reqPrinterSet(getParmValue(parameters, isGetAction,
-                    "j_printer"));
-
         case JsonApiDict.REQ_PRINTER_SET_MEDIA_COST:
 
-            return reqPrinterSetMediaCost(getParmValue(parameters, isGetAction,
-                    "j_cost"));
+            return reqPrinterSetMediaCost(
+                    getParmValue(parameters, isGetAction, "j_cost"));
 
         case JsonApiDict.REQ_PRINTER_SET_MEDIA_SOURCES:
 
-            return reqPrinterSetMediaSources(getParmValue(parameters,
-                    isGetAction, "j_media_sources"));
+            return reqPrinterSetMediaSources(
+                    getParmValue(parameters, isGetAction, "j_media_sources"));
 
         case JsonApiDict.REQ_PRINTER_SYNC:
 
@@ -1486,23 +1446,23 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_LETTERHEAD_LIST:
 
-            return setApiResultOK(INBOX_SERVICE
-                    .getLetterheadList(mySessionUser));
+            return setApiResultOK(
+                    INBOX_SERVICE.getLetterheadList(mySessionUser));
 
         case JsonApiDict.REQ_LETTERHEAD_ATTACH:
 
             INBOX_SERVICE.attachLetterhead(mySessionUser,
-                    getParmValue(parameters, isGetAction, "id"), Boolean
-                            .parseBoolean(getParmValue(parameters, isGetAction,
-                                    "pub")));
+                    getParmValue(parameters, isGetAction, "id"),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "pub")));
             return createApiResultOK();
 
         case JsonApiDict.REQ_LETTERHEAD_DELETE:
 
             return reqLetterheadDelete(mySessionUser,
                     getParmValue(parameters, isGetAction, "id"),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "pub")));
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "pub")));
 
         case JsonApiDict.REQ_LETTERHEAD_DETACH:
 
@@ -1523,9 +1483,10 @@ public final class JsonApiServer extends AbstractPage {
 
             return setApiResultOK(INBOX_SERVICE.getLetterheadDetails(
                     mySessionUser, getParmValue(parameters, isGetAction, "id"),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "pub")), Boolean.parseBoolean(getParmValue(
-                            parameters, isGetAction, "base64"))));
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "pub")),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "base64"))));
 
         case JsonApiDict.REQ_LETTERHEAD_SET:
 
@@ -1539,9 +1500,8 @@ public final class JsonApiServer extends AbstractPage {
 
         case JsonApiDict.REQ_GCP_ONLINE:
 
-            return reqGcpOnline(mySessionUser,
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "online")));
+            return reqGcpOnline(mySessionUser, Boolean.parseBoolean(
+                    getParmValue(parameters, isGetAction, "online")));
 
         case JsonApiDict.REQ_GCP_REGISTER:
 
@@ -1553,8 +1513,8 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_GCP_SET_DETAILS:
 
             return reqGcpSetDetails(mySessionUser,
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "enabled")),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "enabled")),
                     getParmValue(parameters, isGetAction, "clientId"),
                     getParmValue(parameters, isGetAction, "clientSecret"),
                     getParmValue(parameters, isGetAction, "printerName"));
@@ -1562,8 +1522,8 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_GCP_SET_NOTIFICATIONS:
 
             return reqGcpSetNotifications(mySessionUser,
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "enabled")),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "enabled")),
                     getParmValue(parameters, isGetAction, "emailSubject"),
                     getParmValue(parameters, isGetAction, "emailBody"));
 
@@ -1572,8 +1532,8 @@ public final class JsonApiServer extends AbstractPage {
             return reqGetEvent(requestingUser,
                     getParmValue(parameters, isGetAction, "page-offset"),
                     getParmValue(parameters, isGetAction, "unique-url-value"),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "base64")));
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "base64")));
 
         case JsonApiDict.REQ_PING:
 
@@ -1587,46 +1547,27 @@ public final class JsonApiServer extends AbstractPage {
                     getParmValue(parameters, isGetAction, "ranges"),
                     Boolean.parseBoolean(getParmValue(parameters, isGetAction,
                             "removeGraphics")),
-                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "ecoprint")));
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "ecoprint"))
+                    //
+                    , Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "grayscale")));
 
         case JsonApiDict.REQ_USER_LAZY_ECOPRINT:
 
             return reqUserLazyEcoPrint(lockedUser,
-                    Integer.parseInt(getParmValue(parameters, isGetAction,
-                            "jobIndex")),
+                    Integer.parseInt(
+                            getParmValue(parameters, isGetAction, "jobIndex")),
                     getParmValue(parameters, isGetAction, "ranges"));
-
-        case JsonApiDict.REQ_QUEUE_SET:
-
-            return reqQueueSet(requestingUser,
-                    getParmValue(parameters, isGetAction, "j_queue"));
 
         case JsonApiDict.REQ_USER_DELETE:
 
             return reqUserDelete(getParmValue(parameters, isGetAction, "id"),
                     getParmValue(parameters, isGetAction, "userid"));
 
-        case JsonApiDict.REQ_USER_GET:
-
-            return reqUserGet(requestingUser,
-                    getParmValue(parameters, isGetAction, "s_user"));
-
         case JsonApiDict.REQ_USER_GET_STATS:
 
             return reqUserGetStats(requestingUser);
-
-        case JsonApiDict.REQ_USER_NOTIFY_ACCOUNT_CHANGE:
-
-            return reqUserNotifyAccountChange(getParmValue(parameters,
-                    isGetAction, "dto"));
-
-        case JsonApiDict.REQ_USER_SET:
-            return reqUserSet(getParmValue(parameters, isGetAction, "userDto"));
-
-        case JsonApiDict.REQ_USER_QUICK_SEARCH:
-            return reqUserQuickSearch(getParmValue(parameters, isGetAction,
-                    "dto"));
 
         case JsonApiDict.REQ_USER_SOURCE_GROUPS:
 
@@ -1646,7 +1587,8 @@ public final class JsonApiServer extends AbstractPage {
                     API_DICTIONARY.createApiRequest(request);
 
             if (apiReqHandler == null) {
-                throw new SpException("Request [" + request + "] NOT supported");
+                throw new SpException(
+                        "Request [" + request + "] NOT supported");
             }
 
             return apiReqHandler.process(RequestCycle.get(), parameters,
@@ -1673,6 +1615,8 @@ public final class JsonApiServer extends AbstractPage {
      *            one-pixel).
      * @param ecoPdf
      *            <code>true</code> if Eco PDF is to be generated.
+     * @param grayscalePdf
+     *            <code>true</code> if Grayscale PDF is to be generated.
      * @param docLog
      * @param purpose
      *            A simple tag to insert into the filename (to add some
@@ -1688,19 +1632,20 @@ public final class JsonApiServer extends AbstractPage {
     private File generatePdfForExport(final User user,
             final int vanillaJobIndex, final String pageRangeFilter,
             final boolean removeGraphics, final boolean ecoPdf,
-            final DocLog docLog, final String purpose)
+            final boolean grayscalePdf, final DocLog docLog,
+            final String purpose)
             throws LetterheadNotFoundException, IOException,
             PostScriptDrmException, EcoPrintPdfTaskPendingException {
 
         final String pdfFile =
                 OutputProducer.createUniqueTempPdfName(user, purpose);
 
-        final String documentPageRangeFilter =
-                calcDocumentPageRangeFilter(user, vanillaJobIndex,
-                        pageRangeFilter);
+        final String documentPageRangeFilter = calcDocumentPageRangeFilter(user,
+                vanillaJobIndex, pageRangeFilter);
 
         return OutputProducer.instance().generatePdfForExport(user, pdfFile,
-                documentPageRangeFilter, removeGraphics, ecoPdf, docLog);
+                documentPageRangeFilter, removeGraphics, ecoPdf, grayscalePdf,
+                docLog);
     }
 
     /**
@@ -1735,10 +1680,9 @@ public final class JsonApiServer extends AbstractPage {
             final InboxInfoDto jobInfo =
                     INBOX_SERVICE.readInboxInfo(user.getUserId());
 
-            documentPageRangeFilter =
-                    INBOX_SERVICE.toVanillaJobInboxRange(jobInfo,
-                            vanillaJobIndex, INBOX_SERVICE
-                                    .createSortedRangeArray(pageRangeFilter));
+            documentPageRangeFilter = INBOX_SERVICE.toVanillaJobInboxRange(
+                    jobInfo, vanillaJobIndex,
+                    INBOX_SERVICE.createSortedRangeArray(pageRangeFilter));
         }
 
         return documentPageRangeFilter;
@@ -1765,9 +1709,8 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqUserLazyEcoPrint(final User lockedUser,
             final int vanillaJobIndex, final String pageRangeFilter) {
 
-        final String documentPageRangeFilter =
-                calcDocumentPageRangeFilter(lockedUser, vanillaJobIndex,
-                        pageRangeFilter);
+        final String documentPageRangeFilter = calcDocumentPageRangeFilter(
+                lockedUser, vanillaJobIndex, pageRangeFilter);
         /*
          * Get the (filtered) jobs.
          */
@@ -1775,15 +1718,13 @@ public final class JsonApiServer extends AbstractPage {
                 INBOX_SERVICE.getInboxInfo(lockedUser.getUserId());
 
         if (StringUtils.isNotBlank(documentPageRangeFilter)) {
-            inboxInfo =
-                    INBOX_SERVICE.filterInboxInfoPages(inboxInfo,
-                            documentPageRangeFilter);
+            inboxInfo = INBOX_SERVICE.filterInboxInfoPages(inboxInfo,
+                    documentPageRangeFilter);
         }
 
-        final int nTasksWaiting =
-                INBOX_SERVICE.lazyStartEcoPrintPdfTasks(
-                        ConfigManager.getUserHomeDir(lockedUser.getUserId()),
-                        inboxInfo);
+        final int nTasksWaiting = INBOX_SERVICE.lazyStartEcoPrintPdfTasks(
+                ConfigManager.getUserHomeDir(lockedUser.getUserId()),
+                inboxInfo);
 
         if (nTasksWaiting > 0) {
             return setApiResult(new HashMap<String, Object>(),
@@ -1885,15 +1826,6 @@ public final class JsonApiServer extends AbstractPage {
     private String localize(final String key, final String... args) {
         return Messages.getMessage(getClass(), getSession().getLocale(), key,
                 args);
-    }
-
-    /**
-     *
-     * @param data
-     * @return
-     */
-    private boolean isApiResultOK(final Map<String, Object> data) {
-        return isApiResultCode(data, ApiResultCodeEnum.OK);
     }
 
     /**
@@ -2083,9 +2015,8 @@ public final class JsonApiServer extends AbstractPage {
         if (msgKey == null) {
 
             msgKey = "msg-exception";
-            msg =
-                    exception.getClass().getSimpleName() + ": "
-                            + exception.getMessage();
+            msg = exception.getClass().getSimpleName() + ": "
+                    + exception.getMessage();
 
             if (!isShutdown) {
                 LOGGER.error(exception.getMessage(), exception);
@@ -2128,7 +2059,7 @@ public final class JsonApiServer extends AbstractPage {
      */
     private boolean checkTouchSessionExpired(final SpSession session) {
 
-        if (isAuthTokenLoginEnabled()) {
+        if (ApiRequestHelper.isAuthTokenLoginEnabled()) {
             return false;
         }
 
@@ -2146,21 +2077,28 @@ public final class JsonApiServer extends AbstractPage {
 
         final int minutes = ConfigManager.instance().getConfigInt(configKey);
 
-        return session.checkTouchExpired(DateUtil.DURATION_MSEC_MINUTE * minutes);
+        return session
+                .checkTouchExpired(DateUtil.DURATION_MSEC_MINUTE * minutes);
     }
 
     /**
-     * Checks if the request is valid and the user is authorized to perform the
-     * API.
+     * Checks if the request is valid, the Web App is right, and the user is
+     * authorized to perform the API.
      *
+     * @param request
+     *            The request id.
      * @param uid
-     *            The user id.
+     *            The requesting user id.
+     * @param webAppType
+     *            The requested {@link WebAppTypeEnum}.
      * @return {@code null} if user is authorized, otherwise a Map object
      *         containing the error message.
      * @throws IOException
+     *             When IO error.
      */
     private Map<String, Object> checkValidAndAuthorized(final String request,
-            final String uid) throws IOException {
+            final String uid, final WebAppTypeEnum webAppType)
+            throws IOException {
 
         Map<String, Object> userData = null;
 
@@ -2194,23 +2132,29 @@ public final class JsonApiServer extends AbstractPage {
                 userId = session.getUser().getUserId();
             }
 
-            this.stopReplaceSession(session, userId);
+            ApiRequestHelper.stopReplaceSession(session, userId,
+                    this.getRemoteAddr());
 
         } else if (session.isAuthenticated()) {
 
-            if (session.getUser().getUserId().equals(uid)) {
+            if (webAppType != session.getWebAppType()) {
+
+                authorized = false;
+
+            } else if (session.getUser().getUserId().equals(uid)) {
 
                 if (API_DICTIONARY.isAdminAuthenticationNeeded(request)) {
                     authorized = session.getUser().getAdmin().booleanValue();
                 } else {
-                    authorized = true;
+                    authorized = API_DICTIONARY.isWebAppAuthorized(request,
+                            webAppType);
                 }
 
             } else {
                 authorized = false;
 
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("request [" + request + "]: user [" + uid
+                    LOGGER.debug("Request [" + request + "]: user [" + uid
                             + "] is NOT the owner " + "of this session ["
                             + session.getId() + "]");
                 }
@@ -2221,7 +2165,7 @@ public final class JsonApiServer extends AbstractPage {
             authorized = false;
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("request [" + request
+                LOGGER.debug("Request [" + request
                         + "]: NO user authenticated in session ["
                         + session.getId() + "]");
             }
@@ -2230,7 +2174,7 @@ public final class JsonApiServer extends AbstractPage {
         //
         if (authorized) {
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("user [" + uid + "] is owner of session "
+                LOGGER.trace("User [" + uid + "] is owner of session "
                         + session.getId());
             }
         } else {
@@ -2251,6 +2195,8 @@ public final class JsonApiServer extends AbstractPage {
      * @param removeGraphics
      * @param ecoPdf
      *            <code>true</code> if Eco PDF is to be generated.
+     * @param grayscalePdf
+     *            <code>true</code> if Grayscale PDF is to be generated.
      * @return
      * @throws LetterheadNotFoundException
      * @throws IOException
@@ -2261,10 +2207,10 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqSend(final User lockedUser,
             final String mailto, final String jobIndex, final String ranges,
-            final boolean removeGraphics, final boolean ecoPdf)
-            throws LetterheadNotFoundException, IOException,
-            MessagingException, InterruptedException, CircuitBreakerException,
-            ParseException {
+            final boolean removeGraphics, final boolean ecoPdf,
+            final boolean grayscalePdf)
+            throws LetterheadNotFoundException, IOException, MessagingException,
+            InterruptedException, CircuitBreakerException, ParseException {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
@@ -2284,54 +2230,45 @@ public final class JsonApiServer extends AbstractPage {
             /*
              * (1) Generate with existing user lock.
              */
-            fileAttach =
-                    generatePdfForExport(lockedUser,
-                            Integer.parseInt(jobIndex), ranges, removeGraphics,
-                            ecoPdf, docLog, "email");
+            fileAttach = generatePdfForExport(lockedUser,
+                    Integer.parseInt(jobIndex), ranges, removeGraphics, ecoPdf,
+                    grayscalePdf, docLog, "email");
             /*
              * INVARIANT: Since sending the mail is synchronous, file length is
              * important and MUST be less than criterion.
              */
-            final int maxFileKb =
-                    ConfigManager.instance().getConfigInt(
-                            Key.MAIL_SMTP_MAX_FILE_KB);
+            final int maxFileKb = ConfigManager.instance()
+                    .getConfigInt(Key.MAIL_SMTP_MAX_FILE_KB);
 
             final long maxFileBytes = maxFileKb * 1024;
 
             if (fileAttach.length() > maxFileBytes) {
 
-                final BigDecimal fileMb =
-                        new BigDecimal((double) fileAttach.length()
-                                / (1024 * 1024));
+                final BigDecimal fileMb = new BigDecimal(
+                        (double) fileAttach.length() / (1024 * 1024));
 
                 final BigDecimal maxFileMb =
                         new BigDecimal((double) maxFileKb / 1024);
 
-                setApiResult(
-                        userData,
-                        ApiResultCodeEnum.WARN,
+                setApiResult(userData, ApiResultCodeEnum.WARN,
                         "msg-mail-max-file-size",
-                        BigDecimalUtil.localize(fileMb, 2, this.getSession()
-                                .getLocale(), true)
-                                + " MB",
-                        BigDecimalUtil.localize(maxFileMb, 2, this.getSession()
-                                .getLocale(), true)
-                                + " MB");
+                        BigDecimalUtil.localize(fileMb, 2,
+                                this.getSession().getLocale(), true) + " MB",
+                        BigDecimalUtil.localize(maxFileMb, 2,
+                                this.getSession().getLocale(), true) + " MB");
 
             } else {
 
                 final String fileName = createMeaningfullPdfFileName(docLog);
 
                 final String subject = fileName;
-                final String body =
-                        new StringBuilder()
-                                .append("Hi,<p>Here are the SafePages "
-                                        + "attached from ").append(user)
-                                .append(".</p>--<br/>")
-                                .append(CommunityDictEnum.SAVAPAGE.getWord())
-                                .append(" ")
-                                .append(ConfigManager.getAppVersion())
-                                .toString();
+                final String body = new StringBuilder()
+                        .append("Hi,<p>Here are the SafePages "
+                                + "attached from ")
+                        .append(user).append(".</p>--<br/>")
+                        .append(CommunityDictEnum.SAVAPAGE.getWord())
+                        .append(" ").append(ConfigManager.getAppVersion())
+                        .toString();
 
                 /*
                  * (2) Unlock the user BEFORE sending the email.
@@ -2360,8 +2297,9 @@ public final class JsonApiServer extends AbstractPage {
 
                 DOC_LOG_SERVICE.logDocOut(lockedUser, docLog.getDocOut());
 
-                addUserStats(userData, lockedUser, this.getSession()
-                        .getLocale(), SpSession.getAppCurrencySymbol());
+                ApiRequestHelper.addUserStats(userData, lockedUser,
+                        this.getSession().getLocale(),
+                        SpSession.getAppCurrencySymbol());
 
                 setApiResult(userData, ApiResultCodeEnum.OK, "msg-mail-sent",
                         mailto);
@@ -2386,103 +2324,11 @@ public final class JsonApiServer extends AbstractPage {
                         LOGGER.trace("deleted temp file [" + fileAttach + "]");
                     }
                 } else {
-                    LOGGER.error("delete of temp file [" + fileAttach
-                            + "] FAILED");
+                    LOGGER.error(
+                            "delete of temp file [" + fileAttach + "] FAILED");
                 }
             }
         }
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param user
-     * @return
-     */
-    private Map<String, Object> reqOutboxClear(final User lockedUser) {
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final int jobCount = OUTBOX_SERVICE.clearOutbox(lockedUser.getUserId());
-
-        final String msgKey;
-
-        if (jobCount == 0) {
-            msgKey = "msg-outbox-cleared-none";
-        } else if (jobCount == 1) {
-            msgKey = "msg-outbox-cleared-one";
-        } else {
-            msgKey = "msg-outbox-cleared-multiple";
-        }
-
-        setApiResult(userData, ApiResultCodeEnum.OK, msgKey,
-                String.valueOf(jobCount));
-
-        addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getAppCurrencySymbol());
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param user
-     * @return
-     */
-    private Map<String, Object> reqOutboxRemoveJob(final User lockedUser,
-            final String jobFileName) {
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final boolean removedJob =
-                OUTBOX_SERVICE.removeOutboxJob(lockedUser.getUserId(),
-                        jobFileName);
-
-        final String msgKey;
-
-        if (removedJob) {
-            msgKey = "msg-outbox-removed-job";
-        } else {
-            msgKey = "msg-outbox-removed-job-none";
-        }
-
-        setApiResult(userData, ApiResultCodeEnum.OK, msgKey);
-
-        addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getAppCurrencySymbol());
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param userId
-     * @return
-     */
-    private Map<String, Object> reqOutboxExtend(final User lockedUser) {
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final int minutes = 10;
-
-        final int jobCount =
-                OUTBOX_SERVICE.extendOutboxExpiry(lockedUser.getUserId(),
-                        minutes);
-
-        final String msgKey;
-
-        if (jobCount == 0) {
-            msgKey = "msg-outbox-extended-none";
-        } else if (jobCount == 1) {
-            msgKey = "msg-outbox-extended-one";
-        } else {
-            msgKey = "msg-outbox-extended-multiple";
-        }
-
-        setApiResult(userData, ApiResultCodeEnum.OK, msgKey,
-                String.valueOf(jobCount), String.valueOf(minutes));
-
-        addUserStats(userData, lockedUser, this.getSession().getLocale(),
-                SpSession.getAppCurrencySymbol());
 
         return userData;
     }
@@ -2565,357 +2411,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Custom validates a {@link IConfigProp.Key} value.
-     *
-     * @param userData
-     *            The user data to be returned with error message when value is
-     *            NOT valid.
-     * @param key
-     *            The key of the configuration item.
-     * @param value
-     *            The value of the configuration item.
-     * @return {@code null} when NO validation error, or the userData object
-     *         filled with the error message when an error is encountered..
-     */
-    private Map<String, Object> customConfigPropValidate(
-            Map<String, Object> userData, Key key, String value) {
-
-        if (key == Key.PROXY_PRINT_NON_SECURE_PRINTER_GROUP
-                && StringUtils.isNotBlank(value)) {
-
-            final PrinterGroup jpaPrinterGroup =
-                    ServiceContext.getDaoContext().getPrinterGroupDao()
-                            .findByName(value);
-
-            if (jpaPrinterGroup == null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-printer-group-not-found", value);
-            }
-        }
-
-        if (key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER
-                || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_DUPLEX
-                || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE
-                || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE_DUPLEX
-                || key == Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER
-                || key == Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_DUPLEX
-                || key == Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE
-                || key == Key.SMARTSCHOOL_2_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE_DUPLEX) {
-
-            if (StringUtils.isNotBlank(value)) {
-
-                final PrinterDao printerDao =
-                        ServiceContext.getDaoContext().getPrinterDao();
-
-                if (printerDao.findByName(value) == null) {
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-printer-not-found", value);
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Updates one or more configuration properties. Valid properties are
-     * updated (and eventually committed), till an invalid property is
-     * encountered.
-     *
-     * @param user
-     * @param jsonProps
-     * @return
-     * @throws ParseException
-     */
-    private Map<String, Object> reqConfigSetProps(final String requestingUser,
-            final String jsonProps) throws ParseException {
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("jsonProps: " + jsonProps);
-        }
-
-        String msgKey = "msg-config-props-applied";
-
-        final JsonNode list;
-
-        try {
-            list = new ObjectMapper().readTree(jsonProps);
-        } catch (IOException e) {
-            throw new SpException(e.getMessage(), e);
-        }
-
-        final ConfigManager cm = ConfigManager.instance();
-
-        final Iterator<String> iter = list.getFieldNames();
-
-        boolean isSmartSchoolUpdate = false;
-
-        boolean isValid = true;
-        int nJobsRescheduled = 0;
-        int nValid = 0;
-
-        while (iter.hasNext() && isValid) {
-
-            final String key = iter.next();
-
-            String value = list.get(key).getTextValue();
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(key + " = " + value);
-            }
-
-            final Key configKey = cm.getConfigKey(key);
-
-            /*
-             * If this value is Locale formatted, we MUST revert to locale
-             * independent format.
-             */
-            if (cm.isConfigBigDecimal(configKey)) {
-                value =
-                        BigDecimalUtil.toPlainString(value, getSession()
-                                .getLocale(), true);
-            }
-
-            /*
-             *
-             */
-            if (customConfigPropValidate(userData, configKey, value) != null) {
-                return userData;
-            }
-
-            final IConfigProp.ValidationResult res =
-                    cm.validate(configKey, value);
-            isValid = res.isValid();
-
-            if (isValid) {
-
-                boolean preValue = false;
-
-                switch (configKey) {
-
-                case SYS_DEFAULT_LOCALE:
-                    ConfigManager.setDefaultLocale(value);
-                    break;
-
-                case SCHEDULE_HOURLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_DAILY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_WEEKLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_MONTHLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_DAILY_MAINT:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case PRINT_IMAP_ENABLE:
-                    preValue = cm.isConfigValue(configKey);
-                    break;
-                default:
-                    break;
-                }
-
-                /*
-                 * TODO: This updates the cache while database is not committed
-                 * yet! When database transaction is rollback back the cache is
-                 * dirty.
-                 */
-                cm.updateConfigKey(configKey, value, requestingUser);
-
-                nValid++;
-
-                if (configKey == Key.PRINT_IMAP_ENABLE && preValue
-                        && !cm.isConfigValue(configKey)) {
-                    if (SpJobScheduler.interruptImapListener()) {
-                        msgKey = "msg-config-props-applied-mail-print-stopped";
-                    }
-
-                } else if (configKey == Key.SMARTSCHOOL_1_ENABLE
-                        || configKey == Key.SMARTSCHOOL_2_ENABLE) {
-                    isSmartSchoolUpdate = true;
-                }
-
-            } else {
-                setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-config-props-error", value);
-            }
-
-        } // end-while
-
-        if (nValid > 0) {
-            ConfigManager.instance().calcRunnable();
-        }
-
-        if (isValid) {
-
-            if (nJobsRescheduled > 0) {
-                msgKey = "msg-config-props-applied-rescheduled";
-            } else if (isSmartSchoolUpdate
-                    && !ConfigManager.isSmartSchoolPrintActiveAndEnabled()
-                    && SmartSchoolPrinter.isOnline()) {
-                if (SpJobScheduler.interruptSmartSchoolPoller()) {
-                    msgKey = "msg-config-props-applied-smartschool-stopped";
-                }
-            }
-
-            setApiResult(userData, ApiResultCodeEnum.OK, msgKey);
-        }
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param userName
-     *            The requesting user.
-     * @return The {@linkJsonPrinterList}.
-     * @throws Exception
-     */
-    private JsonPrinterList getUserPrinterList(final String userName)
-            throws Exception {
-
-        final JsonPrinterList jsonPrinterList =
-                PROXY_PRINT_SERVICE.getUserPrinterList(getHostTerminal(),
-                        userName);
-
-        if (jsonPrinterList.getDfault() != null) {
-            PROXY_PRINT_SERVICE.localize(getSession().getLocale(),
-                    jsonPrinterList.getDfault());
-        }
-        return jsonPrinterList;
-    }
-
-    /**
-     *
-     * @param userName
-     *            The requesting user.
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> reqPrinterList(final String userName)
-            throws Exception {
-
-        final Map<String, Object> data = new HashMap<String, Object>();
-
-        if (!PROXY_PRINT_SERVICE.isConnectedToCups()) {
-            return setApiResult(data, ApiResultCodeEnum.ERROR,
-                    "msg-printer-connection-broken");
-        }
-
-        final JsonPrinterList jsonPrinterList = getUserPrinterList(userName);
-
-        data.put("data", jsonPrinterList);
-        return setApiResultOK(data);
-    }
-
-    /**
-     *
-     * @param json
-     *            The JSON request.
-     * @param userName
-     *            The requesting user.
-     * @return
-     */
-    private Map<String, Object> reqPrinterQuickSearch(final String json,
-            final String userName) throws Exception {
-
-        final Map<String, Object> data = new HashMap<String, Object>();
-
-        final QuickSearchFilterDto dto =
-                AbstractDto.create(QuickSearchFilterDto.class, json);
-
-        final List<QuickSearchItemDto> items = new ArrayList<>();
-
-        final JsonPrinterList jsonPrinterList = getUserPrinterList(userName);
-
-        final int maxItems = dto.getMaxResults().intValue();
-
-        final String filter = dto.getFilter().toLowerCase();
-
-        /*
-         * First iteration to collect the items, fastPrintAvaliable.
-         */
-        final Iterator<JsonPrinter> iter = jsonPrinterList.getList().iterator();
-
-        // Is printer with Fast Proxy Print available?
-        Boolean fastPrintAvailable = null;
-
-        while (iter.hasNext()) {
-
-            final JsonPrinter printer = iter.next();
-
-            if (printer.getAuthMode() != null && printer.getAuthMode().isFast()) {
-                fastPrintAvailable = Boolean.TRUE;
-            }
-
-            final String location = printer.getLocation();
-
-            if (StringUtils.isEmpty(filter)
-                    || printer.getAlias().toLowerCase().contains(filter)
-                    || (StringUtils.isNotBlank(location) && location
-                            .toLowerCase().contains(filter))) {
-
-                if (items.size() < maxItems) {
-
-                    final QuickSearchPrinterItemDto itemWlk =
-                            new QuickSearchPrinterItemDto();
-
-                    itemWlk.setKey(printer.getDbKey());
-                    itemWlk.setText(printer.getAlias());
-                    itemWlk.setPrinter(printer);
-
-                    items.add(itemWlk);
-                } else {
-                    break;
-                }
-            }
-        }
-
-        /*
-         * We need to know if there are any "Fast Release" printers available
-         * (even if not part of this search list). So, if fastPrintAvaliable was
-         * NOT collected iterate the remainder of the list.
-         *
-         * Reason: the client may want to display a button to extend the Fast
-         * Print Closing Time.
-         */
-        if (fastPrintAvailable == null) {
-
-            fastPrintAvailable = Boolean.FALSE;
-
-            while (iter.hasNext()) {
-
-                final JsonPrinter printer = iter.next();
-
-                if (printer.getAuthMode() != null
-                        && printer.getAuthMode().isFast()) {
-                    fastPrintAvailable = Boolean.TRUE;
-                    break;
-                }
-            }
-        }
-
-        /*
-         *
-         */
-        data.put("items", items);
-        data.put("fastPrintAvailable", fastPrintAvailable);
-
-        return setApiResultOK(data);
-    }
-
-    /**
      * {@link JsonApiDict#REQ_PRINTER_DETAIL}.
      *
      * @param user
@@ -2932,8 +2427,8 @@ public final class JsonApiServer extends AbstractPage {
         }
 
         final JsonPrinterDetail jsonPrinter =
-                PROXY_PRINT_SERVICE.getPrinterDetailUserCopy(getSession()
-                        .getLocale(), printerName);
+                PROXY_PRINT_SERVICE.getPrinterDetailUserCopy(
+                        getSession().getLocale(), printerName);
 
         if (jsonPrinter == null) {
 
@@ -3003,36 +2498,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Gets the localized string for a BigDecimal.
-     *
-     * @param vlaue
-     *            The {@link BigDecimal}.
-     * @param currencySymbol
-     *            {@code null} when not available.
-     * @return The localized string.
-     * @throws ParseException
-     */
-    private final String localizedPrinterCost(final BigDecimal decimal,
-            final String currencySymbol) throws ParseException {
-
-        BigDecimal value = decimal;
-
-        if (value == null) {
-            value = BigDecimal.ZERO;
-        }
-
-        String cost =
-                BigDecimalUtil.localize(value, ConfigManager
-                        .getPrinterCostDecimals(), this.getSession()
-                        .getLocale(), true);
-
-        if (StringUtils.isBlank(currencySymbol)) {
-            return cost;
-        }
-        return currencySymbol + cost;
-    }
-
-    /**
      *
      * @param user
      * @param ranges
@@ -3046,9 +2511,8 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        final int nPages =
-                INBOX_SERVICE
-                        .movePages(user, ranges, Integer.valueOf(position));
+        final int nPages = INBOX_SERVICE.movePages(user, ranges,
+                Integer.valueOf(position));
 
         final String msgKey;
 
@@ -3155,134 +2619,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     *
-     * @param json
-     * @return
-     * @throws ParseException
-     */
-    private Map<String, Object> reqPosDepositQuickSearch(String json)
-            throws ParseException {
-
-        final Map<String, Object> data = new HashMap<String, Object>();
-
-        final QuickSearchFilterDto dto =
-                AbstractDto.create(QuickSearchFilterDto.class, json);
-
-        final AccountTrxDao accountTrxDao =
-                ServiceContext.getDaoContext().getAccountTrxDao();
-
-        final UserAccountDao userAccountDao =
-                ServiceContext.getDaoContext().getUserAccountDao();
-
-        final AccountTrxDao.ListFilter filter = new AccountTrxDao.ListFilter();
-        filter.setAccountType(AccountTypeEnum.USER);
-        filter.setTrxType(AccountTrxTypeEnum.DEPOSIT);
-
-        final List<QuickSearchItemDto> list = new ArrayList<>();
-
-        //
-        Date dateFrom = null;
-        try {
-            dateFrom = QuickSearchDate.toDate(dto.getFilter());
-        } catch (ParseException e) {
-            dateFrom = null;
-        }
-        filter.setDateFrom(dateFrom);
-
-        //
-        final LocaleHelper localeHelper =
-                new LocaleHelper(SpSession.get().getLocale());
-
-        final String currencySymbol = SpSession.getAppCurrencySymbol();
-        final int balanceDecimals = ConfigManager.getUserBalanceDecimals();
-
-        QuickSearchPosPurchaseItemDto itemWlk;
-
-        for (final AccountTrx accountTrx : accountTrxDao.getListChunk(filter,
-                0, dto.getMaxResults(), AccountTrxDao.Field.TRX_DATE, false)) {
-
-            final PosPurchase purchase = accountTrx.getPosPurchase();
-            final User user =
-                    userAccountDao.findByAccountId(
-                            accountTrx.getAccount().getId()).getUser();
-
-            itemWlk = new QuickSearchPosPurchaseItemDto();
-
-            itemWlk.setKey(accountTrx.getId());
-
-            itemWlk.setComment(purchase.getComment());
-            itemWlk.setPaymentType(purchase.getPaymentType());
-            itemWlk.setReceiptNumber(purchase.getReceiptNumber());
-
-            itemWlk.setDateTime(localeHelper.getShortDateTime(accountTrx
-                    .getTransactionDate()));
-
-            itemWlk.setTotalCost(localeHelper.getCurrencyDecimal(
-                    purchase.getTotalCost(), balanceDecimals, currencySymbol));
-
-            itemWlk.setUserId(user.getUserId());
-            itemWlk.setUserEmail(USER_SERVICE.getPrimaryEmailAddress(user));
-
-            list.add(itemWlk);
-
-        }
-        //
-        data.put("items", list);
-
-        setApiResultOK(data);
-        return data;
-    }
-
-    /**
-     *
-     * @param json
-     * @return
-     */
-    private Map<String, Object> reqUserQuickSearch(String json) {
-
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final Map<String, Object> data = new HashMap<String, Object>();
-
-        final QuickSearchFilterDto dto =
-                AbstractDto.create(QuickSearchFilterDto.class, json);
-
-        final String currencySymbol = SpSession.getAppCurrencySymbol();
-
-        final UserDao.ListFilter filter = new UserDao.ListFilter();
-
-        filter.setContainingIdText(dto.getFilter());
-        filter.setDeleted(Boolean.FALSE);
-        filter.setPerson(Boolean.TRUE);
-
-        final List<QuickSearchItemDto> list = new ArrayList<>();
-
-        QuickSearchUserItemDto itemWlk;
-
-        for (final User user : userDao.getListChunk(filter, 0,
-                dto.getMaxResults(), UserDao.Field.USERID, true)) {
-
-            itemWlk = new QuickSearchUserItemDto();
-
-            itemWlk.setKey(user.getId());
-            itemWlk.setText(user.getUserId());
-            itemWlk.setEmail(USER_SERVICE.getPrimaryEmailAddress(user));
-
-            itemWlk.setBalance(ACCOUNTING_SERVICE.getFormattedUserBalance(
-                    user.getUserId(), ServiceContext.getLocale(),
-                    currencySymbol));
-
-            list.add(itemWlk);
-        }
-
-        data.put("items", list);
-
-        setApiResultOK(data);
-
-        return data;
-    }
-
-    /**
      * Sends a test mail message to mailto address.
      *
      * @param requestingUser
@@ -3297,10 +2633,9 @@ public final class JsonApiServer extends AbstractPage {
         Map<String, Object> userData = new HashMap<String, Object>();
 
         final String subject = localize("mail-test-subject");
-        final String body =
-                localize("mail-test-body", requestingUser,
-                        CommunityDictEnum.SAVAPAGE.getWord() + " "
-                                + ConfigManager.getAppVersion());
+        final String body = localize("mail-test-body", requestingUser,
+                CommunityDictEnum.SAVAPAGE.getWord() + " "
+                        + ConfigManager.getAppVersion());
 
         try {
 
@@ -3438,7 +2773,7 @@ public final class JsonApiServer extends AbstractPage {
         try {
             final MutableInt nMessagesInbox = new MutableInt();
 
-            SmartSchoolPrintMonitor.testConnection(nMessagesInbox);
+            SmartschoolPrintMonitor.testConnection(nMessagesInbox);
 
             setApiResult(userData, ApiResultCodeEnum.INFO,
                     "msg-smartschool-test-passed", nMessagesInbox.toString());
@@ -3470,10 +2805,10 @@ public final class JsonApiServer extends AbstractPage {
                     "msg-smartschool-accounts-disabled");
         }
 
-        SmartSchoolPrinter.setBlocked(MemberCard.instance()
-                .isMembershipDesirable());
+        SmartschoolPrinter
+                .setBlocked(MemberCard.instance().isMembershipDesirable());
 
-        if (SmartSchoolPrinter.isBlocked()) {
+        if (SmartschoolPrinter.isBlocked()) {
 
             return setApiResult(userData, ApiResultCodeEnum.WARN,
                     "msg-smartschool-blocked",
@@ -3481,18 +2816,18 @@ public final class JsonApiServer extends AbstractPage {
                     CommunityDictEnum.MEMBERSHIP.getWord());
         }
 
-        if (SmartSchoolPrinter.isOnline()) {
+        if (SmartschoolPrinter.isOnline()) {
 
             msgKey = "msg-smartschool-started-already";
 
         } else {
 
             if (simulate) {
-                SmartSchoolPrintMonitor.resetJobTickerCounter();
+                SmartschoolPrintMonitor.resetJobTickerCounter();
             }
 
-            SpJobScheduler.instance().scheduleOneShotSmartSchoolPrintMonitor(
-                    simulate, 1L);
+            SpJobScheduler.instance()
+                    .scheduleOneShotSmartSchoolPrintMonitor(simulate, 1L);
 
             if (simulate) {
                 msgKey = "msg-smartschool-started-simulation";
@@ -3503,8 +2838,10 @@ public final class JsonApiServer extends AbstractPage {
             /*
              * Have a retry and close relevant circuits.
              */
-            ConfigManager.getCircuitBreaker(
-                    CircuitBreakerEnum.SMARTSCHOOL_CONNECTION).closeCircuit();
+            ConfigManager
+                    .getCircuitBreaker(
+                            CircuitBreakerEnum.SMARTSCHOOL_CONNECTION)
+                    .closeCircuit();
 
         }
         return setApiResult(userData, ApiResultCodeEnum.OK, msgKey);
@@ -3588,9 +2925,8 @@ public final class JsonApiServer extends AbstractPage {
     private boolean validatePassword(Map<String, Object> userData,
             final String password) {
 
-        final int minPwLength =
-                ConfigManager.instance().getConfigInt(
-                        Key.INTERNAL_USERS_PW_LENGTH_MIN);
+        final int minPwLength = ConfigManager.instance()
+                .getConfigInt(Key.INTERNAL_USERS_PW_LENGTH_MIN);
 
         if (password.length() < minPwLength) {
             setApiResult(userData, ApiResultCodeEnum.ERROR,
@@ -3761,158 +3097,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Edits or creates a Queue.
-     * <p>
-     * Also, a logical delete can be applied or reversed.
-     * </p>
-     *
-     * @param requestingUser
-     * @param jsonQueue
-     * @return
-     */
-    private Map<String, Object> reqQueueSet(final String requestingUser,
-            final String jsonQueue) {
-
-        final IppQueueDao ippQueueDao =
-                ServiceContext.getDaoContext().getIppQueueDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("jsonQueue: " + jsonQueue);
-        }
-
-        final JsonNode list;
-
-        try {
-            list = new ObjectMapper().readTree(jsonQueue);
-        } catch (IOException e) {
-            throw new SpException(e.getMessage(), e);
-        }
-
-        final JsonNode id = list.get("id");
-        final boolean isNew = id.isNull();
-        final Date now = new Date();
-        final String urlPath = list.get("urlpath").getTextValue().trim();
-
-        /*
-         * Note: returns null when logically deleted!!
-         */
-        final IppQueue jpaQueueDuplicate = ippQueueDao.findByUrlPath(urlPath);
-
-        IppQueue jpaQueue = null;
-
-        boolean isDuplicate = true;
-
-        if (isNew) {
-
-            if (jpaQueueDuplicate == null) {
-
-                jpaQueue = new IppQueue();
-                jpaQueue.setCreatedBy(requestingUser);
-                jpaQueue.setCreatedDate(now);
-
-                isDuplicate = false;
-            }
-
-        } else {
-
-            jpaQueue = ippQueueDao.findById(id.asLong());
-
-            if (jpaQueueDuplicate == null
-                    || jpaQueueDuplicate.getId().equals(jpaQueue.getId())) {
-
-                jpaQueue.setModifiedBy(requestingUser);
-                jpaQueue.setModifiedDate(now);
-
-                isDuplicate = false;
-            }
-        }
-
-        if (isDuplicate) {
-
-            setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-queue-duplicate-path", urlPath);
-
-        } else {
-
-            jpaQueue.setUrlPath(urlPath);
-            jpaQueue.setIpAllowed(list.get("ipallowed").getTextValue());
-            jpaQueue.setTrusted(list.get("trusted").getBooleanValue());
-            jpaQueue.setDisabled(list.get("disabled").getBooleanValue());
-
-            if (isNew) {
-
-                if (QUEUE_SERVICE.isReservedQueue(urlPath)) {
-
-                    setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-queue-reserved-path", urlPath);
-
-                } else {
-
-                    ippQueueDao.create(jpaQueue);
-
-                    setApiResult(userData, ApiResultCodeEnum.OK,
-                            "msg-queue-created-ok");
-                }
-
-            } else {
-
-                final boolean isDeleted = list.get("deleted").getBooleanValue();
-
-                if (jpaQueue.getDeleted() != isDeleted) {
-
-                    if (isDeleted) {
-                        QUEUE_SERVICE.setLogicalDeleted(jpaQueue, now,
-                                requestingUser);
-                    } else {
-                        QUEUE_SERVICE.undoLogicalDeleted(jpaQueue);
-                    }
-                }
-
-                ippQueueDao.update(jpaQueue);
-
-                setApiResult(userData, ApiResultCodeEnum.OK,
-                        "msg-queue-saved-ok");
-            }
-        }
-        return userData;
-    }
-
-    /**
-     *
-     * @param requestingUser
-     * @param userid
-     * @param id
-     * @return
-     */
-    private Map<String, Object> reqDeviceDelete(final String requestingUser,
-            final String id, final String deviceName) {
-
-        final DeviceDao deviceDao =
-                ServiceContext.getDaoContext().getDeviceDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final Device device = deviceDao.findById(Long.valueOf(id));
-
-        if (device == null) {
-            throw new SpException("Device [" + deviceName + "] is not found");
-        }
-
-        if (device.getCardReaderTerminal() != null) {
-            return setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-device-delete-reader-in-use", device.getDisplayName(),
-                    device.getCardReaderTerminal().getDisplayName());
-        }
-
-        deviceDao.delete(device);
-
-        return setApiResult(userData, ApiResultCodeEnum.OK,
-                "msg-device-deleted-ok");
-    }
-
-    /**
      *
      * @param card
      * @return
@@ -3946,10 +3130,8 @@ public final class JsonApiServer extends AbstractPage {
         userObj.put("attr", attrMap);
 
         if (deviceType == DeviceTypeEnum.CARD_READER) {
-            userObj.put(
-                    "port",
-                    Integer.valueOf(ConfigManager.instance().getConfigInt(
-                            Key.DEVICE_CARD_READER_DEFAULT_PORT)));
+            userObj.put("port", Integer.valueOf(ConfigManager.instance()
+                    .getConfigInt(Key.DEVICE_CARD_READER_DEFAULT_PORT)));
 
         } else if (deviceType == DeviceTypeEnum.TERMINAL) {
 
@@ -3962,499 +3144,6 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("j_device", userObj);
 
         return setApiResultOK(userData);
-    }
-
-    /**
-     *
-     * @param user
-     * @param id
-     * @return
-     */
-    private Map<String, Object> reqDeviceGet(final String userId,
-            final String id) {
-
-        final DeviceDao deviceDao =
-                ServiceContext.getDaoContext().getDeviceDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final Device device = deviceDao.findById(Long.valueOf(id));
-
-        if (device == null) {
-            setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-device-not-found", id);
-        } else {
-            Map<String, Object> userObj = new HashMap<String, Object>();
-
-            userObj.put("id", device.getId());
-            userObj.put("deviceType", device.getDeviceType());
-            userObj.put("deviceName", device.getDeviceName());
-            userObj.put("displayName", device.getDisplayName());
-            userObj.put("location", device.getLocation());
-            userObj.put("notes", device.getNotes());
-            userObj.put("hostname", device.getHostname());
-            userObj.put("port", device.getPort());
-            userObj.put("disabled", device.getDisabled());
-
-            if (device.getPrinter() != null) {
-                userObj.put("printerName", device.getPrinter().getPrinterName());
-            }
-
-            if (device.getPrinterGroup() != null) {
-                userObj.put("printerGroup", device.getPrinterGroup()
-                        .getDisplayName());
-            }
-
-            if (device.getCardReader() != null) {
-                userObj.put("readerName", device.getCardReader()
-                        .getDeviceName());
-            }
-
-            if (device.getCardReaderTerminal() != null) {
-                userObj.put("terminalName", device.getCardReaderTerminal()
-                        .getDeviceName());
-            }
-
-            /*
-             *
-             */
-            if (device.getAttributes() != null) {
-
-                Map<String, Object> attrMap = new HashMap<String, Object>();
-
-                for (DeviceAttr attr : device.getAttributes()) {
-
-                    final String value = attr.getValue();
-
-                    if (value.equals(IConfigProp.V_YES)
-                            || value.equals(IConfigProp.V_NO)) {
-
-                        attrMap.put(attr.getName(), Boolean.valueOf(value
-                                .equals(IConfigProp.V_YES)));
-                    } else {
-                        attrMap.put(attr.getName(), attr.getValue());
-                    }
-
-                    if (LOGGER.isTraceEnabled()) {
-                        LOGGER.trace("get [" + attr.getName() + "] : ["
-                                + attrMap.get(attr.getName()) + "]");
-                    }
-                }
-
-                userObj.put("attr", attrMap);
-            }
-
-            /*
-             *
-             */
-            userData.put("j_device", userObj);
-            setApiResultOK(userData);
-        }
-        return userData;
-    }
-
-    /**
-     * Edits or creates a Device.
-     *
-     * @param requestingUser
-     * @param jsonDevice
-     * @return
-     */
-    private Map<String, Object> reqDeviceSet(final String requestingUser,
-            final String jsonDevice) {
-
-        final DeviceDao deviceDao =
-                ServiceContext.getDaoContext().getDeviceDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final JsonNode list;
-
-        try {
-            list = new ObjectMapper().readTree(jsonDevice);
-        } catch (IOException e) {
-            throw new SpException(e.getMessage(), e);
-        }
-
-        final JsonNode id = list.get("id");
-        final boolean isNew = id == null || id.isNull();
-        final Date now = new Date();
-        final String deviceName = list.get("deviceName").getTextValue();
-
-        final PrinterGroupDao printerGroupDao =
-                ServiceContext.getDaoContext().getPrinterGroupDao();
-
-        /*
-         * Note: returns null when not found.
-         */
-        final Device jpaDeviceDuplicate = deviceDao.findByName(deviceName);
-
-        Device jpaDevice = null;
-
-        boolean isDuplicate = true;
-
-        if (isNew) {
-
-            if (jpaDeviceDuplicate == null) {
-
-                jpaDevice = new Device();
-                jpaDevice.setCreatedBy(requestingUser);
-                jpaDevice.setCreatedDate(now);
-
-                isDuplicate = false;
-            }
-
-        } else {
-
-            jpaDevice = deviceDao.findById(id.asLong());
-
-            if (jpaDeviceDuplicate == null
-                    || jpaDeviceDuplicate.getId().equals(jpaDevice.getId())) {
-
-                jpaDevice.setModifiedBy(requestingUser);
-                jpaDevice.setModifiedDate(now);
-
-                isDuplicate = false;
-            }
-        }
-
-        if (isDuplicate) {
-
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-device-duplicate-name", deviceName);
-
-        }
-
-        jpaDevice.setDeviceType(list.get("deviceType").getTextValue());
-        jpaDevice.setDeviceName(deviceName);
-        jpaDevice.setDisplayName(list.get("displayName").getTextValue());
-        jpaDevice.setLocation(list.get("location").getTextValue());
-        jpaDevice.setNotes(list.get("notes").getTextValue());
-        jpaDevice.setHostname(list.get("hostname").getTextValue());
-        jpaDevice.setDisabled(list.get("disabled").getBooleanValue());
-
-        Integer iPort = null;
-
-        if (deviceDao.isCardReader(jpaDevice)) {
-            JsonNode jsonPort = list.get("port");
-            if (jsonPort == null || jsonPort.getIntValue() <= 0) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-port-error");
-            }
-            iPort = jsonPort.getIntValue();
-        }
-        jpaDevice.setPort(iPort);
-
-        /*
-         * Get JSON Attributes
-         */
-        final JsonNode jsonAttributes = list.get("attr");
-
-        /*
-         * Reference to Card Reader.
-         */
-        Device jpaCardReader = null;
-
-        final JsonNode jsonCardReaderName = list.get("readerName");
-        String cardReaderName = null;
-
-        if (jsonCardReaderName != null) {
-            cardReaderName = jsonCardReaderName.getTextValue();
-        }
-
-        final JsonNode jsonAuthModeCardIp;
-
-        if (jsonAttributes == null) {
-            jsonAuthModeCardIp = null;
-        } else {
-            jsonAuthModeCardIp =
-                    jsonAttributes.findValue(DeviceAttrEnum.AUTH_MODE_CARD_IP
-                            .getDbName());
-        }
-
-        final boolean linkCardReader =
-                jsonAuthModeCardIp != null
-                        && jsonAuthModeCardIp.getBooleanValue();
-
-        if (linkCardReader) {
-
-            /*
-             * INVARIANT: Card Reader must be specified.
-             */
-            if (StringUtils.isBlank(cardReaderName)) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-card-reader-missing");
-            }
-
-            jpaCardReader = deviceDao.findByName(cardReaderName);
-
-            /*
-             * INVARIANT: Card Reader must exist.
-             */
-            if (jpaCardReader == null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-card-reader-not-found", cardReaderName);
-            }
-
-            /*
-             * INVARIANT: Card Reader must not already be a Login Authenticator.
-             */
-            Device jpaCardReaderTerminal =
-                    jpaCardReader.getCardReaderTerminal();
-
-            if (jpaCardReaderTerminal != null) {
-                if (isNew
-                        || !jpaDevice.getId().equals(
-                                jpaCardReaderTerminal.getId())) {
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-device-card-reader-reserved-for-terminal",
-                            cardReaderName,
-                            jpaCardReaderTerminal.getDisplayName());
-                }
-            }
-
-            /*
-             * INVARIANT: Card Reader must not already be a Proxy Print
-             * Authenticator.
-             */
-            if (jpaCardReader.getPrinter() != null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-card-reader-reserved-for-printer",
-                        cardReaderName, jpaCardReader.getPrinter()
-                                .getPrinterName());
-            }
-            if (jpaCardReader.getPrinterGroup() != null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-card-reader-reserved-for-printer-group",
-                        cardReaderName, jpaCardReader.getPrinterGroup()
-                                .getDisplayName());
-            }
-
-        }
-
-        jpaDevice.setCardReader(jpaCardReader);
-
-        if (jpaCardReader != null) {
-            jpaCardReader.setCardReaderTerminal(jpaDevice);
-        }
-
-        /*
-         * Screening and determination of attribute values.
-         */
-        ProxyPrintAuthModeEnum printAuthMode = null;
-
-        if (jsonAttributes != null) {
-
-            final Iterator<Entry<String, JsonNode>> iter =
-                    jsonAttributes.getFields();
-
-            while (iter.hasNext()) {
-
-                final Entry<String, JsonNode> entry = iter.next();
-
-                final String attrKey = entry.getKey();
-                final String attrValue = entry.getValue().getTextValue();
-
-                /*
-                 * INVARIANT: USER_MAX_IDLE_SECS must be numeric.
-                 */
-                if (attrKey.equals(DeviceAttrEnum.WEBAPP_USER_MAX_IDLE_SECS
-                        .getDbName()) && !StringUtils.isNumeric(attrValue)) {
-
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-device-idle-seconds-error");
-                }
-
-                /*
-                 * PROXY_PRINT_AUTH_MODE
-                 */
-                if (attrKey.equals(DeviceAttrEnum.PROXY_PRINT_AUTH_MODE
-                        .getDbName())) {
-                    printAuthMode = ProxyPrintAuthModeEnum.valueOf(attrValue);
-                }
-
-            }
-        }
-
-        /*
-         * Authenticated proxy print for single printer or printer group.
-         */
-        final PrinterGroup jpaPrinterGroup;
-        final Printer jpaPrinter;
-
-        if (printAuthMode == null) {
-            /*
-             * No authenticated proxy print applicable.
-             */
-            jpaPrinter = null;
-            jpaPrinterGroup = null;
-
-        } else {
-
-            final JsonNode jsonPrinterName = list.get("printerName");
-            final JsonNode jsonPrinterGroup = list.get("printerGroup");
-
-            final String printerName;
-            final String printerGroup;
-
-            if (jsonPrinterName == null
-                    || StringUtils.isBlank(jsonPrinterName.getTextValue())) {
-                printerName = null;
-            } else {
-                printerName = jsonPrinterName.getTextValue();
-            }
-
-            if (jsonPrinterGroup == null
-                    || StringUtils.isBlank(jsonPrinterGroup.getTextValue())) {
-                printerGroup = null;
-            } else {
-                printerGroup = jsonPrinterGroup.getTextValue();
-            }
-
-            if (printerGroup == null && printerName == null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-proxy-printer-or-group-needed");
-            }
-
-            if (printAuthMode == ProxyPrintAuthModeEnum.FAST) {
-
-                /*
-                 * INVARIANT: FAST proxy print MUST target a SINGLE printer. A
-                 * printer group is irrelevant for FAST proxy print.
-                 */
-                if (printerName == null || printerGroup != null) {
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-device-single-proxy-printer-needed");
-                }
-
-            } else if (printAuthMode == ProxyPrintAuthModeEnum.FAST_DIRECT
-                    || printAuthMode == ProxyPrintAuthModeEnum.FAST_HOLD) {
-
-                /*
-                 * INVARIANT: FAST proxy print MUST target a SINGLE printer.
-                 */
-                if (printerGroup != null && printerName == null) {
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-device-single-proxy-printer-needed");
-                }
-            } else if (printerGroup != null && printerName != null) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-device-proxy-printer-or-group-needed");
-            }
-
-            /*
-             * Single Printer.
-             */
-            if (printerName == null) {
-
-                jpaPrinter = null;
-
-            } else {
-
-                Printer jpaPrinterWlk = jpaDevice.getPrinter();
-
-                if (jpaPrinterWlk == null
-                        || !jpaPrinterWlk.getPrinterName().equals(printerName)) {
-
-                    final PrinterDao printerDao =
-                            ServiceContext.getDaoContext().getPrinterDao();
-
-                    jpaPrinterWlk = printerDao.findByName(printerName);
-
-                    if (jpaPrinterWlk == null) {
-                        return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                                "msg-device-printer-not-found", printerName);
-                    }
-                }
-
-                jpaPrinter = jpaPrinterWlk;
-            }
-
-            /*
-             * Printer Group.
-             */
-            if (printerGroup == null) {
-
-                jpaPrinterGroup = null;
-
-            } else {
-
-                PrinterGroup jpaPrinterGroupWlk = jpaDevice.getPrinterGroup();
-
-                if (jpaPrinterGroupWlk == null
-                        || !jpaPrinterGroupWlk.getGroupName().equals(
-                                printerGroup)) {
-
-                    jpaPrinterGroupWlk =
-                            printerGroupDao.findByName(printerGroup);
-
-                    if (jpaPrinterGroupWlk == null) {
-                        return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                                "msg-device-printer-group-not-found",
-                                printerGroup);
-                    }
-                }
-                jpaPrinterGroup = jpaPrinterGroupWlk;
-            }
-        }
-
-        jpaDevice.setPrinter(jpaPrinter);
-        jpaDevice.setPrinterGroup(jpaPrinterGroup);
-
-        /*
-         * Device: Persist | Merge
-         */
-        String resultMsgKey;
-
-        if (isNew) {
-            deviceDao.create(jpaDevice);
-            resultMsgKey = "msg-device-created-ok";
-
-        } else {
-            deviceDao.update(jpaDevice);
-            resultMsgKey = "msg-device-saved-ok";
-        }
-
-        /*
-         * Write Attributes.
-         */
-        if (jsonAttributes != null) {
-
-            final Iterator<Entry<String, JsonNode>> iter =
-                    jsonAttributes.getFields();
-
-            while (iter.hasNext()) {
-
-                final Entry<String, JsonNode> entry = iter.next();
-
-                final String value;
-
-                if (entry.getValue().isBoolean()) {
-
-                    if (entry.getValue().asBoolean()) {
-                        value = IConfigProp.V_YES;
-                    } else {
-                        value = IConfigProp.V_NO;
-                    }
-                } else {
-                    value = entry.getValue().asText();
-                }
-
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("write [" + entry.getKey() + "] : [" + value
-                            + "]");
-                }
-
-                deviceDao.writeAttribute(jpaDevice, entry.getKey(), value);
-            }
-
-        }
-
-        /*
-         *
-         */
-        setApiResult(userData, ApiResultCodeEnum.OK, resultMsgKey);
-        return userData;
     }
 
     /**
@@ -4531,8 +3220,8 @@ public final class JsonApiServer extends AbstractPage {
 
         if (printerDuplicate != null) {
 
-            if (!replaceDuplicate
-                    && printerDao.countPrintOuts(printerDuplicate.getId()) > 0) {
+            if (!replaceDuplicate && printerDao
+                    .countPrintOuts(printerDuplicate.getId()) > 0) {
 
                 return setApiResult(userData, ApiResultCodeEnum.ERROR,
                         "msg-printer-rename-duplicate", oldName, newName);
@@ -4589,44 +3278,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Sets the Proxy Printer (basic) properties.
-     * <p>
-     * Also, a logical delete can be applied or reversed.
-     * </p>
-     *
-     * @param jsonPrinter
-     * @return
-     */
-    private Map<String, Object> reqPrinterSet(final String jsonPrinter) {
-
-        final PrinterDao printerDao =
-                ServiceContext.getDaoContext().getPrinterDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final ProxyPrinterDto dto =
-                JsonAbstractBase.create(ProxyPrinterDto.class, jsonPrinter);
-
-        final long id = dto.getId();
-
-        final Printer jpaPrinter = printerDao.findById(id);
-
-        /*
-         * INVARIANT: printer MUST exist.
-         */
-        if (jpaPrinter == null) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-printer-not-found", String.valueOf(id));
-        }
-
-        PROXY_PRINT_SERVICE.setProxyPrinterProps(jpaPrinter, dto);
-
-        setApiResult(userData, ApiResultCodeEnum.OK, "msg-printer-saved-ok");
-
-        return userData;
-    }
-
-    /**
      * Sets the Proxy Printer media cost properties.
      * <p>
      * Also, a logical delete can be applied or reversed.
@@ -4664,7 +3315,8 @@ public final class JsonApiServer extends AbstractPage {
                 PROXY_PRINT_SERVICE.setProxyPrinterCostMedia(jpaPrinter, dto);
 
         if (rpcResponse.isResult()) {
-            setApiResult(userData, ApiResultCodeEnum.OK, "msg-printer-saved-ok");
+            setApiResult(userData, ApiResultCodeEnum.OK,
+                    "msg-printer-saved-ok");
         } else {
             setApiResultMsgError(userData, "", rpcResponse.asError().getError()
                     .data(ErrorDataBasic.class).getReason());
@@ -4689,9 +3341,8 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        final ProxyPrinterMediaSourcesDto dto =
-                JsonAbstractBase
-                        .create(ProxyPrinterMediaSourcesDto.class, json);
+        final ProxyPrinterMediaSourcesDto dto = JsonAbstractBase
+                .create(ProxyPrinterMediaSourcesDto.class, json);
 
         final long id = dto.getId();
 
@@ -4708,12 +3359,12 @@ public final class JsonApiServer extends AbstractPage {
         /*
          *
          */
-        final AbstractJsonRpcMethodResponse rpcResponse =
-                PROXY_PRINT_SERVICE.setProxyPrinterCostMediaSources(jpaPrinter,
-                        dto);
+        final AbstractJsonRpcMethodResponse rpcResponse = PROXY_PRINT_SERVICE
+                .setProxyPrinterCostMediaSources(jpaPrinter, dto);
 
         if (rpcResponse.isResult()) {
-            setApiResult(userData, ApiResultCodeEnum.OK, "msg-printer-saved-ok");
+            setApiResult(userData, ApiResultCodeEnum.OK,
+                    "msg-printer-saved-ok");
         } else {
             setApiResultMsgError(userData, "", rpcResponse.asError().getError()
                     .data(ErrorDataBasic.class).getReason());
@@ -4726,117 +3377,35 @@ public final class JsonApiServer extends AbstractPage {
      *
      * @param user
      * @return
+     * @throws IppSyntaxException
      * @throws Exception
      */
     private Map<String, Object> reqPrinterSync(final String user)
-            throws Exception {
+            throws IppSyntaxException {
 
         final Map<String, Object> data = new HashMap<String, Object>();
 
-        if (!PROXY_PRINT_SERVICE.isConnectedToCups()) {
-            return setApiResult(data, ApiResultCodeEnum.ERROR,
-                    "msg-printer-connection-broken");
+        final CircuitBreaker circuit = ConfigManager.getCircuitBreaker(
+                CircuitBreakerEnum.CUPS_LOCAL_IPP_CONNECTION);
+
+        /*
+         * Try again when circuit is not closed.
+         */
+        if (!circuit.isCircuitClosed()) {
+            circuit.closeCircuit();
         }
 
         /*
          * Re-initialize the CUPS printer cache.
          */
-        PROXY_PRINT_SERVICE.initPrinterCache();
+        try {
+            PROXY_PRINT_SERVICE.initPrinterCache();
+        } catch (IppConnectException e) {
+            return setApiResult(data, ApiResultCodeEnum.ERROR,
+                    "msg-printer-connection-broken");
+        }
 
         return setApiResult(data, ApiResultCodeEnum.OK, "msg-printer-sync-ok");
-    }
-
-    /**
-     *
-     * @param user
-     * @param userSubject
-     * @return
-     * @throws ParseException
-     */
-    private Map<String, Object> reqConfigGetProp(final String name)
-            throws ParseException {
-
-        final ConfigPropertyDao dao =
-                ServiceContext.getDaoContext().getConfigPropertyDao();
-
-        final ConfigManager cm = ConfigManager.instance();
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        /*
-         * INVARIANT: property MUST exist in database.
-         */
-        final ConfigProperty prop = dao.findByName(name);
-
-        if (prop == null) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-config-prop-not-found", name);
-        }
-
-        /*
-         * INVARIANT: property MUST exist in cache.
-         */
-        final Key key = cm.getConfigKey(name);
-        if (key == null) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-config-prop-not-found", name);
-        }
-
-        /*
-         * If display of this value is Locale sensitive, we MUST revert to
-         * locale format.
-         */
-        String value = prop.getValue();
-
-        if (cm.isConfigBigDecimal(key)) {
-            value =
-                    BigDecimalUtil.localize(BigDecimalUtil.valueOf(value),
-                            getSession().getLocale(), true);
-        }
-
-        Map<String, Object> obj = new HashMap<String, Object>();
-
-        obj.put("name", name);
-        obj.put("value", value);
-        obj.put("multiline", cm.isConfigMultiline(key));
-
-        /*
-         *
-         */
-        userData.put("j_prop", obj);
-        setApiResultOK(userData);
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param user
-     * @param userSubject
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqUserGet(final String userId,
-            final String userSubject) throws IOException {
-
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final User user = userDao.findActiveUserByUserId(userSubject);
-
-        if (user == null) {
-
-            setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-user-not-found", userId);
-
-        } else {
-
-            final UserDto dto = USER_SERVICE.createUserDto(user);
-            userData.put("userDto", dto.asMap());
-            setApiResultOK(userData);
-        }
-        return userData;
     }
 
     /**
@@ -4857,7 +3426,8 @@ public final class JsonApiServer extends AbstractPage {
             setApiResult(userData, ApiResultCodeEnum.ERROR,
                     "msg-user-not-found", userId);
         } else {
-            addUserStats(userData, user, this.getSession().getLocale(),
+            ApiRequestHelper.addUserStats(userData, user,
+                    this.getSession().getLocale(),
                     SpSession.getAppCurrencySymbol());
             setApiResultOK(userData);
         }
@@ -4938,9 +3508,8 @@ public final class JsonApiServer extends AbstractPage {
 
         if (rpcResponse.isResult()) {
 
-            final ResultDataBasic result =
-                    rpcResponse.asResult().getResult()
-                            .data(ResultDataBasic.class);
+            final ResultDataBasic result = rpcResponse.asResult().getResult()
+                    .data(ResultDataBasic.class);
 
             setApiResultMsgOK(userData, null, result.getMessage());
 
@@ -4994,25 +3563,22 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * INVARIANT: plugin must be available.
          */
-        final PaymentGatewayPlugin plugin =
-                WebApp.get().getPluginManager()
-                        .getPaymentGateway(dto.getGatewayId());
+        final PaymentGatewayPlugin plugin = WebApp.get().getPluginManager()
+                .getPaymentGateway(dto.getGatewayId());
 
         if (plugin == null) {
-            throw new IllegalStateException(String.format(
-                    "Payment gateway \"%s\" is not available.",
-                    dto.getGatewayId()));
+            throw new IllegalStateException(
+                    String.format("Payment gateway \"%s\" is not available.",
+                            dto.getGatewayId()));
         } else if (!plugin.isOnline()) {
             return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-payment-method-not-possible", dto.getMethod()
-                            .toString());
+                    "msg-payment-method-not-possible",
+                    dto.getMethod().toString());
         }
 
         try {
-            final String comment =
-                    localize("msg-payment-gateway-comment",
-                            CommunityDictEnum.SAVAPAGE.getWord(),
-                            requestingUser);
+            final String comment = localize("msg-payment-gateway-comment",
+                    CommunityDictEnum.SAVAPAGE.getWord(), requestingUser);
 
             final URL callbackUrl = ServerPluginManager.getCallBackUrl(plugin);
 
@@ -5071,9 +3637,8 @@ public final class JsonApiServer extends AbstractPage {
 
             switch (dto.getReceiptDelivery()) {
             case EMAIL:
-                final ResultPosDeposit data =
-                        rpcResponse.asResult().getResult()
-                                .data(ResultPosDeposit.class);
+                final ResultPosDeposit data = rpcResponse.asResult().getResult()
+                        .data(ResultPosDeposit.class);
 
                 if (LOGGER.isTraceEnabled()) {
                     LOGGER.trace("AccountTrxDbId [" + data.getAccountTrxDbId()
@@ -5088,8 +3653,8 @@ public final class JsonApiServer extends AbstractPage {
                         "msg-deposit-funds-receipt-email-ok",
                         dto.getUserEmail());
 
-                mailDepositReceipt(data.getAccountTrxDbId(),
-                        dto.getUserEmail(), requestingUser, false);
+                mailDepositReceipt(data.getAccountTrxDbId(), dto.getUserEmail(),
+                        requestingUser, false);
 
                 break;
 
@@ -5133,9 +3698,8 @@ public final class JsonApiServer extends AbstractPage {
         final UserAccountDao userAccountDao =
                 ServiceContext.getDaoContext().getUserAccountDao();
 
-        final User user =
-                userAccountDao.findByAccountId(accountTrx.getAccount().getId())
-                        .getUser();
+        final User user = userAccountDao
+                .findByAccountId(accountTrx.getAccount().getId()).getUser();
 
         final String email = USER_SERVICE.getPrimaryEmailAddress(user);
 
@@ -5185,9 +3749,8 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqVoucherBatchDelete(final String batch) {
         Map<String, Object> userData = new HashMap<String, Object>();
 
-        final Integer nDeleted =
-                ServiceContext.getDaoContext().getAccountVoucherDao()
-                        .deleteBatch(batch);
+        final Integer nDeleted = ServiceContext.getDaoContext()
+                .getAccountVoucherDao().deleteBatch(batch);
 
         if (nDeleted == 0) {
             setApiResult(userData, ApiResultCodeEnum.OK,
@@ -5214,9 +3777,8 @@ public final class JsonApiServer extends AbstractPage {
         final Date expiryToday =
                 DateUtils.truncate(new Date(), Calendar.DAY_OF_MONTH);
 
-        final Integer nExpired =
-                ServiceContext.getDaoContext().getAccountVoucherDao()
-                        .expireBatch(batch, expiryToday);
+        final Integer nExpired = ServiceContext.getDaoContext()
+                .getAccountVoucherDao().expireBatch(batch, expiryToday);
 
         if (nExpired == 0) {
             setApiResult(userData, ApiResultCodeEnum.OK,
@@ -5275,10 +3837,9 @@ public final class JsonApiServer extends AbstractPage {
             if (error.getMessage().equals(
                     AccountingService.MSG_KEY_VOUCHER_REDEEM_NUMBER_INVALID)) {
 
-                final String msg =
-                        AppLogHelper.logWarning(getClass(),
-                                "msg-voucher-redeem-invalid", requestingUser,
-                                cardNumber);
+                final String msg = AppLogHelper.logWarning(getClass(),
+                        "msg-voucher-redeem-invalid", requestingUser,
+                        cardNumber);
 
                 AdminPublisher.instance().publish(PubTopicEnum.USER,
                         PubLevelEnum.WARN, msg);
@@ -5299,9 +3860,8 @@ public final class JsonApiServer extends AbstractPage {
         final Date expiryToday =
                 DateUtils.truncate(new Date(), Calendar.DAY_OF_MONTH);
 
-        final Integer nDeleted =
-                ServiceContext.getDaoContext().getAccountVoucherDao()
-                        .deleteExpired(expiryToday);
+        final Integer nDeleted = ServiceContext.getDaoContext()
+                .getAccountVoucherDao().deleteExpired(expiryToday);
 
         if (nDeleted == 0) {
             setApiResult(userData, ApiResultCodeEnum.OK,
@@ -5313,74 +3873,6 @@ public final class JsonApiServer extends AbstractPage {
             setApiResult(userData, ApiResultCodeEnum.OK,
                     "msg-voucher-deleted-expired-many", nDeleted.toString());
         }
-        return userData;
-    }
-
-    /**
-     *
-     * @param userId
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqUserNotifyAccountChange(
-            final String primaryKeyDto) throws IOException {
-
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final PrimaryKeyDto dto =
-                AbstractDto.create(PrimaryKeyDto.class, primaryKeyDto);
-
-        final User user = userDao.findById(dto.getKey());
-
-        if (UserMsgIndicator.isSafePagesDirPresent(user.getUserId())) {
-            UserMsgIndicator.write(user.getUserId(),
-                    ServiceContext.getTransactionDate(),
-                    UserMsgIndicator.Msg.ACCOUNT_INFO, null);
-        }
-        return createApiResultOK();
-    }
-
-    /**
-     * Edits or creates a User.
-     * <p>
-     * Delete is not handled here, see
-     * {@link #reqUserDelete(EntityManager, String, String, String)}.
-     * </p>
-     *
-     * @param user
-     * @param jsonUser
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqUserSet(final String jsonUser)
-            throws IOException {
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final UserDto userDto =
-                JsonAbstractBase.create(UserDto.class, jsonUser);
-
-        final boolean isNew = userDto.getDatabaseId() == null;
-
-        AbstractJsonRpcMethodResponse rpcResponse =
-                USER_SERVICE.setUser(userDto, isNew);
-
-        if (rpcResponse.isResult()) {
-            String msgKeyOk;
-
-            if (isNew) {
-                msgKeyOk = "msg-user-created-ok";
-            } else {
-                msgKeyOk = "msg-user-saved-ok";
-            }
-
-            setApiResult(userData, ApiResultCodeEnum.OK, msgKeyOk);
-
-        } else {
-            setApiResultMsgError(userData, "", rpcResponse.asError().getError()
-                    .data(ErrorDataBasic.class).getReason());
-        }
-
         return userData;
     }
 
@@ -5406,1094 +3898,9 @@ public final class JsonApiServer extends AbstractPage {
 
         Map<String, Object> userData = new HashMap<String, Object>();
 
-        userData.put(
-                "groups",
-                Arrays.asList(ConfigManager.instance().getUserSource()
-                        .getGroups().toArray()));
+        userData.put("groups", Arrays.asList(ConfigManager.instance()
+                .getUserSource().getGroups().toArray()));
         return setApiResultOK(userData);
-    }
-
-    /**
-     * Gets the {@link Device.DeviceTypeEnum#TERMINAL} definition of the remote
-     * client.
-     *
-     * @return {@code null} when no device definition is found.
-     */
-    private Device getHostTerminal() {
-
-        final DeviceDao deviceDao =
-                ServiceContext.getDaoContext().getDeviceDao();
-
-        return deviceDao.findByHostDeviceType(getRemoteAddr(),
-                DeviceTypeEnum.TERMINAL);
-    }
-
-    /**
-     * Handle login failure.
-     *
-     * @param userData
-     *            The data returned to the user.
-     * @param msgKeyAdminPublish
-     *            When {@code null} no admin message is published.
-     * @param args
-     *            The arguments of the message
-     * @return The userData input.
-     */
-    private Map<String, Object> onLoginFailed(
-            final Map<String, Object> userData,
-            final String msgKeyAdminPublish, final String... args) {
-
-        if (StringUtils.isNotBlank(msgKeyAdminPublish)) {
-
-            final String msg =
-                    AppLogHelper.logWarning(getClass(), msgKeyAdminPublish,
-                            args);
-
-            AdminPublisher.instance().publish(PubTopicEnum.USER,
-                    PubLevelEnum.WARN, msg);
-        }
-
-        return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                "msg-login-failed");
-    }
-
-    /**
-     * Handles a new login request for both the User and Admin WebApp.
-     * <p>
-     * When an assocCardNumber (not null) is passed, the User is authenticated
-     * according to the authMode. A login is NOT granted, just the card is
-     * associated.
-     * </p>
-     * <ul>
-     * <li>Internal admin is NOT allowed to login to the User WebApp.</li>
-     * <li>User MUST exist to login to Admin WebApp (no lazy user insert allowed
-     * in this case).</li>
-     * <li>User MUST exist to login when NO external user source (no lazy user
-     * insert allowed in this case).</li>
-     * <li>User MUST exist to login when lazy user insert is disabled.</li>
-     * <li>User MUST have admin rights to login to Admin WebApp.</li>
-     * <li>User MUST be a Person to login.</li>
-     * <li>User MUST be active (enabled) at moment of login.</li>
-     * </ul>
-     *
-     * @param userData
-     *            The map which can be converted to a json string by the caller.
-     * @param authMode
-     *            The authentication mode.
-     * @param authId
-     *            Offered user name (handled as user alias), ID Number or Card
-     *            Number.
-     * @param authPw
-     *            The password to be validated against the user source or user
-     *            PIN.
-     * @param assocCardNumber
-     *            The card number to associate with this user account. When
-     *            {@code null} NO card will be associated.
-     * @param isAdminOnlyLogin
-     *            <code>true</code> if this is a login for admin only.
-     * @return Same object as userData param.
-     * @throws IOException
-     */
-    private Map<String, Object> reqLoginNew(final Map<String, Object> userData,
-            final UserAuth.Mode authMode, final String authId,
-            final String authPw, final String assocCardNumber,
-            final boolean isAdminOnlyLogin) throws IOException {
-
-        /*
-         * INVARIANT: Password can NOT be empty in Name authentication.
-         */
-        if (authMode == UserAuth.Mode.NAME) {
-            if (StringUtils.isBlank(authPw)) {
-                return onLoginFailed(userData, null);
-            }
-        }
-
-        /*
-         *
-         */
-        final Device terminal = getHostTerminal();
-
-        final UserAuth theUserAuth =
-                new UserAuth(terminal, null, isAdminOnlyLogin);
-
-        if (!theUserAuth.isAuthModeAllowed(authMode)) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-auth-mode-not-available", authMode.toString());
-        }
-
-        /*
-         *
-         */
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final SpSession session = SpSession.get();
-        final ConfigManager cm = ConfigManager.instance();
-
-        final IExternalUserAuthenticator userAuthenticator =
-                cm.getUserAuthenticator();
-
-        /*
-         * This is the place to set the WebAppType session attribute.
-         */
-        final WebAppTypeEnum webAppType;
-
-        if (isAdminOnlyLogin) {
-            webAppType = WebAppTypeEnum.ADMIN;
-        } else {
-            webAppType = WebAppTypeEnum.USER;
-        }
-        session.setWebAppType(webAppType);
-
-        /*
-         * Initialize pessimistic.
-         */
-        session.setUser(null);
-
-        /*
-         * The facts.
-         */
-        final boolean allowInternalUsersOnly = (userAuthenticator == null);
-
-        final boolean isInternalAdmin =
-                authMode == UserAuth.Mode.NAME
-                        && ConfigManager.isInternalAdmin(authId);
-
-        final boolean isLazyUserInsert =
-                cm.isUserInsertLazyLogin() && !isAdminOnlyLogin
-                        && !allowInternalUsersOnly;
-
-        /*
-         * To find out.
-         */
-        boolean isAuthenticated = false;
-        boolean isInternalUser = false;
-        String uid = null;
-        User userDb = null;
-
-        /*
-         *
-         */
-        RfidNumberFormat rfidNumberFormat = null;
-
-        if (authMode == UserAuth.Mode.CARD_LOCAL || assocCardNumber != null) {
-            if (terminal == null) {
-                rfidNumberFormat = new RfidNumberFormat();
-            } else {
-                final DeviceAttrLookup lookup = new DeviceAttrLookup(terminal);
-                rfidNumberFormat =
-                        DEVICE_SERVICE.createRfidNumberFormat(terminal, lookup);
-            }
-        }
-
-        /*
-         *
-         */
-        if (isInternalAdmin) {
-
-            /*
-             * Internal admin
-             */
-
-            if (isAdminOnlyLogin) {
-
-                User userAuth =
-                        ConfigManager.instance().isInternalAdminValid(authId,
-                                authPw);
-
-                isAuthenticated = (userAuth != null);
-
-                if (isAuthenticated) {
-
-                    uid = authId;
-                    userDb = userAuth;
-
-                } else {
-                    /*
-                     * INVARIANT: internal admin password must be correct.
-                     */
-                    return onLoginFailed(userData,
-                            "msg-login-invalid-password",
-                            webAppType.getUiText(), authId);
-                }
-
-            } else {
-                /*
-                 * INVARIANT: internal admin is NOT allowed to login to the User
-                 * WebApp.
-                 */
-                return onLoginFailed(userData, "msg-login-denied",
-                        webAppType.getUiText(), authId);
-            }
-
-        } else {
-
-            if (authMode == UserAuth.Mode.NAME) {
-
-                /*
-                 * Get the "real" username from the alias.
-                 */
-                if (allowInternalUsersOnly) {
-                    uid = UserAliasList.instance().getUserName(authId);
-                } else {
-                    uid =
-                            UserAliasList.instance().getUserName(
-                                    userAuthenticator.asDbUserId(authId));
-                    uid = userAuthenticator.asDbUserId(uid);
-                }
-                /*
-                 * Read real user from database.
-                 */
-                userDb = userDao.findActiveUserByUserId(uid);
-
-            } else if (authMode == UserAuth.Mode.ID) {
-
-                userDb = USER_SERVICE.findUserByNumber(authId);
-
-                /*
-                 * INVARIANT: User MUST be present in database.
-                 */
-                if (userDb == null) {
-                    return onLoginFailed(userData, "msg-login-invalid-number",
-                            webAppType.getUiText(), authId);
-                }
-                uid = userDb.getUserId();
-
-            } else if (authMode == UserAuth.Mode.CARD_IP
-                    || authMode == UserAuth.Mode.CARD_LOCAL) {
-
-                String normalizedCardNumber = authId;
-
-                if (authMode == UserAuth.Mode.CARD_LOCAL) {
-                    normalizedCardNumber =
-                            rfidNumberFormat.getNormalizedNumber(authId);
-                }
-
-                userDb =
-                        USER_SERVICE.findUserByCardNumber(normalizedCardNumber);
-
-                /*
-                 * INVARIANT: User MUST be present.
-                 */
-                if (userDb == null) {
-
-                    userData.put("authCardSelfAssoc",
-                            Boolean.valueOf(theUserAuth.isAuthCardSelfAssoc()));
-
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-login-unregistered-card");
-                }
-                uid = userDb.getUserId();
-            }
-
-            /*
-             * Check invariants based on user presence in database.
-             */
-            if (userDb == null) {
-
-                if (isAdminOnlyLogin) {
-                    /*
-                     * INVARIANT: User MUST exist to login to Admin WebApp (no
-                     * lazy user insert allowed in this case)
-                     */
-                    return onLoginFailed(userData,
-                            "msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
-                }
-
-                if (allowInternalUsersOnly) {
-                    /*
-                     * INVARIANT: User MUST exist to login when NO external user
-                     * source (no lazy user insert allowed in this case).
-                     */
-                    return onLoginFailed(userData,
-                            "msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
-                }
-
-                if (!isLazyUserInsert) {
-                    /*
-                     * INVARIANT: User MUST exist to login when lazy user insert
-                     * is disabled.
-                     */
-                    return onLoginFailed(userData,
-                            "msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
-                }
-
-            } else {
-
-                if (isAdminOnlyLogin && !userDb.getAdmin()) {
-                    /*
-                     * INVARIANT: User MUST have admin rights to login to Admin
-                     * WebApp.
-                     */
-                    return onLoginFailed(userData, "msg-login-no-admin-rights",
-                            webAppType.getUiText(), userDb.getUserId());
-                }
-
-                if (!userDb.getPerson()) {
-                    /*
-                     * INVARIANT: User MUST be a Person to login.
-                     */
-                    return onLoginFailed(userData, "msg-login-no-person",
-                            webAppType.getUiText(), userDb.getUserId());
-                }
-
-                final Date onDate = new Date();
-
-                if (USER_SERVICE.isUserFullyDisabled(userDb, onDate)) {
-                    /*
-                     * INVARIANT: User MUST be active (enabled) at moment of
-                     * login.
-                     */
-                    return onLoginFailed(userData, "msg-login-disabled",
-                            webAppType.getUiText(), userDb.getUserId());
-                }
-
-                /*
-                 * Identify internal user.
-                 */
-                isInternalUser = userDb.getInternal();
-
-            }
-
-            /*
-             * Authenticate
-             */
-            if (authMode == UserAuth.Mode.NAME) {
-
-                if (isInternalUser) {
-
-                    isAuthenticated =
-                            InternalUserAuthenticator.authenticate(userDb,
-                                    authPw);
-
-                    if (!isAuthenticated) {
-                        /*
-                         * INVARIANT: Password of Internal User must be correct.
-                         */
-                        return onLoginFailed(userData,
-                                "msg-login-invalid-password",
-                                webAppType.getUiText(), userDb.getUserId());
-                    }
-
-                    // No lazy insert for internal user.
-
-                } else {
-
-                    final User userAuth;
-
-                    if (allowInternalUsersOnly) {
-                        userAuth = null;
-                        isAuthenticated = false;
-                    } else {
-                        userAuth = userAuthenticator.authenticate(uid, authPw);
-                        isAuthenticated = (userAuth != null);
-                    }
-
-                    if (!isAuthenticated) {
-                        /*
-                         * INVARIANT: Password of External User must be correct.
-                         */
-                        return onLoginFailed(userData,
-                                "msg-login-invalid-password",
-                                webAppType.getUiText(), uid);
-                    }
-
-                    /**
-                     * Lazy user insert
-                     */
-                    if (userDb == null) {
-
-                        boolean lazyInsert = false;
-
-                        final String group =
-                                cm.getConfigValue(Key.USER_SOURCE_GROUP).trim();
-
-                        if (group.isEmpty()) {
-                            lazyInsert = true;
-                        } else {
-                            IUserSource userSource = cm.getUserSource();
-                            lazyInsert = userSource.isUserInGroup(uid, group);
-                        }
-
-                        if (lazyInsert) {
-                            userDb =
-                                    userDao.findActiveUserByUserIdInsert(
-                                            userAuth, new Date(),
-                                            Entity.ACTOR_SYSTEM);
-                            /*
-                             * IMPORTANT: ad-hoc commit + begin transaction
-                             */
-                            if (userDb != null) {
-                                ServiceContext.getDaoContext().commit();
-                                ServiceContext.getDaoContext()
-                                        .beginTransaction();
-                            }
-                        }
-                    }
-
-                }
-
-            } else {
-
-                /*
-                 * Check PIN for both ID Number, Local and Network Card.
-                 */
-                isAuthenticated =
-                        (authMode == UserAuth.Mode.ID && !theUserAuth
-                                .isAuthIdPinReq())
-                                || (authMode == UserAuth.Mode.CARD_IP && !theUserAuth
-                                        .isAuthCardPinReq())
-                                || (authMode == UserAuth.Mode.CARD_LOCAL && !theUserAuth
-                                        .isAuthCardPinReq());
-
-                if (!isAuthenticated) {
-
-                    if (StringUtils.isBlank(authPw)) {
-                        /*
-                         * INVARIANT: PIN can NOT be empty.
-                         */
-                        return onLoginFailed(userData,
-                                "msg-login-no-pin-available",
-                                webAppType.getUiText(), authId);
-                    }
-
-                    final String encryptedPin =
-                            USER_SERVICE.findUserAttrValue(userDb,
-                                    UserAttrEnum.PIN);
-                    String pin = "";
-                    if (encryptedPin != null) {
-                        pin =
-                                CryptoUser.decryptUserAttr(userDb.getId(),
-                                        encryptedPin);
-                    }
-                    isAuthenticated = pin.equals(authPw);
-                }
-
-                if (!isAuthenticated) {
-                    /*
-                     * INVARIANT: PIN must be correct.
-                     */
-                    return onLoginFailed(userData, "msg-login-invalid-pin",
-                            webAppType.getUiText(), authId);
-                }
-            }
-
-            /*
-             * Lazy create user home directory
-             */
-            if (!isInternalAdmin && userDb != null) {
-
-                /*
-                 * Ad-hoc user lock
-                 */
-                userDb = userDao.lock(userDb.getId());
-
-                try {
-                    USER_SERVICE.lazyUserHomeDir(uid);
-                } catch (IOException e) {
-                    return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                            "msg-user-home-dir-create-error");
-                }
-            }
-
-        }
-
-        /*
-         * Associate Card Number to User?
-         */
-        if (assocCardNumber != null && userDb != null) {
-
-            USER_SERVICE.assocPrimaryCardNumber(userDb,
-                    rfidNumberFormat.getNormalizedNumber(assocCardNumber));
-
-            /*
-             * Do NOT grant a login, just associate the card.
-             */
-            return setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-card-registered-ok");
-        }
-
-        /*
-         * Warnings for Admin WebApp.
-         */
-        if (isAdminOnlyLogin) {
-            if (!cm.isSetupCompleted()) {
-                setApiResult(userData, ApiResultCodeEnum.WARN,
-                        "msg-setup-is-needed");
-            } else if (cm.doesInternalAdminHasDefaultPassword()) {
-                setApiResult(userData, ApiResultCodeEnum.WARN,
-                        "msg-change-internal-admin-password");
-            } else {
-                setApiResultMembershipMsg(userData);
-            }
-
-        } else {
-            setApiResultOK(userData);
-        }
-
-        /*
-         * Deny access, when the user is still not found in the database.
-         */
-        if (userDb == null) {
-            return onLoginFailed(userData, "msg-login-user-not-present",
-                    webAppType.getUiText(), uid);
-        }
-
-        final UserAuthToken authToken;
-
-        if (isAuthTokenLoginEnabled()) {
-            authToken = reqLoginLazyCreateAuthToken(uid, isAdminOnlyLogin);
-        } else {
-            authToken = null;
-        }
-
-        onUserLoginGranted(userData, session, isAdminOnlyLogin, uid, userDb,
-                authToken);
-
-        /*
-         * Update session.
-         */
-        session.setUser(userDb);
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Setting user in session of application ["
-                    + SpSession.get().getApplication().getClass().toString()
-                    + "] isAuthenticated [" + SpSession.get().isAuthenticated()
-                    + "]");
-        }
-
-        return userData;
-    }
-
-    /**
-     *
-     * @return
-     */
-    private static boolean isAuthTokenLoginEnabled() {
-        return ConfigManager.instance().isConfigValue(
-                Key.WEB_LOGIN_AUTHTOKEN_ENABLE);
-    }
-
-    /**
-     * Handles the login request for both the User and Admin WebApp.
-     * <p>
-     * NOTE: If {@link #AUTH_MODE_USER} and authPw is {@code null} the user is
-     * validated against the authToken.
-     * </p>
-     * <p>
-     * When an assocCardNumber (not null) is passed, the User is authenticated
-     * according to the authMode. A login is NOT granted, just the card is
-     * associated.
-     * </p>
-     * Invariants:
-     * <ul>
-     * <li>The application SHOULD be initialized.</li>
-     * <li>If set-up is not completed then the only login possible is as
-     * internal admin in the Admin WebApp.</li>
-     * <li>If Application is NOT ready-to-use the only login possible is as
-     * admin in the admin application.</li>
-     * <li>See
-     * {@link #reqLoginNew(Map, EntityManager, org.savapage.core.services.helpers.UserAuth.Mode, String, String, boolean)}
-     * and
-     * {@link #reqLoginAuthToken(Map, EntityManager, String, String, boolean)}.</li>
-     * </ul>
-     *
-     * @param authMode
-     *            The authentication mode.
-     * @param authId
-     *            Offered use name (handled as user alias), ID Number or Card
-     *            Number.
-     * @param authPw
-     *            The password or PIN. When {@code null} AND
-     *            {@link #AUTH_MODE_USER}, the authToken is used to validate.
-     * @param authToken
-     *            The authentication token.
-     * @param assocCardNumber
-     *            The card number to associate with this user account. When
-     *            {@code null} NO card will be associated.
-     * @param isAdminOnlyLogin
-     *            <code>true</code> if this is a login for admin only.
-     * @return The map which can be converted to a json string by the caller.
-     * @throws IOException
-     */
-    private Map<String, Object> reqLogin(final UserAuth.Mode authMode,
-            final String authId, final String authPw, final String authToken,
-            final String assocCardNumber, final boolean isAdminOnlyLogin)
-            throws IOException {
-
-        final UserAgentHelper userAgentHelper = createUserAgentHelper();
-
-        /*
-         * Browser diagnostics.
-         */
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Browser detection for [" + authId + "] Mobile ["
-                    + userAgentHelper.isMobileBrowser() + "] Mobile Safari ["
-                    + userAgentHelper.isSafariBrowserMobile() + "] UserAgent ["
-                    + userAgentHelper.getUserAgentHeader() + "]");
-        }
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final ConfigManager cm = ConfigManager.instance();
-        final SpSession session = SpSession.get();
-
-        if (LOGGER.isTraceEnabled()) {
-            String testLog = "Session [" + session.getId() + "]";
-            testLog += " WebAppCount [" + session.getAuthWebAppCount() + "]";
-            LOGGER.trace(testLog);
-        }
-
-        /*
-         * INVARIANT: Only one (1) authenticated session allowed for (non Mac OS
-         * X Safari) desktop computers.
-         */
-        if (!userAgentHelper.isMobileBrowser()
-                && !userAgentHelper.isSafariBrowserMacOsX()
-                && SpSession.get().getAuthWebAppCount() != 0) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-login-another-session-active");
-        }
-
-        /*
-         * INVARIANT: The application SHOULD be initialized.
-         */
-        if (!cm.isInitialized()) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-login-not-possible");
-        }
-
-        /*
-         * INVARIANT: If set-up is NOT completed the only login possible is mode
-         * {@link #AUTH_MODE_USER} as INTERNAL admin in the admin application.
-         */
-        if (!cm.isSetupCompleted()) {
-            if (!isAdminOnlyLogin || authMode != UserAuth.Mode.NAME) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-login-install-mode");
-            }
-            if (!ConfigManager.isInternalAdmin(authId)) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-login-as-internal-admin");
-            }
-        }
-
-        /*
-         * INVARIANT: If Application is NOT ready-to-use the only login possible
-         * is as admin in the admin application.
-         */
-        if (!cm.isAppReadyToUse()) {
-            if (!isAdminOnlyLogin) {
-                return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                        "msg-login-app-config");
-            }
-        }
-
-        //
-        final boolean isAuthTokenLoginEnabled = isAuthTokenLoginEnabled();
-
-        /*
-         * If user authentication token is disabled we fall back to the user in
-         * the active session.
-         */
-        if (!isAuthTokenLoginEnabled && session.getUser() != null) {
-
-            onUserLoginGranted(userData, session, isAdminOnlyLogin, session
-                    .getUser().getUserId(), session.getUser(), null);
-
-            setApiResultOK(userData);
-
-        } else {
-
-            //
-            final boolean isCliAppAuthApplied;
-
-            if (isAuthTokenLoginEnabled && authMode == UserAuth.Mode.NAME
-                    && StringUtils.isBlank(authPw)) {
-                isCliAppAuthApplied =
-                        this.reqLoginAuthTokenCliApp(userData, authId,
-                                this.getClientIpAddr(), isAdminOnlyLogin);
-            } else {
-                isCliAppAuthApplied = false;
-            }
-
-            if (!isCliAppAuthApplied) {
-
-                if (isAuthTokenLoginEnabled && authMode == UserAuth.Mode.NAME
-                        && StringUtils.isBlank(authPw)
-                        && StringUtils.isNotBlank(authToken)) {
-
-                    reqLoginAuthTokenWebApp(userData, authId, authToken,
-                            isAdminOnlyLogin);
-
-                } else {
-                    reqLoginNew(userData, authMode, authId, authPw,
-                            assocCardNumber, isAdminOnlyLogin);
-                }
-            }
-        }
-
-        userData.put("sessionid", SpSession.get().getId());
-
-        if (isApiResultOK(userData)) {
-            setSessionTimeoutSeconds(isAdminOnlyLogin);
-            SpSession.get().incrementAuthWebApp();
-        }
-
-        return userData;
-    }
-
-    /**
-     *
-     * @param isAdminSession
-     */
-    private void setSessionTimeoutSeconds(boolean isAdminSession) {
-
-        final Request request = RequestCycle.get().getRequest();
-
-        if (request instanceof WebRequest) {
-
-            final ServletWebRequest wr = (ServletWebRequest) request;
-            final HttpSession session = wr.getContainerRequest().getSession();
-
-            if (session == null) {
-                return;
-            }
-
-            final int minutes;
-
-            if (isAuthTokenLoginEnabled()) {
-
-                minutes = 0;
-
-            } else {
-
-                final IConfigProp.Key configKey;
-
-                if (isAdminSession) {
-                    configKey =
-                            IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMOUT_MINS;
-                } else {
-                    configKey =
-                            IConfigProp.Key.WEB_LOGIN_USER_SESSION_TIMEOUT_MINS;
-                }
-
-                minutes = ConfigManager.instance().getConfigInt(configKey);
-
-            }
-            session.setMaxInactiveInterval(minutes * DateUtil.SECONDS_IN_MINUTE);
-        }
-    }
-
-    /**
-     * Uses the existing {@link UserAuthToken} (if found) or creates a new one.
-     *
-     * @param userId
-     *            The user id.
-     * @param isAdminOnlyLogin
-     * @return The {@link UserAuthToken}.
-     */
-    private UserAuthToken reqLoginLazyCreateAuthToken(final String userId,
-            final boolean isAdminOnlyLogin) {
-
-        UserAuthToken authToken =
-                WebAppUserAuthManager.instance().getAuthTokenOfUser(userId,
-                        isAdminOnlyLogin);
-
-        if (authToken == null || authToken.isAdminOnly() != isAdminOnlyLogin) {
-
-            authToken = new UserAuthToken(userId, isAdminOnlyLogin);
-
-            WebAppUserAuthManager.instance().putUserAuthToken(authToken,
-                    isAdminOnlyLogin);
-        }
-
-        return authToken;
-    }
-
-    /**
-     * Tries to login with Client App authentication token.
-     *
-     * @param userData
-     *            The user data to be filled after applying the authentication
-     *            method. If method is NOT applied, the userData in not touched.
-     * @param userId
-     *            The unique user id.
-     * @param clientIpAddress
-     *            The remote IP address.
-     * @return {@code false} when Client App Authentication was NOT applied.
-     * @throws IOException
-     */
-    private boolean reqLoginAuthTokenCliApp(final Map<String, Object> userData,
-            final String userId, final String clientIpAddress,
-            final boolean isAdminOnly) throws IOException {
-
-        /*
-         * INVARIANT: do NOT authenticate for Admin Web App.
-         */
-        if (isAdminOnly) {
-            return false;
-        }
-
-        /*
-         * INVARIANT: Trust between User Web App and User Client App MUST be
-         * enabled.
-         */
-        if (!ConfigManager.instance().isConfigValue(
-                Key.WEBAPP_USER_AUTH_TRUST_CLIAPP_AUTH)) {
-            return false;
-        }
-
-        /*
-         * INVARIANT: authentication token MUST be present for IP address.
-         */
-        final UserAuthToken authTokenCliApp =
-                ClientAppUserAuthManager.getIpAuthToken(clientIpAddress);
-
-        if (authTokenCliApp == null) {
-            return false;
-        }
-
-        /*
-         * INVARIANT: authentication token MUST match requesting user.
-         */
-        final String userIdToken = authTokenCliApp.getUser();
-
-        if (userIdToken == null || !userIdToken.equalsIgnoreCase(userId)) {
-            return false;
-        }
-
-        /*
-         * INVARIANT: authentication token MUST not be older than 2 times the
-         * max time it takes a long poll to finish.
-         */
-        if (ServiceContext.getTransactionDate().getTime()
-                - authTokenCliApp.getCreateTime() > 2 * UserEventService
-                .getMaxMonitorMsec()) {
-            return false;
-        }
-
-        /*
-         * INVARIANT: User must exist in database.
-         */
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-        final User userDb = userDao.findActiveUserByUserId(userId);
-
-        if (userDb != null) {
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("CliApp AuthToken Login [" + userId + "] granted.");
-            }
-
-            final SpSession session = SpSession.get();
-
-            session.setUser(userDb);
-
-            final UserAuthToken authTokenWebApp =
-                    reqLoginLazyCreateAuthToken(userId, isAdminOnly);
-
-            onUserLoginGranted(userData, session, isAdminOnly, userId,
-                    session.getUser(), authTokenWebApp);
-
-            setApiResultOK(userData);
-
-        } else {
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("CliApp AuthToken Login [" + userId
-                        + "] denied: user NOT found.");
-            }
-
-            onLoginFailed(userData, null);
-        }
-
-        return true;
-    }
-
-    /**
-     * Tries to login with WebApp authentication token.
-     *
-     * @param userData
-     * @param uid
-     * @param authtoken
-     * @param isAdminOnly
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqLoginAuthTokenWebApp(
-            final Map<String, Object> userData, final String uid,
-            final String authtoken, final boolean isAdminOnly)
-            throws IOException {
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace(String
-                    .format("Login [%s] with WebApp AuthToken.", uid));
-        }
-
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final WebAppUserAuthManager userAuthManager =
-                WebAppUserAuthManager.instance();
-
-        final UserAuthToken authTokenObj =
-                userAuthManager.getUserAuthToken(authtoken, isAdminOnly);
-
-        final User userDb;
-
-        if (authTokenObj != null && uid.equals(authTokenObj.getUser())
-                && authTokenObj.isAdminOnly() == isAdminOnly) {
-
-            if (isAdminOnly && ConfigManager.isInternalAdmin(uid)) {
-                userDb = ConfigManager.createInternalAdminUser();
-            } else {
-                userDb = userDao.findActiveUserByUserId(uid);
-            }
-
-        } else {
-            userDb = null;
-        }
-
-        if (userDb != null) {
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String.format(
-                        "WebApp AuthToken Login [%s] granted.", uid));
-            }
-
-            final SpSession session = SpSession.get();
-
-            session.setUser(userDb);
-
-            onUserLoginGranted(userData, session, isAdminOnly, uid,
-                    session.getUser(), authTokenObj);
-
-            setApiResultOK(userData);
-
-        } else {
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String.format(
-                        "WebApp AuthToken Login [%s] denied: user NOT found.",
-                        uid));
-            }
-
-            onLoginFailed(userData, null);
-        }
-
-        return userData;
-    }
-
-    /**
-     * Adds user statistics at the {@code stats} key of jsonData.
-     * <p>
-     * The User Statistics are used by the Client WebApp to update the Pie-chart
-     * graphics.
-     * </p>
-     *
-     * @param jsonData
-     *            The JSON data to add the {@code stats} key to.
-     * @param user
-     *            The User to get the statistics from.
-     */
-    public static void addUserStats(Map<String, Object> jsonData,
-            final User user, Locale locale, String currencySymbol) {
-
-        final Map<String, Object> stats = new HashMap<>();
-
-        stats.put("pagesPrintIn", user.getNumberOfPrintInPages());
-        stats.put("pagesPrintOut", user.getNumberOfPrintOutPages());
-        stats.put("pagesPdfOut", user.getNumberOfPdfOutPages());
-
-        final AccountDisplayInfoDto dto =
-                ACCOUNTING_SERVICE.getAccountDisplayInfo(user, locale,
-                        currencySymbol);
-
-        stats.put("accountInfo", dto);
-
-        final OutboxInfoDto outbox =
-                OUTBOX_SERVICE.pruneOutboxInfo(user.getUserId(),
-                        ServiceContext.getTransactionDate());
-
-        OUTBOX_SERVICE.applyLocaleInfo(outbox, locale, currencySymbol);
-
-        stats.put("outbox", outbox);
-
-        jsonData.put("stats", stats);
-    }
-
-    /**
-     * Sets the user data for login request and notifies the authenticated user
-     * to the Admin WebApp.
-     *
-     * @param userData
-     * @param session
-     * @param isAdminOnlyLogin
-     * @param uid
-     * @param userDb
-     * @param authToken
-     *            {@code null} when not available.
-     * @throws IOException
-     */
-    private void onUserLoginGranted(final Map<String, Object> userData,
-            final SpSession session, final boolean isAdminOnlyLogin,
-            final String uid, final User userDb, final UserAuthToken authToken)
-            throws IOException {
-
-        userData.put("id", uid);
-        userData.put("key_id", userDb.getId());
-        userData.put("fullname", userDb.getFullName());
-        userData.put("admin", userDb.getAdmin());
-        userData.put("internal", userDb.getInternal());
-        userData.put("systime", Long.valueOf(System.currentTimeMillis()));
-        userData.put("language", getSession().getLocale().getLanguage());
-        userData.put("country", getSession().getLocale().getCountry());
-        userData.put("mail", USER_SERVICE.getPrimaryEmailAddress(userDb));
-
-        userData.put("number", StringUtils.defaultString(USER_SERVICE
-                .getPrimaryIdNumber(userDb)));
-
-        if (!isAdminOnlyLogin) {
-            userData.put("uuid", USER_SERVICE.lazyAddUserAttrUuid(userDb)
-                    .toString());
-        }
-
-        if (authToken != null) {
-            userData.put("authtoken", authToken.getToken());
-        }
-
-        final String cometdToken;
-
-        if (userDb.getAdmin()) {
-            cometdToken = CometdClientMixin.SHARED_USER_ADMIN_TOKEN;
-            userData.put("role", "admin"); // TODO
-        } else {
-            cometdToken = CometdClientMixin.SHARED_USER_TOKEN;
-            userData.put("role", "editor"); // TODO
-        }
-        userData.put("cometdToken", cometdToken);
-
-        // role (editor|admin|reader)
-
-        WebApp.get().onAuthenticatedUser(session.getId(), getRemoteAddr(), uid,
-                userDb.getAdmin());
-
-        if (!isAdminOnlyLogin) {
-
-            addUserStats(userData, userDb, this.getSession().getLocale(),
-                    SpSession.getAppCurrencySymbol());
-
-            /*
-             * Make sure that any User Web App long poll for this user is
-             * interrupted.
-             */
-            interruptPendingLongPolls(userDb.getUserId());
-
-            INBOX_SERVICE.pruneOrphanJobs(ConfigManager.getUserHomeDir(uid),
-                    userDb);
-        }
-
     }
 
     /**
@@ -6511,129 +3918,16 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Stops and replaces the underlying (Web)Session, invalidating the current
-     * one and creating a new one. NOTE: relevant data of the current session is
-     * copied.
+     * This method closes for the current {@link SpSession} and interrupts any
+     * CometD long-polls of the owning user.
      *
-     * @param session
-     *            The {@link SpSession}.
-     * @param userId
+     * @return The response map.
      * @throws IOException
+     *             When IO errors.
      */
-    private void
-            stopReplaceSession(final SpSession session, final String userId)
-                    throws IOException {
-        /*
-         * Save the critical session attribute.
-         */
-        final WebAppTypeEnum savedWebAppType = session.getWebAppType();
-
-        /*
-         * IMPORTANT: Logout to remove the user associated with this session.
-         */
-        session.logout();
-
-        /*
-         * Replaces the underlying (Web)Session, invalidating the current one
-         * and creating a new one. NOTE: the data of the current session is
-         * copied.
-         */
-        session.replaceSession();
-
-        /*
-         * Restore the critical session attribute.
-         */
-        session.setWebAppType(savedWebAppType);
-
-        /*
-         * Make sure that all User Web App long polls for this user are
-         * interrupted.
-         */
-        if (userId != null && this.getWebAppType() == WebAppTypeEnum.USER) {
-            interruptPendingLongPolls(userId);
-        }
-    }
-
-    /**
-     * Logs out by replacing the underlying (Web)Session, invalidating the
-     * current one and creating a new one. Also sends the
-     * {@link UserMsgIndicator.Msg#STOP_POLL_REQ} message.
-     * <p>
-     * After the invalidate() the Wicket framework calls
-     * {@link WebApp#sessionUnbound(String)} : this method publishes the logout
-     * message.
-     * </p>
-     *
-     * @param lockedUser
-     * @param authToken
-     *            The authorization token (can be {@code null}).
-     * @return The OK message.
-     * @throws IOException
-     */
-    private Map<String, Object> reqLogout(final String userId,
-            final String authToken) throws IOException {
-
-        ClientAppUserAuthManager.removeUserAuthToken(this.getClientIpAddr());
-
-        WebAppUserAuthManager.instance().removeUserAuthToken(authToken,
-                this.isAdminRoleContext());
-
-        this.stopReplaceSession(SpSession.get(), userId);
-
-        return createApiResultOK();
-    }
-
-    /**
-     * @return The OK message.
-     */
-    private Map<String, Object> reqWebAppUnload() {
-        SpSession.get().decrementAuthWebApp();
-        return createApiResultOK();
-    }
-
-    /**
-     * This method acts as a {@link #reqLogout(User, String)} for the
-     * {@link User} in the current {@link SpSession}.
-     *
-     * @param authTokenUser
-     *            The authentication token of the User WebApp.
-     * @param authTokenAdmin
-     *            The authentication token of the Admin WebApp.
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqWebAppCloseSession(
-            final String authTokenUser, final String authTokenAdmin)
-            throws IOException {
-
-        final UserAuthToken removedTokenUser =
-                WebAppUserAuthManager.instance().removeUserAuthToken(
-                        authTokenUser, false);
-
-        final UserAuthToken removedTokenAdmin =
-                WebAppUserAuthManager.instance().removeUserAuthToken(
-                        authTokenUser, true);
+    private Map<String, Object> reqWebAppCloseSession() throws IOException {
 
         final SpSession session = SpSession.get();
-
-        if (LOGGER.isTraceEnabled()) {
-            String testLog =
-                    "reqWebAppCloseSession Session [" + session.getId() + "]";
-            testLog += " WebAppCount [" + session.getAuthWebAppCount() + "]";
-            testLog += " authTokenUser [" + authTokenUser + "]";
-            if (removedTokenUser == null) {
-                testLog += "  [NOT found]";
-            } else {
-                testLog += "  [REMOVED]";
-            }
-            testLog += " authTokenAdmin [" + authTokenAdmin + "]";
-            if (removedTokenAdmin == null) {
-                testLog += "  [NOT found]";
-            } else {
-                testLog += "  [REMOVED]";
-            }
-            LOGGER.trace(testLog);
-        }
 
         final String userId;
 
@@ -6649,56 +3943,27 @@ public final class JsonApiServer extends AbstractPage {
         final WebAppTypeEnum savedWebAppType = session.getWebAppType();
 
         /*
-         * IMPORTANT: Logout to remove the user associated with this session.
+         * IMPORTANT: Logout to remove the user and WebApp Type associated with
+         * this session.
          */
         session.logout();
 
         /*
          * Replaces the underlying (Web)Session, invalidating the current one
-         * and creating a new one. NOTE: the data of the current session is
-         * copied.
+         * and creating a new one. NOTE: data are copied from current session.
          */
         session.replaceSession();
-
-        /*
-         * Restore the critical session attribute.
-         */
-        session.setWebAppType(savedWebAppType);
 
         /*
          * Make sure that all User Web App long polls for this user are
          * interrupted.
          */
         if (savedWebAppType == WebAppTypeEnum.USER && userId != null) {
-            interruptPendingLongPolls(userId);
+            ApiRequestHelper.interruptPendingLongPolls(userId,
+                    this.getRemoteAddr());
         }
 
-        /*
-         * We are OK.
-         */
         return createApiResultOK();
-    }
-
-    /**
-     * Interrupts all current User Web App long polls for this user.
-     * <p>
-     * If the user id is the reserved 'admin', the interrupt is NOT applied.
-     * </p>
-     *
-     * @param userId
-     *            The user id.
-     * @throws IOException
-     *             When the interrupt message could not be written (to the
-     *             message file).
-     */
-    private void interruptPendingLongPolls(final String userId)
-            throws IOException {
-
-        if (!ConfigManager.isInternalAdmin(userId)) {
-
-            UserMsgIndicator.write(userId, new Date(),
-                    UserMsgIndicator.Msg.STOP_POLL_REQ, getRemoteAddr());
-        }
     }
 
     /**
@@ -6709,83 +3974,9 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqExitEventMonitor(final String userId)
             throws IOException {
-        interruptPendingLongPolls(userId);
+        ApiRequestHelper.interruptPendingLongPolls(userId,
+                this.getRemoteAddr());
         return createApiResultOK();
-    }
-
-    /**
-     * Sets the userData message with an error or warning depending on the
-     * Membership position. If the membership is ok, the OK message is applied.
-     *
-     * @param userData
-     *            The data the message is to be applied on.
-     * @throws NumberFormatException
-     */
-    private void setApiResultMembershipMsg(final Map<String, Object> userData)
-            throws NumberFormatException {
-
-        final MemberCard memberCard = MemberCard.instance();
-
-        Long daysLeft =
-                memberCard.getDaysLeftInVisitorPeriod(ServiceContext
-                        .getTransactionDate());
-
-        switch (memberCard.getStatus()) {
-        case EXCEEDED:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-exceeded-user-limit",
-                    CommunityDictEnum.MEMBERSHIP.getWord(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-            break;
-        case EXPIRED:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-expired",
-                    CommunityDictEnum.MEMBERSHIP.getWord(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-
-            break;
-        case VISITOR:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-visit", daysLeft.toString(),
-                    CommunityDictEnum.VISITOR.getWord());
-            break;
-        case VISITOR_EXPIRED:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-visit-expired",
-                    CommunityDictEnum.VISITOR.getWord(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-            break;
-        case WRONG_MODULE:
-        case WRONG_COMMUNITY:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-wrong-product",
-                    CommunityDictEnum.MEMBERSHIP.getWord(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-            break;
-        case WRONG_VERSION:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-version",
-                    CommunityDictEnum.MEMBERSHIP.getWord(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-            break;
-        case WRONG_VERSION_WITH_GRACE:
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-membership-version-grace",
-                    CommunityDictEnum.MEMBERSHIP.getWord(),
-                    daysLeft.toString(),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
-            break;
-        case VISITOR_EDITION:
-        case VALID:
-        default:
-            setApiResultOK(userData);
-            break;
-        }
     }
 
     /**
@@ -6954,7 +4145,8 @@ public final class JsonApiServer extends AbstractPage {
      * @throws IOException
      */
     private Map<String, Object> reqGcpSetNotifications(final User user,
-            boolean enabled, final String emailSubject, final String emailBody) {
+            boolean enabled, final String emailSubject,
+            final String emailBody) {
 
         Map<String, Object> userData = new HashMap<String, Object>();
 
@@ -7090,10 +4282,11 @@ public final class JsonApiServer extends AbstractPage {
             throw new SpException(e.getMessage(), e);
         }
 
-        INBOX_SERVICE.setLetterhead(user, letterheadId, list.get("name")
-                .getTextValue(), list.get("foreground").getBooleanValue(), list
-                .get("pub").getBooleanValue(), list.get("pub-new")
-                .getBooleanValue());
+        INBOX_SERVICE.setLetterhead(user, letterheadId,
+                list.get("name").getTextValue(),
+                list.get("foreground").getBooleanValue(),
+                list.get("pub").getBooleanValue(),
+                list.get("pub-new").getBooleanValue());
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
@@ -7202,9 +4395,8 @@ public final class JsonApiServer extends AbstractPage {
 
         setApiResultOK(userData);
 
-        PageImages pages =
-                INBOX_SERVICE.getPageChunks(user, nFirstDetailPage,
-                        uniqueUrlValue, base64);
+        PageImages pages = INBOX_SERVICE.getPageChunks(user, nFirstDetailPage,
+                uniqueUrlValue, base64);
 
         userData.put("jobs", pages.getJobs());
         userData.put("pages", pages.getPages());
@@ -7254,9 +4446,10 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("img_base64", false);
 
         //
-        final UserAuth userAuth =
-                new UserAuth(getHostTerminal(), authModeReq, getWebAppType()
-                        .equals(WebAppTypeEnum.ADMIN));
+        final UserAuth userAuth = new UserAuth(
+                ApiRequestHelper.getHostTerminal(this.getRemoteAddr()),
+                authModeReq,
+                getSessionWebAppType().equals(WebAppTypeEnum.ADMIN));
 
         userData.put("authName", userAuth.isVisibleAuthName());
         userData.put("authId", userAuth.isVisibleAuthId());
@@ -7283,9 +4476,6 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("cardAssocMaxSecs",
                 cm.getConfigInt(Key.WEBAPP_CARD_ASSOC_DIALOG_MAX_SECS));
 
-        userData.put("intUserIdPfx",
-                cm.getConfigValue(Key.INTERNAL_USERS_NAME_PREFIX));
-
         userData.put("watchdogHeartbeatSecs",
                 cm.getConfigInt(Key.WEBAPP_WATCHDOG_HEARTBEAT_SECS));
 
@@ -7300,6 +4490,10 @@ public final class JsonApiServer extends AbstractPage {
 
         //
         userData.put("systime", Long.valueOf(System.currentTimeMillis()));
+
+        //
+        userData.put("showNavButtonTxt", cm.getConfigEnum(OnOffEnum.class,
+                Key.WEBAPP_USER_MAIN_NAV_BUTTON_TEXT));
 
         return userData;
     }

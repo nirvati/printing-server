@@ -22,6 +22,7 @@
 package org.savapage.server.pages.admin;
 
 import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.services.ProxyPrintService;
@@ -29,12 +30,13 @@ import org.savapage.core.services.ServiceContext;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class PrinterMediaSourceAddin extends AbstractAdminPage {
+public final class PrinterMediaSourceAddin extends AbstractAdminPage {
 
     /**
-     *
+     * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
 
@@ -47,7 +49,9 @@ public class PrinterMediaSourceAddin extends AbstractAdminPage {
     /**
      *
      */
-    public PrinterMediaSourceAddin() {
+    public PrinterMediaSourceAddin(final PageParameters parameters) {
+
+        super(parameters);
 
         final Long printerId =
                 getRequestCycle().getRequest().getPostParameters()
@@ -59,7 +63,7 @@ public class PrinterMediaSourceAddin extends AbstractAdminPage {
     /**
      *
      */
-    private void handlePage(Long printerId) {
+    private void handlePage(final Long printerId) {
 
         add(new Label("cost-per-side", localized("cost-per-side",
                 ConfigManager.getAppCurrencyCode())));

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -28,6 +28,7 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.savapage.core.SpException;
@@ -35,22 +36,27 @@ import org.savapage.core.dao.ConfigPropertyDao;
 import org.savapage.core.dao.helpers.AbstractPagerReq;
 import org.savapage.core.jpa.ConfigProperty;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.server.pages.MarkupHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class ConfigPropPage extends AbstractAdminListPage {
+public final class ConfigPropPage extends AbstractAdminListPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
      * The logger.
      */
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(ConfigPropPage.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(ConfigPropPage.class);
 
     /**
      * Maximum number of pages in the navigation bar. IMPORTANT: this must be an
@@ -66,7 +72,11 @@ public class ConfigPropPage extends AbstractAdminListPage {
      */
     private static class Req extends AbstractPagerReq {
 
+        /**
+         *
+         */
         public static class Select {
+
             @JsonProperty("text")
             private String containingText = null;
 
@@ -74,11 +84,15 @@ public class ConfigPropPage extends AbstractAdminListPage {
                 return containingText;
             }
 
+            @SuppressWarnings("unused")
             public void setContainingText(String containingText) {
                 this.containingText = containingText;
             }
         }
 
+        /**
+         *
+         */
         public static class Sort {
 
             private Boolean ascending = true;
@@ -87,6 +101,7 @@ public class ConfigPropPage extends AbstractAdminListPage {
                 return ascending;
             }
 
+            @SuppressWarnings("unused")
             public void setAscending(Boolean ascending) {
                 this.ascending = ascending;
             }
@@ -100,6 +115,7 @@ public class ConfigPropPage extends AbstractAdminListPage {
             return select;
         }
 
+        @SuppressWarnings("unused")
         public void setSelect(Select select) {
             this.select = select;
         }
@@ -108,6 +124,7 @@ public class ConfigPropPage extends AbstractAdminListPage {
             return sort;
         }
 
+        @SuppressWarnings("unused")
         public void setSort(Sort sort) {
             this.sort = sort;
         }
@@ -117,7 +134,9 @@ public class ConfigPropPage extends AbstractAdminListPage {
     /**
      *
      */
-    public ConfigPropPage() {
+    public ConfigPropPage(final PageParameters parameters) {
+
+        super(parameters);
 
         // this.openServiceContext();
 
@@ -141,12 +160,12 @@ public class ConfigPropPage extends AbstractAdminListPage {
 
         // add(new Label("applog-count", Long.toString(logCount)));
 
-        final List<ConfigProperty> entryList =
-                dao.getListChunk(filter, req.calcStartPosition(), req
-                        .getMaxResults(), ConfigPropertyDao.Field.NAME, req
-                        .getSort().getAscending());
+        final List<ConfigProperty> entryList = dao.getListChunk(filter,
+                req.calcStartPosition(), req.getMaxResults(),
+                ConfigPropertyDao.Field.NAME, req.getSort().getAscending());
 
-        add(new PropertyListView<ConfigProperty>("config-entry-view", entryList) {
+        add(new PropertyListView<ConfigProperty>("config-entry-view",
+                entryList) {
             private static final long serialVersionUID = 1L;
 
             @Override
@@ -162,11 +181,11 @@ public class ConfigPropPage extends AbstractAdminListPage {
                  * Set the uid in 'data-savapage' attribute, so it can be picked
                  * up in JavaScript for editing.
                  */
-                Label labelWrk =
-                        new Label("button-edit", getLocalizer().getString(
-                                "button-edit", this));
-                labelWrk.add(new AttributeModifier("data-savapage", prop
-                        .getPropertyName()));
+                Label labelWrk = new Label("button-edit",
+                        getLocalizer().getString("button-edit", this));
+                labelWrk.add(
+                        new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
+                                prop.getPropertyName()));
                 item.add(labelWrk);
 
             }

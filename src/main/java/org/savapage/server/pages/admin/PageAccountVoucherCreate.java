@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,28 +23,35 @@ package org.savapage.server.pages.admin;
 
 import javax.print.attribute.standard.MediaSizeName;
 
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.reports.JrVoucherPageLayoutEnum;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.server.pages.VoucherDesignOptionsPanel;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class PageAccountVoucherCreate extends AbstractAdminPage {
+public final class PageAccountVoucherCreate extends AbstractAdminPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
      *
      */
-    public PageAccountVoucherCreate() {
+    public PageAccountVoucherCreate(final PageParameters parameters) {
+
+        super(parameters);
         /*
          * Option list: voucher card design
          */
-        VoucherDesignOptionsPanel voucherDesignOptions =
+        final VoucherDesignOptionsPanel voucherDesignOptions =
                 new VoucherDesignOptionsPanel("voucher-card-format-options");
+
         add(voucherDesignOptions);
 
         final JrVoucherPageLayoutEnum designDefault;
@@ -56,6 +63,5 @@ public class PageAccountVoucherCreate extends AbstractAdminPage {
         }
 
         voucherDesignOptions.populate(designDefault);
-
     }
 }

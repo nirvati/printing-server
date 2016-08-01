@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,17 @@
  */
 package org.savapage.server.pages.user;
 
-import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.dao.enums.ACLOidEnum;
+import org.savapage.core.dao.enums.ACLPermissionEnum;
+import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.ServiceContext;
+import org.savapage.server.SpSession;
+import org.savapage.server.pages.MarkupHelper;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public class Letterhead extends AbstractUserPage {
@@ -35,17 +41,32 @@ public class Letterhead extends AbstractUserPage {
     /**
      *
      */
-    public Letterhead() {
-        Label label =
-                new Label("letterhead-public", localized("letterhead-public")) {
-                    private static final long serialVersionUID = 1L;
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
 
-                    @Override
-                    public boolean isVisible() {
-                        return isAdminUser();
-                    }
-                };
+    /**
+     *
+     */
+    public Letterhead(final PageParameters parameters) {
 
-        add(label);
+        super(parameters);
+
+        add(MarkupHelper.createEncloseLabel("letterhead-public",
+                localized("letterhead-public"), isAdminUser()));
+
+        final boolean canCreate;
+
+        if (isAdminUser()) {
+            canCreate = true;
+        } else {
+            final Integer letterheadPriv =
+                    ACCESS_CONTROL_SERVICE.getUserPrivileges(
+                            SpSession.get().getUser(), ACLOidEnum.U_LETTERHEAD);
+            canCreate = letterheadPriv == null || ACLPermissionEnum.EDITOR
+                    .isPresent(letterheadPriv.intValue());
+        }
+
+        add(MarkupHelper.createEncloseLabel("button-new",
+                localized("button-new"), canCreate));
     }
 }

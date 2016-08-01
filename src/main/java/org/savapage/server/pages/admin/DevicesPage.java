@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,14 +30,15 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.savapage.core.SpException;
 import org.savapage.core.dao.DeviceDao;
 import org.savapage.core.dao.DeviceDao.Field;
+import org.savapage.core.dao.enums.DeviceTypeEnum;
+import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.AbstractPagerReq;
-import org.savapage.core.dao.helpers.DeviceTypeEnum;
-import org.savapage.core.dao.helpers.ProxyPrintAuthModeEnum;
 import org.savapage.core.dto.RfIdReaderStatusDto;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.PrinterGroup;
@@ -52,23 +53,26 @@ import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class DevicesPage extends AbstractAdminListPage {
+public final class DevicesPage extends AbstractAdminListPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(DevicesPage.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(DevicesPage.class);
 
     private static final int MAX_PAGES_IN_NAVBAR = 5; // must be odd number
 
     /**
      * .
      */
-    private static final DeviceService DEVICE_SERVICE = ServiceContext
-            .getServiceFactory().getDeviceService();
+    private static final DeviceService DEVICE_SERVICE =
+            ServiceContext.getServiceFactory().getDeviceService();
 
     /**
      * Bean for mapping JSON page request.
@@ -78,6 +82,9 @@ public class DevicesPage extends AbstractAdminListPage {
      */
     private static class Req extends AbstractPagerReq {
 
+        /**
+         *
+         */
         public static class Select {
 
             @JsonProperty("text")
@@ -90,6 +97,7 @@ public class DevicesPage extends AbstractAdminListPage {
                 return containingText;
             }
 
+            @SuppressWarnings("unused")
             public void setContainingText(String containingText) {
                 this.containingText = containingText;
             }
@@ -98,6 +106,7 @@ public class DevicesPage extends AbstractAdminListPage {
                 return disabled;
             }
 
+            @SuppressWarnings("unused")
             public void setDisabled(Boolean disabled) {
                 this.disabled = disabled;
             }
@@ -106,12 +115,16 @@ public class DevicesPage extends AbstractAdminListPage {
                 return reader;
             }
 
+            @SuppressWarnings("unused")
             public void setReader(Boolean reader) {
                 this.reader = reader;
             }
 
         }
 
+        /**
+         *
+         */
         public static class Sort {
 
             private Boolean ascending = true;
@@ -120,6 +133,7 @@ public class DevicesPage extends AbstractAdminListPage {
                 return ascending;
             }
 
+            @SuppressWarnings("unused")
             public void setAscending(Boolean ascending) {
                 this.ascending = ascending;
             }
@@ -133,6 +147,7 @@ public class DevicesPage extends AbstractAdminListPage {
             return select;
         }
 
+        @SuppressWarnings("unused")
         public void setSelect(Select select) {
             this.select = select;
         }
@@ -141,6 +156,7 @@ public class DevicesPage extends AbstractAdminListPage {
             return sort;
         }
 
+        @SuppressWarnings("unused")
         public void setSort(Sort sort) {
             this.sort = sort;
         }
@@ -150,16 +166,15 @@ public class DevicesPage extends AbstractAdminListPage {
     /**
      *
      */
-    public DevicesPage() {
+    public DevicesPage(final PageParameters parameters) {
 
-        // this.openServiceContext();
+        super(parameters);
 
         final RfIdReaderService rfidReaderService =
                 ServiceContext.getServiceFactory().getRfIdReaderService();
 
-        final DateFormat dateFormat =
-                DateFormat.getDateTimeInstance(DateFormat.MEDIUM,
-                        DateFormat.MEDIUM, getLocale());
+        final DateFormat dateFormat = DateFormat.getDateTimeInstance(
+                DateFormat.MEDIUM, DateFormat.MEDIUM, getLocale());
 
         final Req req = readReq();
 
@@ -184,10 +199,9 @@ public class DevicesPage extends AbstractAdminListPage {
 
         final long devicesCount = deviceDAO.getListCount(filter);
 
-        final List<Device> entryList =
-                deviceDAO.getListChunk(filter, req.calcStartPosition(), req
-                        .getMaxResults(), Field.NAME, req.getSort()
-                        .getAscending());
+        final List<Device> entryList = deviceDAO.getListChunk(filter,
+                req.calcStartPosition(), req.getMaxResults(), Field.NAME,
+                req.getSort().getAscending());
 
         /*
          * Display the requested page.
@@ -232,16 +246,15 @@ public class DevicesPage extends AbstractAdminListPage {
                         signalKey = "signal-disconnected";
                     }
 
-                    readerConnectStatus =
-                            localized(signalKey,
-                                    dateFormat.format(status.getDate()));
+                    readerConnectStatus = localized(signalKey,
+                            dateFormat.format(status.getDate()));
                 } else {
                     readerConnectStatus = "";
                 }
 
                 item.add(createVisibleLabel(deviceDAO.isCardReader(device),
-                        "readerConnectStatus", readerConnectStatus, color + " "
-                                + MarkupHelper.CSS_TXT_WRAP));
+                        "readerConnectStatus", readerConnectStatus,
+                        color + " " + MarkupHelper.CSS_TXT_WRAP));
 
                 /*
                  * Signal
@@ -327,9 +340,8 @@ public class DevicesPage extends AbstractAdminListPage {
 
                 if (printerAuth != null || printerGroupAuth != null) {
 
-                    final ProxyPrintAuthModeEnum authModeEnum =
-                            DEVICE_SERVICE
-                                    .getProxyPrintAuthMode(device.getId());
+                    final ProxyPrintAuthModeEnum authModeEnum = DEVICE_SERVICE
+                            .getProxyPrintAuthMode(device.getId());
 
                     if (authModeEnum == null) {
 
@@ -369,10 +381,10 @@ public class DevicesPage extends AbstractAdminListPage {
                 }
                 item.add(createVisibleLabel(printerAuth != null,
                         "printerAuthMode", proxyPrintAuthMode)
-                        .setEscapeModelStrings(false));
+                                .setEscapeModelStrings(false));
                 item.add(createVisibleLabel(printerGroupAuth != null,
                         "printerGroupAuthMode", proxyPrintAuthMode)
-                        .setEscapeModelStrings(false));
+                                .setEscapeModelStrings(false));
 
                 item.add(createVisibleLabel(printerAuth != null, "printerAuth",
                         printerAuth));
@@ -382,33 +394,32 @@ public class DevicesPage extends AbstractAdminListPage {
                 /*
                  * Device Image
                  */
-                String imageSrc;
+                final String imageSrc;
 
                 if (device.getCardReader() != null) {
                     imageSrc = "device-terminal-card-reader-16x16.png";
                 } else if (device.getCardReaderTerminal() != null) {
                     imageSrc = "device-card-reader-terminal-16x16.png";
-                } else if (device.getDeviceType().equals(
-                        DeviceTypeEnum.CARD_READER.toString())) {
+                } else if (device.getDeviceType()
+                        .equals(DeviceTypeEnum.CARD_READER.toString())) {
                     imageSrc = "device-card-reader-16x16.png";
                 } else {
                     imageSrc = "device-terminal-16x16.png";
                 }
 
                 labelWrk = new Label("deviceImage", "");
-                labelWrk.add(new AttributeModifier("src", String.format(
-                        "%s/%s", WebApp.PATH_IMAGES, imageSrc)));
+                labelWrk.add(new AttributeModifier("src",
+                        String.format("%s/%s", WebApp.PATH_IMAGES, imageSrc)));
                 item.add(labelWrk);
 
                 /*
                  * Set the uid in 'data-savapage' attribute, so it can be picked
                  * up in JavaScript for editing.
                  */
-                labelWrk =
-                        new Label("button-edit", getLocalizer().getString(
-                                "button-edit", this));
-                labelWrk.add(new AttributeModifier("data-savapage", device
-                        .getId()));
+                labelWrk = new Label("button-edit",
+                        getLocalizer().getString("button-edit", this));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, device.getId()));
                 item.add(labelWrk);
 
             }

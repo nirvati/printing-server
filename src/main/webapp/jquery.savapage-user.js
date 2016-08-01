@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile User Web App | (c) 2011-2015 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile User Web App | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,9 @@
 /*
  * NOTE: the *! comment blocks are part of the compressed version.
  */
+
+/*jslint browser: true*/
+/*global $, jQuery, alert*/
 
 /*
  * SavaPage jQuery Mobile User Web App
@@ -58,7 +61,6 @@
 				 */
 				_ns.cometd.start(_ns.model.user.cometdToken);
 				_ns.userEvent.resume();
-				//alert("All loaded!");
 			}
 		};
 
@@ -319,11 +321,13 @@
 			 */
 			_onEvent = function(message) {
 
-				var res;
+				var res = $.parseJSON(message.data);
+
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('UserEvent: event ' + res.event + ( _paused ? ' (paused)' : ''));
+				}
 
 				_longPollStartTime = null;
-
-				res = $.parseJSON(message.data);
 
 				if (!_paused) {
 
@@ -347,21 +351,17 @@
 
 					} else {
 
-						if (res.event === "PRINT_MSG") {
+						if (res.event === "PRINT_MSG" || res.event === "ACCOUNT" || res.event === "JOBTICKET") {
 							_this.onMsgEvent(res.data);
-						} else if (res.event === "ACCOUNT") {
-							_this.onNullEvent(res.data);
 							_this.onAccountEvent(res.stats);
+						} else if (res.event === "PRINT_IN_EXPIRED") {
+							_this.onMsgEvent(res.data, true);
 						} else if (res.event === "NULL") {
 							_this.onNullEvent(res.data);
 							_this.onAccountEvent(res.stats);
 						}
-
 						_this.onPollInvitation();
-
 					}
-					//} else {
-					//_this.onEventIgnored();
 				}
 			};
 
@@ -378,6 +378,10 @@
 					/*
 					 * Get things started: invite to do a poll.
 					 */
+					if (_ns.logger.isDebugEnabled()) {
+						_ns.logger.debug('UserEvent: first poll invitation');
+					}
+
 					this.onPollInvitation();
 				}
 			};
@@ -415,7 +419,12 @@
 			 */
 			this.poll = function(userid, pagecount, uniqueUrlVal, prevMsgTime, language, country, base64) {
 
-				if (!_longPollStartTime && userid) {
+				if (!_longPollStartTime && userid && _cometd.isOn()) {
+
+					if (_ns.logger.isDebugEnabled()) {
+						_ns.logger.debug('UserEvent: poll()');
+					}
+
 					_longPollStartTime = new Date().getTime();
 					this.onWaitingForEvent();
 					try {
@@ -430,6 +439,7 @@
 							webAppClient : true
 						});
 					} catch (err) {
+						_ns.logger.warn('UserEvent poll() exception: ' + err);
 						this.onException(err);
 					}
 				}
@@ -447,6 +457,9 @@
 			 * and the current long-poll is interrupted.
 			 */
 			this.pause = function() {
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('UserEvent: pause()');
+				}
 				_paused = true;
 				_api.call({
 					request : 'exit-event-monitor'
@@ -461,6 +474,9 @@
 			this.resume = function() {
 				_paused = false;
 				if (!_longPollStartTime && _cometd.isOn()) {
+					if (_ns.logger.isDebugEnabled()) {
+						_ns.logger.debug('UserEvent: resume()');
+					}
 					this.onPollInvitation();
 				}
 			};
@@ -554,14 +570,6 @@
 						$('#sp-popup-letterhead-page').html(html).enhanceWithin().popup('open', {
 							positionTo : 'window'
 						});
-					}
-				});
-
-				$('.sp-img-popup').on({
-					popupbeforeposition : function() {
-						// popupafteropen : function() {
-						var height = $(window).height() - 60 + "px";
-						$(".sp-img-popup img").height(height);
 					}
 				});
 
@@ -928,6 +936,7 @@
 					image.addClass('active');
 					// detailedScanImageInBrowser();
 				});
+
 				$("#browser-nav-right").click(function() {
 					navRight();
 					return false;
@@ -1247,8 +1256,10 @@
 				_view.checkCb("#pdf-apply-passwords", wlk.passwords);
 				_view.checkCb("#pdf-apply-description", (wlk.subject || wlk.keywords));
 
-				_setVisibility();
+				// When opened from SafePage Sort mode, selected page ranges are filled.
+				$('#pdf-page-ranges').val(_model.getSelectPageRanges());
 
+				_setVisibility();
 			};
 			/*
 			 * View to Model
@@ -1488,7 +1499,7 @@
 		/**
 		 *
 		 */
-		function PageOutbox(_i18n, _view, _model) {
+		function PageOutbox(_i18n, _view, _model, _api) {
 			var _this = this
 			//
 			, _close = function() {
@@ -1497,16 +1508,11 @@
 			}
 			//
 			, _refresh = function() {
-				var html = _view.getUserPageHtml('OutboxAddin');
+				var html = _view.getUserPageHtml('OutboxAddin', {
+					jobTickets : false
+				});
 				if (html) {
-					$('#outbox-job-list').html(html);
-					/*
-					 * JQM 1.4.0: strange, the listview needs a separate
-					 * refresh.
-					 */
-					$('#page-outbox').enhanceWithin();
-					$('#outbox-job-list').listview('refresh');
-
+					$('#outbox-job-list').html(html).enhanceWithin();
 					$('.sparkline-printout-pie').sparkline('html', {
 						type : 'pie',
 						sliceColors : [_view.colorPrinter, _view.colorSheet]
@@ -1529,18 +1535,32 @@
 					return _close();
 				});
 
-				$(this).on('click', '.sp-outbox-remove-job', null, function() {
-					_this.onOutboxDeleteJob($(this).attr('data-savapage'));
+				$(this).on('click', '.sp-outbox-cancel-job', null, function() {
+					_this.onOutboxDeleteJob($(this).attr('data-savapage'), false);
+					if (_model.user.stats.outbox.jobCount > 0) {
+						return _refresh();
+					}
+					return _close();
+				});
+				$(this).on('click', '.sp-outbox-cancel-jobticket', null, function() {
+					_this.onOutboxDeleteJob($(this).attr('data-savapage'), true);
 					if (_model.user.stats.outbox.jobCount > 0) {
 						return _refresh();
 					}
 					return _close();
 				});
 
-				//}).on("pagebeforeshow", function(event, ui) {
+				$(this).on('click', '.sp-outbox-preview-job', null, function() {
+					_api.download("pdf-outbox", null, $(this).attr('data-savapage'));
+					return false;
+				});
+				$(this).on('click', '.sp-outbox-preview-jobticket', null, function() {
+					_api.download("pdf-jobticket", null, $(this).attr('data-savapage'));
+					return false;
+				});
+
 			}).on("pageshow", function(event, ui) {
 				_refresh();
-				//}).on('pagebeforehide', function(event, ui) {
 			});
 		}
 
@@ -1555,8 +1575,7 @@
 			$("#page-send").on("pagecreate", function(event) {
 
 				$('#button-send-send').click(function() {
-					_this.onSend($('#send-mailto').val(), _model.pdfPageRanges, _model.removeGraphics, _model.ecoprint);
-					$('#pdf-page-ranges').val('');
+					_this.onSend($('#send-mailto').val(), _model.pdfPageRanges, _model.removeGraphics, _model.ecoprint, _model.pdfGrayscale);
 					return false;
 				});
 
@@ -1751,10 +1770,17 @@
 			 */
 			$(_self.id()).on('pagecreate', function(event) {
 
-				$('#file-upload-feedback').hide();
 				// initial hide
+				$('#file-upload-feedback').hide();
+
 				$('#button-file-upload-submit').on('click', null, null, function() {
 					$('#file-upload-feedback').show();
+					$('#button-file-upload-reset').click();
+					return true;
+				});
+
+				$('#button-file-upload-reset').on('click', null, null, function() {
+					$('#file-upload-feedback').html('').hide();
 					return true;
 				});
 
@@ -1764,10 +1790,9 @@
 
 			}).on('pagebeforehide', function(event, ui) {
 				/*
-				 * Clear and Hide content
-				 */
-				$('#file-upload-feedback').hide();
-				$('#file-upload-feedback').html('');
+				* Clear and Hide content
+				*/
+				//$('#file-upload-feedback').html('').hide();
 				$('#button-file-upload-reset').click();
 
 				/*
@@ -1787,6 +1812,8 @@
 
 			var _this = this
 			//
+			, _util = _ns.Utils
+			//
 			, _IMG_PADDING = 3
 			//
 			, _IMG_BORDER = 0
@@ -1799,19 +1826,31 @@
 			//
 			, _isThumbnailDragged = false
 			//
-			, _IMG_WIDTH = function() {
-				return _model.MY_THUMBNAIL_WIDTH;
-			}
-			//
 			, _moveLeft, _moveRight, _moveToBegin, _moveToEnd, _moveJobs
 			//
-			, _showArrange, _showCutPageRanges, _getCutPageRanges, _countProp
+			, _showArrange, _showCutPageRanges, _showSelectPageRanges
 			//
-			, _getJobRanges, _getFirstJob, _showArrButtons
+			, _getFirstJob, _showArrButtons
 			//
 			, _onThumbnailTap, _onThumbnailTapHold, _onPageInfoTap
 			// mapping page URLs to jQuery <img> selectors
 			, _tnUrl2Img
+			//
+			, _IMG_WIDTH = function() {
+				return _model.MY_THUMBNAIL_WIDTH;
+			}
+			//
+			/**
+			 * Set job expiration marker in thumbnail subscript.
+			 */, _setThumbnailExpiry = function() {
+				var subscripts = $('.sp-thumbnail-subscript'), i = 0;
+				$.each(_model.myJobPages, function(key, page) {
+					if (page.expiryTime > 0 && page.expiryTime - _model.prevMsgTime < page.expiryTimeSignal) {
+						subscripts.eq(i).addClass('sp-thumbnail-subscript-job-expired').addClass('ui-btn-icon-left').addClass('ui-icon-mini-expired-clock');
+					}
+					i = i + 1;
+				});
+			}
 			//
 			;
 
@@ -1829,15 +1868,9 @@
 			 *
 			 */
 			this.showUserStats = function() {
-				var stats = _model.user.stats
-				//
-				, outbox
-				//
-				, pages = 0
-				//
-				, status
-				//
-				;
+				var stats = _model.user.stats, outbox, pages = 0, status, selBalance;
+
+				_setThumbnailExpiry();
 
 				if (stats) {
 
@@ -1847,7 +1880,10 @@
 					});
 
 					status = stats.accountInfo.status;
-					$('#mini-user-balance').html(stats.accountInfo.balance).attr("class", status === "CREDIT" ? "sp-txt-warn" : (status === "DEBIT" ? "sp-txt-valid" : "sp-txt-error"));
+					selBalance = $('#mini-user-balance');
+					if (selBalance) {
+						selBalance.html(stats.accountInfo.balance).attr("class", status === "CREDIT" ? "sp-txt-warn" : (status === "DEBIT" ? "sp-txt-valid" : "sp-txt-error"));
+					}
 
 					outbox = _model.user.stats.outbox;
 				}
@@ -1867,7 +1903,6 @@
 				}
 
 				_model.setJobsMatchMediaSources(_view);
-
 			};
 
 			/**
@@ -1882,7 +1917,6 @@
 					prop.i = i;
 					prop.img = $(this);
 					_this.tnUrl2Img[_model.myJobPages[i].url] = prop;
-					//window.console.log('[' + i + ']');
 					i = i + 1;
 				});
 			};
@@ -1927,7 +1961,7 @@
 				 */
 				$.each(_model.myJobPages, function(key, page) {
 
-					var divCur, item, tnUrl, span
+					var divCur, item, tnUrl, span, title
 					//
 					, imgWidth = _IMG_WIDTH()
 					//
@@ -1944,6 +1978,10 @@
 						 */
 						divCur = tnUrl.img.parent();
 					} else {
+						title = page.media;
+						if (page.expiryTime) {
+							title += ' &bull; ' + _ns.Utils.formatDateTime(new Date(page.expiryTime));
+						}
 						/*
 						 * Mantis #320: we set the 'height' attribute with the
 						 * A4 assumption, later on at the removeImgHeight() the
@@ -1952,7 +1990,7 @@
 						 */
 						item = "";
 						item += '<div><img onload="org.savapage.removeImgHeight(this)" width="' + imgWidth + '" height="' + imgHeightA4 + '" border="0" src="' + _view.getImgSrc(page.url) + '" style="padding: ' + _IMG_PADDING + 'px;"/>';
-						item += '<a title="' + page.media + '" href="#" class="sp-thumbnail-subscript ui-btn ui-mini" style="margin-top:-' + (2 * _IMG_PADDING + 1) + 'px; margin-right: ' + _IMG_PADDING + 'px; margin-left: ' + _IMG_PADDING + 'px; border: none; box-shadow: none;">';
+						item += '<a title="' + title + '" href="#" class="sp-thumbnail-subscript ui-btn ui-mini" style="margin-top:-' + (2 * _IMG_PADDING + 1) + 'px; margin-right: ' + _IMG_PADDING + 'px; margin-left: ' + _IMG_PADDING + 'px; border: none; box-shadow: none;">';
 						item += '<span class="sp-thumbnail-page"/>';
 						item += '<span class="sp-thumbnail-tot-pages"/>';
 						item += '<span class="sp-thumbnail-tot-chunk"/>';
@@ -2037,6 +2075,8 @@
 					$('#page-main-thumbnail-viewport').addClass('thumbnail_viewport_empty');
 				}
 
+				_setThumbnailExpiry();
+
 				//
 				_tnUrl2Img();
 			};
@@ -2101,16 +2141,22 @@
 				}
 			};
 
-			_showArrButtons = function(show) {
+			/*
+			 *
+			 */
+			_showArrButtons = function() {
 				var selEdit = $('.main_arr_edit')
 				//
 				, selPaste = $('.main_arr_paste')
 				//
 				, selUndo = $('#main-arr-undo')
 				//
-				, bCut = (_countProp(_model.myCutPages) > 0);
+				, bCut = _util.countProp(_model.myCutPages) > 0
+				//
+				;
 
-				if (show) {
+				// Show Paste buttons?
+				if (_util.countProp(_model.mySelectPages) > 0) {
 					selEdit.removeClass('ui-disabled');
 					if (bCut) {
 						selPaste.removeClass('ui-disabled');
@@ -2120,6 +2166,8 @@
 				} else {
 					selEdit.addClass('ui-disabled');
 				}
+
+				// Show Undo button?
 				if (bCut) {
 					selUndo.removeClass('ui-disabled');
 				} else {
@@ -2133,8 +2181,10 @@
 			_showArrange = function(bShow) {
 				$('#page-main-thumbnail-images div').removeClass('sp-thumbnail-selected').removeClass('sp-thumbnail-cut');
 				_model.myCutPages = {};
+				_model.mySelectPages = {};
 				_showCutPageRanges();
-				_showArrButtons(false);
+				_showSelectPageRanges();
+				_showArrButtons();
 
 				_view.visible($('.main_action_arrange'), bShow);
 				_view.visible($('.main_action'), !bShow);
@@ -2142,31 +2192,6 @@
 				_isEditMode = bShow;
 			};
 
-			/*
-			 * Calculates the formatted real page range from thumbnail pages with
-			 * a
-			 * certain CSS class. The format is: "n,n,...".
-			 *
-			 * @param {string} cssClass The CSS class. @returns {string} The
-			 * formatted page range.
-			 */
-			_getJobRanges = function(cssClass) {
-				var ranges = null, nOffset = 0, iOffset = 0
-				//
-				, tn = $('#page-main-thumbnail-images div');
-
-				$.each($('.' + cssClass), function(key, obj) {
-					if (ranges === null) {
-						ranges = '';
-						iOffset = tn.index(obj);
-						nOffset = _model.getPageNumber(iOffset);
-					} else {
-						ranges += ",";
-					}
-					ranges += nOffset + (tn.index(obj) - iOffset);
-				});
-				return ranges;
-			};
 			/*
 			 *
 			 */
@@ -2185,7 +2210,7 @@
 			 *
 			 */
 			_moveJobs = function(bBefore) {
-				var ranges = _getCutPageRanges()
+				var ranges = _model.getCutPageRanges()
 				//
 				, position = _model.getPageNumber(_getFirstJob('sp-thumbnail-selected')) - 1;
 
@@ -2193,83 +2218,42 @@
 					if (!bBefore) {
 						position += 1;
 					}
-					// alert('move ['+ranges+'] at ['+position+']');
 					_this.onPageMove(ranges, position);
-					_showArrButtons(false);
+					_showArrButtons();
 				}
-			};
-
-			/**
-			 * Counts the number of properties in an object.
-			 *
-			 * Since IE8 does NOT support Object.keys(_model.myCutPages).length
-			 * we
-			 * use a workaround.
-			 */
-			_countProp = function(obj) {
-				var n = 0, p;
-				for (p in obj) {
-					n++;
-				}
-				return n;
 			};
 
 			/**
 			 *
 			 */
 			_showCutPageRanges = function() {
-				if (_countProp(_model.myCutPages) > 0) {
-					$('#main-page-range-cut').html(_getCutPageRanges());
+				if (_util.countProp(_model.myCutPages) > 0) {
+					$('#main-page-range-cut').html(_model.getCutPageRanges());
 					$('#button-mini-cut').show();
 				} else {
 					$('#button-mini-cut').hide();
 				}
 			};
-			/**
-			 * Creates a string with page range format from the cut pages.
-			 *
-			 * Example: '3-4,7,9-11'
-			 */
-			_getCutPageRanges = function() {
-				var ranges = '', pageStart, pageEnd, pagePrv
-				//
-				, page
-				//
-				, addRange = function() {
-					if (ranges !== '') {
-						ranges += ',';
-					}
-					ranges += pageStart;
-					if (pageStart !== pageEnd) {
-						ranges += '-' + pageEnd;
-					}
-				};
 
-				for (page in _model.myCutPages) {
-					if (pagePrv) {
-						if (parseInt(pagePrv, 10) + 1 === parseInt(page, 10)) {
-							pageEnd = page;
-						} else {
-							addRange();
-							pagePrv = null;
-						}
-					}
-					if (!pagePrv) {
-						pageStart = page;
-						pageEnd = page;
-					}
-					pagePrv = page;
+			/**
+			 *
+			 */
+			_showSelectPageRanges = function() {
+				if (_util.countProp(_model.mySelectPages) > 0) {
+					$('#main-page-range-select').html(_model.getSelectPageRanges());
+					$('#button-mini-select').show();
+				} else {
+					$('#button-mini-select').hide();
 				}
-				if (pagePrv) {
-					addRange();
-				}
-				return ranges;
+			};
+
+			this.alignThumbnails = function() {
+				_moveToEnd();
 			};
 
 			/**
 			 * Adjusts the visibility (width, padding, hide/show) of the
-			 * thumbnail
-			 * images, and move the last image to the right side (moveToEnd)
+			 * thumbnail images, and move the last image to the right side (moveToEnd)
 			 */
 			this.adjustThumbnailVisibility = function() {
 
@@ -2307,20 +2291,30 @@
 				}
 
 				/*
-				 * Set the CSS class for cut thumbnails.
+				 * Set the CSS class for cut/selected thumbnails.
 				 */
 				tn = $('#page-main-thumbnail-images div');
 
 				$.each(tn, function(key, obj) {
 					var n = _model.getPageNumber(tn.index($(this)));
+
 					if (_model.myCutPages[n] === true) {
 						$(this).addClass('sp-thumbnail-cut');
 					} else {
 						$(this).removeClass('sp-thumbnail-cut');
 					}
+
+					if (_model.mySelectPages[n] === true) {
+						$(this).addClass('sp-thumbnail-selected');
+					} else {
+						$(this).removeClass('sp-thumbnail-selected');
+					}
+
 				});
 
 				_showCutPageRanges();
+				_showSelectPageRanges();
+				_showArrButtons();
 			};
 
 			/*
@@ -2328,7 +2322,7 @@
 			 */
 			_onPageInfoTap = function(sel) {
 
-				var iImg = -1, page, job, sel2
+				var iImg = -1, page, job, sel2, nDel
 				//
 				, cssCls = 'sp-thumbnail-subscript'
 				//
@@ -2369,18 +2363,33 @@
 
 					page = _model.myJobPages[iImg];
 					job = _model.myJobs[page.job];
+					nDel = job.pages - job.pagesSelected;
 
 					_model.iPopUpJob = page.job;
 
 					$('#popup-job-info-name').html(job.title);
-					$('#popup-job-info-pages-selected').html(job.pagesSelected);
 					$('#popup-job-info-pages').html(job.pages);
+
+					$('#popup-job-info-pages-deleted').find('span').html(nDel);
+					_view.visible($('#popup-job-info-pages-deleted'), nDel > 0);
 
 					$('#popup-job-info-media').html(job.media);
 					$('#popup-job-info-drm').html(job.drm ? '&nbsp;DRM' : '');
 
 					_view.checkCb("#sp-popup-job-undelete", false);
 					_view.checkCb("#sp-popup-job-rotate", (job.rotate !== '0'));
+
+					sel2 = $('#sp-popup-job-expiry');
+
+					if (page.expiryTime) {
+						if (page.expiryTime > 0 && page.expiryTime - _model.prevMsgTime < page.expiryTimeSignal) {
+							sel2.addClass('sp-thumbnail-subscript-job-expired');
+						} else {
+							sel2.removeClass('sp-thumbnail-subscript-job-expired');
+						}
+						sel2.find('span').html(_ns.Utils.formatDateTime(new Date(page.expiryTime)));
+					}
+					_view.visible(sel2, page.expiryTime);
 
 					$('#sp-popup-job-info').enhanceWithin().popup('open', {
 						positionTo : '#page-main-thumbnail-images .sp-thumbnail-page:eq(' + iImg + ')'
@@ -2407,13 +2416,15 @@
 			 */
 			_onThumbnailTap = function(thumbnail) {
 
-				var tn
+				var tn, nPage
 				//
 				, iImage = $('#page-main-thumbnail-images img').index(thumbnail);
 
 				if (iImage < 0) {
 					return;
 				}
+
+				nPage = _model.getPageNumber(iImage);
 
 				$('#page-main-thumbnail-images img').removeClass('main_selected');
 
@@ -2422,17 +2433,25 @@
 					 * Image representing a single page
 					 */
 					if (_isEditMode) {
+
 						tn = thumbnail.parent();
+
 						if (tn.hasClass('sp-thumbnail-cut')) {
 
 							tn.removeClass('sp-thumbnail-cut');
-							delete _model.myCutPages[_model.getPageNumber(iImage)];
+							delete _model.myCutPages[nPage];
 							_showCutPageRanges();
 
 						} else {
 							tn.toggleClass('sp-thumbnail-selected');
+							if (tn.hasClass('sp-thumbnail-selected')) {
+								_model.mySelectPages[nPage] = true;
+							} else {
+								delete _model.mySelectPages[nPage];
+							}
+							_showSelectPageRanges();
 						}
-						_showArrButtons($('.sp-thumbnail-selected').length > 0);
+						_showArrButtons();
 					} else {
 						thumbnail.addClass('main_selected');
 						_view.changePage($('#page-browser'));
@@ -2441,7 +2460,7 @@
 					/*
 					 * Image representing multiple pages
 					 */
-					_this.onExpandPage(_model.getPageNumber(iImage));
+					_this.onExpandPage(nPage);
 				}
 			};
 			/**
@@ -2462,29 +2481,35 @@
 				_showArrange(false);
 
 				/*
-				 * Hide text in buttons, show text as title instead.
+				 * Hide text in buttons, show text as title instead, when desktop browser.
+				 * See: OnOffEnum (Java)
 				 */
-				$(".sp-nav-button-txt").hide();
-				$.each($(".sp-nav-button-txt"), function(key, obj) {
-					$(this).hide();
-					$(this).closest("li").attr("title", "\n " + $(this).text() + " \n");
-				});
+				if (_model.showNavButtonTxt === 'OFF' || (_model.showNavButtonTxt === 'AUTO' && !_ns.Utils.isMobileOrTablet())) {
+					$(".sp-nav-button-txt").hide();
+					$.each($(".sp-nav-button-txt"), function(key, obj) {
+						$(this).hide();
+						$(this).closest("li").attr("title", "\n " + $(this).text() + " \n");
+					});
+				}
 
 				// Now that the images are loaded (needed for iOS Safari), hide
 				// them.
 				$(".sp-main-status-ind").hide();
 
-				/*
-				 *
-				 */
+				//
 				$('#thumbnail_nav_r').css('right', $('#page-main-thumbnail-viewport').innerWidth() + 'px');
 
 				// Thumbnail viewport
 				$('.thumbnail_reel img').mousedown(function(e) {
 					e.preventDefault();
 				});
-				// Button on fixed footer
+
 				$('#button-about').click(function() {
+					_view.showPageAsync('#page-info', 'AppAbout');
+					return false;
+				});
+
+				$('#button-about-org').click(function() {
 					_view.showPageAsync('#page-info', 'AppAbout');
 					return false;
 				});
@@ -2567,9 +2592,11 @@
 				$('#sp-popup-job-apply').click(function() {
 					_this.onPopupJobApply();
 				});
+
 				$('#sp-popup-job-delete').click(function() {
 					_this.onPopupJobDelete();
 				});
+
 				/*
 				 *
 				 */
@@ -2708,23 +2735,31 @@
 				});
 
 				// ----------------------------------------------------------------------
-				// Actions to arranging the jobs
+				// Actions when arranging SafePages.
 				// ----------------------------------------------------------------------
-				$('#main-arr-select-all').click(function() {
-					$('#page-main-thumbnail-images div').addClass('sp-thumbnail-selected');
-					_showArrButtons(true);
+				$('#main-arr-action-pdf').click(function() {
+					_this.onShowPdfDialog();
 					return false;
 				});
+
+				$('#main-arr-action-print').click(function() {
+					_this.onShowPrintDialog();
+					return false;
+				});
+
 				$('#main-arr-unselect-all').click(function() {
 					$('#page-main-thumbnail-images div').removeClass('sp-thumbnail-selected');
-					_showArrButtons(false);
+					_model.mySelectPages = {};
+					_showSelectPageRanges();
+					_showArrButtons();
 					return false;
 				});
+
 				$('#main-arr-undo').click(function() {
-					$('#page-main-thumbnail-images div').removeClass('sp-thumbnail-selected').removeClass('sp-thumbnail-cut');
+					$('#page-main-thumbnail-images div').removeClass('sp-thumbnail-cut');
 					_model.myCutPages = {};
 					_showCutPageRanges();
-					_showArrButtons(false);
+					_showArrButtons();
 					return false;
 				});
 
@@ -2732,27 +2767,22 @@
 				 *
 				 */
 				$('#main-arr-cut').click(function() {
+					var page;
 
 					$('.sp-thumbnail-selected').addClass('sp-thumbnail-cut').removeClass('sp-thumbnail-selected');
 
-					var tn = $('#page-main-thumbnail-images div');
-
-					/*
-					 * Update myCutPages by traverse
-					 * each thumbnail
-					 */
-					$.each(tn, function(key, obj) {
-						var n = _model.getPageNumber(tn.index($(this)));
-						if ($(this).hasClass('sp-thumbnail-cut')) {
-							_model.myCutPages[n] = true;
-						} else {
-							if (_model.myCutPages[n]) {
-								delete _model.myCutPages[n];
-							}
+					for (page in _model.mySelectPages) {
+						if (_model.mySelectPages.hasOwnProperty(page)) {
+							_model.myCutPages[page] = true;
 						}
-					});
+					}
+					_model.mySelectPages = {};
+
 					_showCutPageRanges();
-					_showArrButtons(false);
+					_showSelectPageRanges();
+
+					_showArrButtons();
+
 					return false;
 				});
 
@@ -2767,13 +2797,16 @@
 				});
 
 				$('#main-arr-delete').click(function() {
-					// _mousedownTarget.removeClass('main_selected');
-					$('#page-main-thumbnail-images img').removeClass('main_selected');
-					var ranges = _getJobRanges('sp-thumbnail-selected');
-					if (ranges !== null) {
-						//alert('delete ['+ranges+']');
+					$('#page-main-thumbnail-images div').removeClass('sp-thumbnail-selected');
+					var ranges = _model.getSelectPageRanges();
+					if (ranges.length > 0) {
 						_this.onPageDelete(ranges);
-						_showArrButtons(false);
+						_model.mySelectPages = {};
+						//Perform next steps when this event is done.
+						window.setTimeout(function() {
+							_showSelectPageRanges();
+							_showArrButtons();
+						}, 10);
 					}
 					return false;
 				});
@@ -2784,6 +2817,11 @@
 				});
 				$('#main-arr-edit').click(function() {
 					_showArrange(true);
+					return false;
+				});
+
+				$('#button-print-delegation-main').click(function() {
+					_view.showPageAsync('#page-print-delegation', 'PagePrintDelegation');
 					return false;
 				});
 
@@ -3005,7 +3043,7 @@
 						selExpr = PRINT_OPT_PFX + i;
 
 						html += '<div id="' + selExpr + PRINT_OPT_DIV_SFX + '">';
-						html += '<label for="' + selExpr + '">' + option.text + '</label>';
+						html += '<label for="' + selExpr + '">' + option.uiText + '</label>';
 						html += '<select ' + CUSTOM_HTML5_DATA_ATTR + '="' + keyword + '" id="' + selExpr + '" data-native-menu="false">';
 
 						$.each(option.choices, function(key, val) {
@@ -3033,7 +3071,7 @@
 								if (selected === val.choice) {
 									html += ' selected';
 								}
-								html += '>' + val.text + '</option>';
+								html += '>' + val.uiText + '</option>';
 							}
 						});
 
@@ -3088,6 +3126,9 @@
 			, _fastPrintAvailable
 			//
 			, _getPrinterImg = function(item, isDirect) {
+				if (item.printer.jobTicket) {
+					return 'printer-jobticket-32x32.png';
+				}
 				if (item.printer.readerSecured) {
 					if (isDirect) {
 						return 'device-card-reader-terminal-16x16.png';
@@ -3111,8 +3152,11 @@
 				//
 				;
 				html = "<img width=\"16\" height=\"16\" src=\"/images/" + _getPrinterImg(item, isDirect) + "\"/>";
-				html += "<span class=\"ui-mini sp-txt-wrap\">";
-				html += item.text + " &bull; " + (item.printer.location || "&nbsp;");
+				html += "<span class=\"ui-mini sp-txt-wrap\">" + item.text;
+				if (item.printer.location) {
+					html += " &bull; ";
+				}
+				html += item.printer.location || "&nbsp;";
 				html += "<span/>";
 
 				if (isFast) {
@@ -3151,14 +3195,14 @@
 
 				if (res.result.code === '0') {
 
-					_quickPrinterCache = res.items;
-					_fastPrintAvailable = res.fastPrintAvailable;
+					_quickPrinterCache = res.dto.items;
+					_fastPrintAvailable = res.dto.fastPrintAvailable;
 
 					if (_fastPrintAvailable && _model.myFirstPageShowPrint) {
 						_this.onFastProxyPrintRenew(false);
 					}
 
-					_view.visible($('#content-print .printer-fast-print-info'), res.fastPrintAvailable);
+					_view.visible($('#content-print .printer-fast-print-info'), _fastPrintAvailable);
 
 					$.each(_quickPrinterCache, function(key, item) {
 
@@ -3225,19 +3269,43 @@
 					sel.val('');
 					_onQuickPrinterSearch($("#sp-print-qs-printer-filter"), "");
 				}
+
+				_view.visible($('.sp-jobticket'), _model.myPrinter.jobTicket);
+			}
+			//
+			, _isDelegatedPrint = function() {
+				var sel = $('#print-as-delegate');
+				return sel && !_view.isCbDisabled(sel) && _view.isCbChecked(sel);
 			}
 			//
 			, _onPrint = function(isClose) {
-				_this.onPrint(_view.isCbChecked($("#delete-pages-after-print")), isClose, 
-					_view.isCbChecked($("#print-remove-graphics")), 
-					_view.isCbChecked($("#print-ecoprint")), _view.isCbChecked($("#print-collate")));
+				var clearScope = null;
+				if (_view.isCbChecked($("#delete-pages-after-print"))) {
+					clearScope = _view.getRadioValue('delete-pages-after-print-scope');
+				}
+				_this.onPrint(clearScope, isClose, _view.isCbChecked($("#print-remove-graphics")), _view.isCbChecked($("#print-ecoprint")), _view.isCbChecked($("#print-collate")), _isDelegatedPrint());
 			}
 			//
 			, _setVisibility = function() {
 
-				var selCollate = $(".print-collate"), copies = parseInt($('#slider-print-copies').val(), 10);
+				var selCollate = $(".print-collate"), copies, delegatedPrint = _isDelegatedPrint()
+				//
+				, jobTicket = _model.myPrinter && _model.myPrinter.jobTicket;
 
-				if (copies > 1) {
+				if (delegatedPrint) {
+					copies = _model.printDelegationCopies;
+					$('#delegated-print-copies').val(copies);
+				} else if (jobTicket) {
+					$.noop();
+				} else {
+					copies = parseInt($('#slider-print-copies').val(), 10);
+				}
+
+				_view.visible($('#slider-print-copies-div'), !delegatedPrint && !jobTicket);
+				_view.visible($('#number-print-copies-div'), !delegatedPrint && jobTicket);
+				_view.visible($('#delegated-print-copies-div'), delegatedPrint);
+
+				if (!delegatedPrint && copies > 1) {
 
 					selCollate.show();
 
@@ -3255,14 +3323,26 @@
 				} else {
 					selCollate.hide();
 				}
+
+				_view.visible($('.delete-pages-after-print-scope-enabled'), _view.isCbChecked($('#delete-pages-after-print')));
 			}
 			//
 			;
 
 			this.clearInput = function() {
+
+				var selCbClear = $('#delete-pages-after-print');
+
 				$('#slider-print-copies').val(1).slider("refresh");
+				$('#delegated-print-copies').val(1);
+				$('#number-print-copies').val(1);
 				$('#print-page-ranges').val('');
-				if (!$('#delete-pages-after-print')[0].disabled) {
+				$('#sp-jobticket-remark').val('');
+				$('#sp-jobticket-date').val('');
+				$('#sp-jobticket-hrs').val('');
+				$('#sp-jobticket-min').val('');
+
+				if (selCbClear[0] && !$('#delete-pages-after-print')[0].disabled) {
 					_view.checkCb("#delete-pages-after-print", false);
 				}
 			};
@@ -3292,6 +3372,19 @@
 
 				$('#slider-print-copies').change(function() {
 					_setVisibility();
+				});
+
+				$('#delete-pages-after-print').change(function() {
+					_setVisibility();
+				});
+
+				$('#print-as-delegate').click(function() {
+					_setVisibility();
+				});
+
+				$('#button-print-delegation').click(function() {
+					_view.showPageAsync('#page-print-delegation', 'PagePrintDelegation');
+					return false;
 				});
 
 				$('#button-print').click(function(e) {
@@ -3338,6 +3431,8 @@
 					return false;
 				});
 
+				_view.mobipick($("#sp-jobticket-date"));
+
 			}).on("pagebeforeshow", function(event, ui) {
 				_setVisibility();
 				_this.onShow();
@@ -3367,7 +3462,71 @@
 			//
 			, _LOC_COUNTRY = 'sp.user.country'
 			//
+			, _getPageRangesFormatted
+			//
 			;
+
+			/**
+			 * Creates a string with page range format from pages array.
+			 *
+			 * Example: '3-4,7,9-11'
+			 */
+			_getPageRangesFormatted = function(myPages) {
+				var ranges = '', pageStart, pageEnd, pagePrv
+				//
+				, page
+				//
+				, addRange = function() {
+					if (ranges !== '') {
+						ranges += ',';
+					}
+					ranges += pageStart;
+					if (pageStart !== pageEnd) {
+						ranges += '-' + pageEnd;
+					}
+				};
+
+				for (page in myPages) {
+
+					if (myPages.hasOwnProperty(page)) {
+						if (pagePrv) {
+							if (parseInt(pagePrv, 10) + 1 === parseInt(page, 10)) {
+								pageEnd = page;
+							} else {
+								addRange();
+								pagePrv = null;
+							}
+						}
+						if (!pagePrv) {
+							pageStart = page;
+							pageEnd = page;
+						}
+						pagePrv = page;
+					}
+				}
+				if (pagePrv) {
+					addRange();
+				}
+				return ranges;
+			};
+
+			/**
+			 * Creates a string with page range format from the cut pages.
+			 *
+			 * Example: '3-4,7,9-11'
+			 */
+			this.getCutPageRanges = function() {
+				return _getPageRangesFormatted(_this.myCutPages);
+			};
+
+			/**
+			 * Creates a string with page range format from the selected pages.
+			 *
+			 * Example: '3-4,7,9-11'
+			 */
+			this.getSelectPageRanges = function() {
+				return _getPageRangesFormatted(_this.mySelectPages);
+			};
 
 			this.MediaMatchEnum = {
 				MATCH : 1,
@@ -3412,6 +3571,8 @@
 			this.myFirstPageShowPrintSettings = true;
 			this.myFirstPageShowLetterhead = true;
 
+			this.preservePrintJobSettings = false;
+
 			this.myInboxTitle = null;
 			this.myPrintTitle = null;
 			this.myPdfTitle = null;
@@ -3453,6 +3614,11 @@
 			 * browser
 			 */
 			this.myCutPages = {};
+
+			/*
+			 *
+			 */
+			this.mySelectPages = {};
 
 			/*
 			 * this.user = { alias : null, id : null, admin : null, role : null,
@@ -3597,25 +3763,28 @@
 				// Create the html.
 				for (mediaWlk in mapMediaJobs) {
 
-					if (html.length) {
-						html += ' ';
-					}
+					if (mapMediaJobs.hasOwnProperty(mediaWlk)) {
 
-					html += '<span class="';
-
-					if (media && mediaWlk !== media) {
-						this.jobsMatchMedia = this.MediaMatchEnum.CLASH;
-						if (this.printPageScaling === 'CROP') {
-							html += 'sp-ipp-media-info-crop';
-						} else if (this.printPageScaling === 'EXPAND') {
-							html += 'sp-ipp-media-info-expand';
-						} else {
-							html += 'sp-ipp-media-info-shrink';
+						if (html.length) {
+							html += ' ';
 						}
-					} else {
-						html += 'sp-ipp-media-info-match';
+
+						html += '<span class="';
+
+						if (media && mediaWlk !== media) {
+							this.jobsMatchMedia = this.MediaMatchEnum.CLASH;
+							if (this.printPageScaling === 'CROP') {
+								html += 'sp-ipp-media-info-crop';
+							} else if (this.printPageScaling === 'EXPAND') {
+								html += 'sp-ipp-media-info-expand';
+							} else {
+								html += 'sp-ipp-media-info-shrink';
+							}
+						} else {
+							html += 'sp-ipp-media-info-match';
+						}
+						html += '">' + mapMediaJobs[mediaWlk].mediaUi + '</span>';
 					}
-					html += '">' + mapMediaJobs[mediaWlk].mediaUi + '</span>';
 				}
 
 				if (html.length === 0 || !this.myPrinter) {
@@ -3653,28 +3822,31 @@
 				// Create the html.
 				for (mediaWlk in mapMediaJobs) {
 
-					if (html.length) {
-						html += ' ';
-					}
+					if (mapMediaJobs.hasOwnProperty(mediaWlk)) {
 
-					html += '<span class="';
-
-					if (!mapMediaSources[mediaWlk] || (IS_UNIQUE_MEDIASOURCE_REQUIRED && mapMediaSources[mediaWlk].count > 1)) {
-
-						this.jobsMatchMediaSources = this.MediaMatchEnum.CLASH;
-
-						if (this.printPageScaling === 'CROP') {
-							html += 'sp-ipp-media-info-crop';
-						} else if (this.printPageScaling === 'EXPAND') {
-							html += 'sp-ipp-media-info-expand';
-						} else {
-							html += 'sp-ipp-media-info-shrink';
+						if (html.length) {
+							html += ' ';
 						}
 
-					} else {
-						html += 'sp-ipp-media-info-match';
+						html += '<span class="';
+
+						if (!mapMediaSources[mediaWlk] || (IS_UNIQUE_MEDIASOURCE_REQUIRED && mapMediaSources[mediaWlk].count > 1)) {
+
+							this.jobsMatchMediaSources = this.MediaMatchEnum.CLASH;
+
+							if (this.printPageScaling === 'CROP') {
+								html += 'sp-ipp-media-info-crop';
+							} else if (this.printPageScaling === 'EXPAND') {
+								html += 'sp-ipp-media-info-expand';
+							} else {
+								html += 'sp-ipp-media-info-shrink';
+							}
+
+						} else {
+							html += 'sp-ipp-media-info-match';
+						}
+						html += '">' + mapMediaJobs[mediaWlk].mediaUi + '</span>';
 					}
-					html += '">' + mapMediaJobs[mediaWlk].mediaUi + '</span>';
 				}
 
 				selHtml = $('.sp-print-job-media-sources-info');
@@ -3813,10 +3985,20 @@
 				this.myTotPages = 0;
 				this.myJobPages = [];
 				this.myCutPages = {};
+				this.mySelectPages = {};
 				this.myPrinter = null;
 				this.propPdf = this.propPdfDefault;
 				this.refreshUniqueImgUrlValue();
 				this.prevMsgTime = null;
+
+				this.printDelegation = {};
+				this.printDelegationCopies = 0;
+			};
+
+			/**
+			 */
+			this.getDelegatedPrintCopies = function() {
+				return _ns.Utils.countProp(this.printDelegation.groups);
 			};
 
 			/**
@@ -3955,6 +4137,11 @@
 			}
 			/**
 			 *
+			 */, _savePdfGrayscale = function(sel) {
+				_model.pdfGrayscale = _view.isCbChecked($(sel));
+			}
+			/**
+			 *
 			 */, _checkVanillaJobs = function() {
 
 				var res = _api.call({
@@ -3979,11 +4166,18 @@
 				//
 				, trgNup = $('.sp-button-mini-print-n-up')
 				//
+				, trgDelegated = $('.sp-button-mini-print-delegation')
+				//
 				, ippAttrVal
 				//
 				, isColor
 				//
 				;
+
+				if (trgDelegated) {
+					_view.enableCheckboxRadio($('#print-as-delegate'), _model.printDelegationCopies > 0);
+					trgDelegated.html(_model.printDelegationCopies || '-');
+				}
 
 				_model.myPrintTitle = $('#print-title').val();
 				_saveSelectedletterhead('#print-letterhead-list');
@@ -4173,7 +4367,7 @@
 			this.init = function() {
 				var res, language, country
 				//
-				, authModeRequest = _util.getUrlParam('login');
+				, authModeRequest = _util.getUrlParam(_ns.URL_PARM.LOGIN);
 
 				_model.initAuth();
 
@@ -4206,16 +4400,19 @@
 				_model.cometdDeviceToken = res.cometdToken;
 				_model.maxIdleSeconds = res.maxIdleSeconds;
 
+				// OnOffEnum
+				_model.showNavButtonTxt = res.showNavButtonTxt;
+
 				_model.MY_THUMBNAIL_WIDTH = res['thumbnail-width'];
 				_model.propPdfDefault = res['pdf-prop-default'];
 
 				_view.imgBase64 = res.img_base64;
 
-				language = _util.getUrlParam('language');
+				language = _util.getUrlParam(_ns.URL_PARM.LANGUAGE);
 				if (!language) {
 					language = _model.authToken.language || '';
 				}
-				country = _util.getUrlParam('country');
+				country = _util.getUrlParam(_ns.URL_PARM.COUNTRY);
 				if (!country) {
 					country = _model.authToken.country || '';
 				}
@@ -4275,12 +4472,14 @@
 
 				_api.callAsync({
 					request : 'login',
-					authMode : authMode,
-					authId : authId,
-					authPw : authPw,
-					authToken : authToken,
-					assocCardNumber : assocCardNumber,
-					role : 'user'
+					dto : JSON.stringify({
+						webAppType : _ns.WEBAPP_TYPE,
+						authMode : authMode,
+						authId : authId,
+						authPw : authPw,
+						authToken : authToken,
+						assocCardNumber : assocCardNumber
+					})
 				}, function(data) {
 
 					_model.user.loggedIn = (data.result.code === '0');
@@ -4336,6 +4535,8 @@
 							 */
 							_view.pages.login.loadShowAsync(function() {
 								_this.initLoginUserInput();
+							}, {
+								webAppType : _ns.WEBAPP_TYPE
 							});
 						}
 					}
@@ -4462,8 +4663,8 @@
 			 *            The selector, e.g. '#print-job-list'
 			 */
 			this.setJobScopeMenu = function(sel) {
-				var options = '<option value="-1">&ndash;</option>';
-				if (_model.myJobsVanilla) {
+				var options = '<option value="-1">' + _i18n.format('scope-all-documents', null) + '</option>';
+				if (_model.myJobsVanilla && _util.countProp(_model.mySelectPages) === 0) {
 					$.each(_model.myJobs, function(key, value) {
 						options += '<option value="' + key + '">' + value.title + '</option>';
 					});
@@ -4480,9 +4681,15 @@
 			 */
 			this.setLetterheadMenu = function(sel) {
 
+				var options, jSel = $(sel);
+
+				if (jSel.length === 0) {
+					return;
+				}
+
 				_getLetterheads();
 
-				var options = '<option value="none"';
+				options = '<option value="none"';
 
 				if (!_model.letterheadDefault) {
 					options += ' selected';
@@ -4497,7 +4704,7 @@
 					options += '>' + value.name + '</option>';
 				});
 
-				$(sel).empty().append(options).selectmenu('refresh');
+				$(jSel).empty().append(options).selectmenu('refresh');
 			};
 
 			/**
@@ -4587,7 +4794,7 @@
 				$.ajax({
 					type : "POST",
 					async : true,
-					url : '/pages/' + wClass,
+					url : '/pages/' + wClass + _ns.WebAppTypeUrlParm(),
 					data : {
 						user : _ns.PanelCommon.userId,
 						data : jsonData
@@ -4632,7 +4839,7 @@
 			// -----------------------------
 			_changeIcon = function(icon, title) {
 				if (icon !== _iconCur) {
-					$("#button-cometd-status").attr('title', title ? title : '');
+					$("#button-cometd-status").attr('title', title || '');
 					$("#button-cometd-status").buttonMarkup({
 						icon : icon
 					});
@@ -4709,6 +4916,7 @@
 			};
 
 			_deviceEvent.onException = function(msg) {
+				_ns.logger.warn('DeviceEvent exception: ' + msg);
 				_view.message(msg);
 			};
 
@@ -4754,6 +4962,7 @@
 			};
 
 			_proxyprintEvent.onException = function(msg) {
+				_ns.logger.warn('ProxyPrintEvent exception: ' + msg);
 				_view.message(msg);
 			};
 
@@ -4768,8 +4977,7 @@
 			};
 
 			_userEvent.onException = function(msg) {
-				//_view.message(msg);
-				_view.pages.main.onRefreshApp();
+				$.noop();
 			};
 
 			_userEvent.onJobEvent = function(res) {
@@ -4786,7 +4994,7 @@
 				_model.prevMsgTime = data.msgTime;
 			};
 
-			_userEvent.onMsgEvent = function(data) {
+			_userEvent.onMsgEvent = function(data, dialogBox) {
 				var msg = '', i = 0;
 
 				_model.prevMsgTime = data.msgTime;
@@ -4799,7 +5007,11 @@
 					msg += ( err ? '</span>' : '');
 					i = i + 1;
 				});
-				_view.message(msg);
+				if (dialogBox) {
+					_view.msgDialogBox(msg, 'sp-msg-popup-warn');
+				} else {
+					_view.message(msg);
+				}
 			};
 
 			_userEvent.onPollInvitation = function() {
@@ -4811,7 +5023,7 @@
 			 */
 			_view.onDisconnected = function() {
 				_model.user.loggedIn = false;
-				_view.pages.login.loadShowAsync();
+				_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
 			};
 
 			/**
@@ -4871,6 +5083,13 @@
 			};
 
 			/**
+			 * Callbacks: Print Delegation Dialog
+			 */
+			_view.pages.printDelegation.onBeforeHide = function() {
+				_refreshPrinterInd();
+			};
+
+			/**
 			 * Callbacks: page credit transfer
 			 */
 			_view.pages.creditTransfer.onTransferCredit = function(userTo, amountMain, amountCents, comment) {
@@ -4919,11 +5138,15 @@
 				_view.showApiMsg(res);
 			};
 
-			_view.pages.outbox.onOutboxDeleteJob = function(jobId) {
+			_view.pages.outbox.onOutboxDeleteJob = function(jobFileName, isJobTicket) {
 				var res = _api.call({
 					request : 'outbox-delete-job',
-					jobId : jobId
+					dto : JSON.stringify({
+						jobFileName : jobFileName,
+						jobTicket : isJobTicket
+					})
 				});
+
 				if (res.result.code === "0") {
 					_model.user.stats = res.stats;
 					_model.myShowUserStats = true;
@@ -4958,7 +5181,7 @@
 			/**
 			 * Callbacks: page send
 			 */
-			_view.pages.send.onSend = function(mailto, ranges, removeGraphics, ecoprint) {
+			_view.pages.send.onSend = function(mailto, ranges, removeGraphics, ecoprint, grayscale) {
 
 				var res;
 
@@ -4969,7 +5192,8 @@
 						jobIndex : _model.pdfJobIndex,
 						ranges : ranges,
 						removeGraphics : removeGraphics,
-						ecoprint : ecoprint
+						ecoprint : ecoprint,
+						grayscale : grayscale
 					});
 					if (res.result.code === "0") {
 						_model.user.stats = res.stats;
@@ -5010,10 +5234,9 @@
 				_saveSelectedletterhead('#pdf-letterhead-list');
 				_saveRemoveGraphics('#pdf-remove-graphics');
 				_saveEcoprint('#pdf-ecoprint');
+				_savePdfGrayscale('#pdf-grayscale');
 
 				_model.pdfPageRanges = $('#pdf-page-ranges').val();
-
-				$('#pdf-page-ranges').val('');
 
 				if (!_savePdfProps()) {
 					return false;
@@ -5026,14 +5249,17 @@
 			 */
 			_view.pages.pdfprop.onDownload = function() {
 
-				var pageRanges = $('#pdf-page-ranges').val();
+				var pageRanges = $('#pdf-page-ranges').val(), filters;
 
 				_saveRemoveGraphics('#pdf-remove-graphics');
 				_saveEcoprint('#pdf-ecoprint');
+				_savePdfGrayscale('#pdf-grayscale');
 
-				if (_model.removeGraphics && _model.ecoprint) {
+				filters = (_model.removeGraphics ? 1 : 0) + (_model.ecoprint ? 1 : 0) + (_model.pdfGrayscale ? 1 : 0);
+
+				if (filters > 1) {
 					_view.message(_i18n.format('msg-select-single-pdf-filter', null));
-					return false;				
+					return false;
 				}
 
 				if (!_saveSelectedletterhead('#pdf-letterhead-list', true)) {
@@ -5046,8 +5272,7 @@
 					return false;
 				}
 				//
-				window.location.assign(_api.getUrl4Pdf(pageRanges, _model.removeGraphics, _model.ecoprint, _model.pdfJobIndex));
-				$('#pdf-page-ranges').val('');
+				window.location.assign(_api.getUrl4Pdf(pageRanges, _model.removeGraphics, _model.ecoprint, _model.pdfGrayscale, _model.pdfJobIndex));
 				_model.myShowUserStatsGet = true;
 				return true;
 			};
@@ -5094,12 +5319,21 @@
 			/**
 			 * Callbacks: page print
 			 */
-			_view.pages.print.onPrint = function(isClear, isClose, removeGraphics, ecoprint, collate) {
+			_view.pages.print.onPrint = function(clearScope, isClose, removeGraphics, ecoprint, collate, isDelegation) {
 
-				var res, sel, cost, visible;
+				var res, sel, cost, visible, date, present, jobTicketDate, isJobticket = _model.myPrinter.jobTicket
+				//
+				, copies = isDelegation ? "1" : ( isJobticket ? $('#number-print-copies').val() : $('#slider-print-copies').val());
 
 				if (_saveSelectedletterhead('#print-letterhead-list')) {
 					return;
+				}
+
+				if (_model.myPrinter.jobTicket) {
+					sel = $('#sp-jobticket-date');
+					date = _view.mobipickGetDate(sel);
+					present = (sel.val().length > 0);
+					jobTicketDate = ( present ? date.getTime() : null);
 				}
 
 				_model.myPrintTitle = $('#print-title').val();
@@ -5113,13 +5347,19 @@
 						jobName : _model.myPrintTitle,
 						jobIndex : _model.printJobIndex,
 						pageScaling : _model.printPageScaling,
-						copies : parseInt($('#slider-print-copies').val(), 10),
+						copies : parseInt(copies, 10),
 						ranges : $('#print-page-ranges').val(),
-						collate : collate,
+						collate : isDelegation ? true : collate,
 						removeGraphics : removeGraphics,
 						ecoprint : ecoprint,
-						clear : isClear,						
-						options : _model.myPrinterOpt
+						clearScope : clearScope,
+						options : _model.myPrinterOpt,
+						delegation : isDelegation ? _model.printDelegation : null,
+						jobTicket : isJobticket,
+						jobTicketDate : jobTicketDate,
+						jobTicketHrs : isJobticket ? $('#sp-jobticket-hrs').val() : null,
+						jobTicketMin : isJobticket ? $('#sp-jobticket-min').val() : null,
+						jobTicketRemark : isJobticket ? $('#sp-jobticket-remark').val() : null
 					})
 				});
 
@@ -5178,7 +5418,7 @@
 					if (isClose) {
 						$('#button-printer-back').click();
 					}
-					if (isClear) {
+					if (clearScope !== null) {
 						_view.pages.main.onRefreshPages();
 					}
 					_model.user.stats = res.stats;
@@ -5228,6 +5468,8 @@
 			_view.pages.print.onSettings = function(printerName) {
 				var res;
 
+				_model.preservePrintJobSettings = true;
+
 				if (_model.myPrinter.name !== printerName) {
 
 					res = _api.call({
@@ -5244,6 +5486,10 @@
 				_view.showUserPageAsync('#page-printer-settings', 'PrinterSettings');
 			};
 
+			_view.pages.print.onShowPrintDelegation = function() {
+				_view.showPageAsync('#page-print-delegation', 'PagePrintDelegation');
+			};
+
 			_view.pages.print.onClearPrinter = function() {
 				_model.myPrinter = undefined;
 				_model.isPrintManualFeed = false;
@@ -5255,6 +5501,12 @@
 			};
 
 			_view.pages.print.onShow = function() {
+
+				if (_model.preservePrintJobSettings) {
+					_model.preservePrintJobSettings = false;
+					_refreshPrinterInd();
+					return;
+				}
 
 				if (_model.myFirstPageShowPrint) {
 					_model.setJobsMatchMediaSources(_view);
@@ -5280,6 +5532,9 @@
 
 				// Refreshes display of possible changed inbox media.
 				_model.setJobsMatchMedia(_view);
+
+				// When opened from SafePage Sort mode, selected page ranges are filled.
+				$('#print-page-ranges').val(_model.getSelectPageRanges());
 
 				_refreshPrinterInd();
 			};
@@ -5393,7 +5648,7 @@
 				//
 				, lh
 				//
-				, letterheadIdx = $(sel + ' :selected').val()
+				, letterheadIdx = $(sel + ' :selected').val() || 'none'
 				//
 				, mini = $('#button-mini-letterhead')
 				//
@@ -5520,7 +5775,9 @@
 				 */
 				var res = _api.call({
 					request : 'logout',
-					authToken : _model.authToken.token
+					dto : JSON.stringify({
+						authToken : _model.authToken.token
+					})
 				});
 
 				if (res.result.code !== '0') {
@@ -5583,8 +5840,10 @@
 
 				var res;
 
-				_ns.deferAppWakeUp(false);
 				// first statement
+				_ns.deferAppWakeUp(false);
+
+				_view.pages.main.alignThumbnails();
 
 				_userEvent.resume();
 
@@ -5640,7 +5899,7 @@
 			_view.pages.main.onExpandPage = function(nPage) {
 
 				var data = _api.call({
-					request : 'job-pages',
+					request : 'inbox-job-pages',
 					'first-detail-page' : nPage,
 					'unique-url-value' : _model.uniqueImgUrlValue,
 					base64 : _view.imgBase64
@@ -5680,7 +5939,7 @@
 			_view.pages.main.onPopupJobApply = function() {
 
 				var data = _api.call({
-					'request' : 'job-edit',
+					'request' : 'inbox-job-edit',
 					ijob : _model.iPopUpJob,
 					data : JSON.stringify({
 						rotate : $('#sp-popup-job-rotate').is(':checked'),
@@ -5699,7 +5958,7 @@
 			 */
 			_view.pages.main.onPopupJobDelete = function() {
 				var data = _api.call({
-					'request' : 'job-delete',
+					'request' : 'inbox-job-delete',
 					ijob : _model.iPopUpJob
 				});
 				if (data.result.code === '0') {
@@ -5774,6 +6033,8 @@
 			//
 			;
 
+			_ns.commonWebAppInit();
+
 			_view.pages = {
 				language : new _ns.PageLanguage(_i18n, _view, _model),
 				login : new _ns.PageLogin(_i18n, _view, _api),
@@ -5781,7 +6042,7 @@
 				clear : new PageClear(_i18n, _view, _model),
 				accountTrx : new PageAccountTrx(_i18n, _view, _model, _api),
 				doclog : new PageDocLog(_i18n, _view, _model, _api),
-				outbox : new PageOutbox(_i18n, _view, _model),
+				outbox : new PageOutbox(_i18n, _view, _model, _api),
 				send : new PageSend(_i18n, _view, _model),
 				pagebrowser : new PageBrowser(_i18n, _view, _model),
 				pageDashboard : new PageDashboard(_i18n, _view, _model),
@@ -5791,6 +6052,7 @@
 				pdfprop : new PagePdfProp(_i18n, _view, _model),
 				main : new PageMain(_i18n, _view, _model),
 				print : new PagePrint(_i18n, _view, _model, _api),
+				printDelegation : new _ns.PagePrintDelegation(_i18n, _view, _model, _api),
 				print_settings : new PagePrintSettings(_i18n, _view, _model),
 				fileUpload : new PageFileUpload(_i18n, _view, _model),
 				userPinReset : new PageUserPinReset(_i18n, _view, _model),
@@ -5814,18 +6076,20 @@
 
 			this.init = function() {
 
-				var user = _ns.Utils.getUrlParam('user');
+				var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER);
+
+				_ns.initWebApp('USER');
 
 				_ctrl.init();
 
 				if (user) {
-					_ctrl.login(_view.AUTH_MODE_NAME, user, null, null);
+					_ctrl.login(_view.AUTH_MODE_NAME, user, null, _model.authToken.token);
 				} else if (_model.authToken.user && _model.authToken.token) {
 					_ctrl.login(_view.AUTH_MODE_NAME, _model.authToken.user, null, _model.authToken.token);
 				} else {
 					_ctrl.initLoginUserInput();
 					// Initial load/show of Login dialog
-					_view.pages.login.loadShowAsync();
+					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
 				}
 			};
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 package org.savapage.server.xmlrpc;
 
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -35,10 +36,11 @@ import org.savapage.core.community.MemberCard;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
+import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.DeviceDao;
-import org.savapage.core.dao.helpers.DeviceTypeEnum;
-import org.savapage.core.dao.helpers.ProxyPrintAuthModeEnum;
+import org.savapage.core.dao.enums.DeviceTypeEnum;
+import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.User;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
@@ -47,17 +49,21 @@ import org.savapage.core.rfid.RfidEvent;
 import org.savapage.core.rfid.RfidReaderManager;
 import org.savapage.core.services.DeviceService;
 import org.savapage.core.services.InboxService;
+import org.savapage.core.services.OutboxService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.services.UserService;
+import org.savapage.core.services.helpers.InboxSelectScopeEnum;
+import org.savapage.core.services.helpers.ProxyPrintOutboxResult;
 import org.savapage.core.util.Messages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
 public class RfidEventHandler implements ServiceEntryPoint {
 
@@ -74,29 +80,32 @@ public class RfidEventHandler implements ServiceEntryPoint {
     /**
      * The logger.
      */
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(RfidEventHandler.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(RfidEventHandler.class);
 
-    private static final AdminPublisher ADMIN_PUBLISHER = AdminPublisher
-            .instance();
+    private static final AdminPublisher ADMIN_PUBLISHER =
+            AdminPublisher.instance();
 
-    private static final DeviceService DEVICE_SERVICE = ServiceContext
-            .getServiceFactory().getDeviceService();
+    private static final DeviceService DEVICE_SERVICE =
+            ServiceContext.getServiceFactory().getDeviceService();
 
-    private static final InboxService INBOX_SERVICE = ServiceContext
-            .getServiceFactory().getInboxService();
+    private static final InboxService INBOX_SERVICE =
+            ServiceContext.getServiceFactory().getInboxService();
+
+    private static final OutboxService OUTBOX_SERVICE =
+            ServiceContext.getServiceFactory().getOutboxService();
 
     private static final ProxyPrintAuthManager PROXYPRINT_AUTHMANAGER =
             ProxyPrintAuthManager.instance();
 
-    private static final UserService USER_SERVICE = ServiceContext
-            .getServiceFactory().getUserService();
+    private static final UserService USER_SERVICE =
+            ServiceContext.getServiceFactory().getUserService();
 
     /**
     *
     */
-    private static final ProxyPrintService PROXY_PRINT_SERVICE = ServiceContext
-            .getServiceFactory().getProxyPrintService();
+    private static final ProxyPrintService PROXY_PRINT_SERVICE =
+            ServiceContext.getServiceFactory().getProxyPrintService();
 
     /**
      *
@@ -143,9 +152,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
             /*
              * Find the card reader.
              */
-            final Device cardReader =
-                    deviceDao.findByHostDeviceType(clientIpAddress,
-                            DeviceTypeEnum.CARD_READER);
+            final Device cardReader = deviceDao.findByHostDeviceType(
+                    clientIpAddress, DeviceTypeEnum.CARD_READER);
 
             if (cardReader == null) {
 
@@ -156,9 +164,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
                 onCardReaderDisabled(map, clientIpAddress, cardNumber);
 
             } else if (cardReader.getCardReaderTerminal() == null) {
-                rc =
-                        onCardSwipePrint(map, clientIpAddress, cardNumber,
-                                cardReader);
+                rc = onCardSwipePrint(map, clientIpAddress, cardNumber,
+                        cardReader);
             } else {
                 rc = onCardSwipeAuth(map, clientIpAddress, cardNumber);
             }
@@ -167,8 +174,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
             rc = RC_DENY;
 
-            ADMIN_PUBLISHER.publish(PubTopicEnum.PROXY_PRINT,
-                    PubLevelEnum.WARN, ex.getMessage());
+            ADMIN_PUBLISHER.publish(PubTopicEnum.PROXY_PRINT, PubLevelEnum.WARN,
+                    ex.getMessage());
 
             map.put(KEY_MESSAGE, ex.getMessage());
 
@@ -233,8 +240,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
         final String key = "rfid-card-swipe-reader-unknown";
 
-        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.WARN, Messages
-                .getSystemMessage(this.getClass(), key, cardNumber,
+        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.WARN,
+                Messages.getSystemMessage(this.getClass(), key, cardNumber,
                         clientIpAddress));
 
         if (LOGGER.isWarnEnabled()) {
@@ -261,8 +268,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
         final String key = "rfid-card-swipe-reader-disabled";
 
-        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.WARN, Messages
-                .getSystemMessage(this.getClass(), key, cardNumber,
+        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.WARN,
+                Messages.getSystemMessage(this.getClass(), key, cardNumber,
                         clientIpAddress));
 
         if (LOGGER.isWarnEnabled()) {
@@ -327,8 +334,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
         String key = "rfid-card-swipe";
 
-        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.INFO, Messages
-                .getSystemMessage(this.getClass(), key, cardNumber,
+        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.INFO,
+                Messages.getSystemMessage(this.getClass(), key, cardNumber,
                         clientIpAddress));
 
         if (LOGGER.isDebugEnabled()) {
@@ -338,8 +345,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
         final User user = USER_SERVICE.findUserByCardNumber(cardNumber);
 
-        RfidReaderManager.reportEvent(clientIpAddress, new RfidEvent(
-                RfidEvent.EventEnum.CARD_SWIPE, cardNumber));
+        RfidReaderManager.reportEvent(clientIpAddress,
+                new RfidEvent(RfidEvent.EventEnum.CARD_SWIPE, cardNumber));
 
         final String userId;
 
@@ -378,8 +385,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
      */
     private Integer onCardSwipePrint(final Map<String, Object> map,
             final String clientIpAddress, final String cardNumber,
-            final Device cardReader) throws ProxyPrintException,
-            InterruptedException {
+            final Device cardReader)
+            throws ProxyPrintException, InterruptedException {
 
         /*
          * Check if Card Reader supports Fast|Hold Print.
@@ -388,10 +395,10 @@ public class RfidEventHandler implements ServiceEntryPoint {
                 DEVICE_SERVICE.getProxyPrintAuthMode(cardReader.getId());
 
         final boolean isFastProxyPrintSupported =
-                authMode != null && (authMode.isFast());
+                authMode != null && authMode.isFast();
 
         final boolean isHoldReleasePrintSupported =
-                authMode != null && (authMode.isHoldRelease());
+                authMode != null && authMode.isHoldRelease();
 
         final boolean doHoldFastProxyPrint;
 
@@ -409,8 +416,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
             doHoldFastProxyPrint = false;
         }
 
-        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.INFO, Messages
-                .getSystemMessage(this.getClass(), key, cardNumber,
+        ADMIN_PUBLISHER.publish(PubTopicEnum.NFC, PubLevelEnum.INFO,
+                Messages.getSystemMessage(this.getClass(), key, cardNumber,
                         clientIpAddress));
 
         if (LOGGER.isDebugEnabled()) {
@@ -427,7 +434,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
             key = "rfid-card-swipe-no-user";
             throw new ProxyPrintException(
                     Messages.getSystemMessage(this.getClass(), key, cardNumber),
-                    Messages.getLogFileMessage(this.getClass(), key, cardNumber));
+                    Messages.getLogFileMessage(this.getClass(), key,
+                            cardNumber));
         }
 
         /*
@@ -439,7 +447,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
              * Hold|Fast Proxy Print.
              */
             doHoldFastProxyPrint(map, clientIpAddress, cardNumber, cardReader,
-                    user, isHoldReleasePrintSupported);
+                    user, isHoldReleasePrintSupported,
+                    isFastProxyPrintSupported);
 
         } else {
 
@@ -447,8 +456,9 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
                 key = "rfid-card-swipe-no-request";
 
-                throw new ProxyPrintException(Messages.getSystemMessage(
-                        this.getClass(), key, user.getUserId(), cardNumber),
+                throw new ProxyPrintException(
+                        Messages.getSystemMessage(this.getClass(), key,
+                                user.getUserId(), cardNumber),
                         Messages.getLogFileMessage(this.getClass(), key,
                                 user.getUserId(), cardNumber));
             }
@@ -456,8 +466,8 @@ public class RfidEventHandler implements ServiceEntryPoint {
             /*
              * WebApp Proxy Print.
              */
-            RfidReaderManager.reportEvent(clientIpAddress, new RfidEvent(
-                    RfidEvent.EventEnum.CARD_SWIPE, cardNumber));
+            RfidReaderManager.reportEvent(clientIpAddress,
+                    new RfidEvent(RfidEvent.EventEnum.CARD_SWIPE, cardNumber));
 
             final StringBuilder builder = new StringBuilder(96);
             builder.append("User [").append(user.getUserId())
@@ -471,23 +481,7 @@ public class RfidEventHandler implements ServiceEntryPoint {
     }
 
     /**
-     * Checks if a Fast Print is always to be tried after a Hold Print try.
-     * <p>
-     * When the inbox is cleared after issuing a Hold Proxy Print, we can safely
-     * Fast release new PrintIn jobs.
-     * </p>
-     *
-     * @return {@code true} if a Fast Print is always to be tried.
-     */
-    private static boolean isAlwaysFastRelease() {
-
-        final IConfigProp.Key key =
-                IConfigProp.Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX;
-
-        return ConfigManager.instance().isConfigValue(key);
-    }
-
-    /**
+     * Performs a Hold and/or Fast Proxy Print.
      *
      * @param map
      *            The map with the {@link #KEY_RC} and {@link #KEY_MESSAGE}
@@ -502,41 +496,91 @@ public class RfidEventHandler implements ServiceEntryPoint {
      *            The user of the card.
      * @param isHoldPrintSupported
      *            {@code true} if Hold Print is supported.
+     * @param isFastPrintSupported
+     *            {@code true} if Fast Print is supported.
+     * @return The number of pages printed.
      * @throws ProxyPrintException
      *             When logical proxy print errors.
      */
-    private void doHoldFastProxyPrint(final Map<String, Object> map,
+    private int doHoldFastProxyPrint(final Map<String, Object> map,
             final String clientIpAddress, final String cardNumber,
             final Device cardReader, final User user,
-            final boolean isHoldPrintSupported) throws ProxyPrintException {
+            final boolean isHoldPrintSupported,
+            final boolean isFastPrintSupported) throws ProxyPrintException {
 
-        int nPages = 0;
-
-        final DaoContext daoContext = ServiceContext.getDaoContext();
-
-        daoContext.beginTransaction();
-
-        int nPagesHoldReleased = 0;
+        final ConfigManager cm = ConfigManager.instance();
 
         /*
-         * Step 1: try to Hold Print.
+         * Parameters
          */
-        if (isHoldPrintSupported) {
+        final int nHoldJobs =
+                OUTBOX_SERVICE.getOutboxJobCount(user.getUserId());
 
-            nPagesHoldReleased =
-                    PROXY_PRINT_SERVICE
-                            .proxyPrintOutbox(cardReader, cardNumber);
+        final boolean isProxyPrintSafePagesClear;
 
-            nPages += nPagesHoldReleased;
+        if (cm.isConfigValue(
+                IConfigProp.Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_ENABLE)) {
+
+            final InboxSelectScopeEnum proxyPrintClearScope =
+                    cm.getConfigEnum(InboxSelectScopeEnum.class,
+                            Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_SCOPE);
+
+            isProxyPrintSafePagesClear = EnumSet
+                    .of(InboxSelectScopeEnum.ALL, InboxSelectScopeEnum.JOBS,
+                            InboxSelectScopeEnum.PAGES)
+                    .contains(proxyPrintClearScope);
+        } else {
+            isProxyPrintSafePagesClear = false;
         }
 
-        final boolean isAlwaysFastRelease = isAlwaysFastRelease();
+        /*
+         * Counters
+         */
+        int nPagesReleased = 0;
+
+        //
+        final DaoContext daoContext = ServiceContext.getDaoContext();
+        daoContext.beginTransaction();
 
         /*
-         * Step 2: try to Fast Print.
+         * Step 1: HOLD Print Release.
          */
-        if (nPagesHoldReleased == 0 || isAlwaysFastRelease) {
+        final int nHoldJobsReleased;
 
+        if (isHoldPrintSupported) {
+
+            final ProxyPrintOutboxResult result = PROXY_PRINT_SERVICE
+                    .proxyPrintOutbox(cardReader, cardNumber);
+
+            nHoldJobsReleased = result.getJobs();
+            nPagesReleased += result.getPages();
+        } else {
+            nHoldJobsReleased = 0;
+        }
+
+        /*
+         * Step 2: FAST Print Release.
+         */
+        final boolean doFastPrint;
+
+        if (isFastPrintSupported) {
+            /*
+             * If Hold jobs exist for any printer, a Fast Print is only done
+             * when Proxy Printing is configured to “Always remove SafePages
+             * after printing”. This way, because all SafePages are cleared
+             * after creating a Hold Job, we know for sure that present
+             * SafePages are not part of any Hold Print Job.
+             */
+            if (nHoldJobs == 0) {
+                doFastPrint = true;
+            } else {
+                doFastPrint = isProxyPrintSafePagesClear;
+            }
+        } else {
+            doFastPrint = false;
+        }
+
+        if (doFastPrint) {
             /*
              * We need a new transaction, when Hold Print was executed.
              */
@@ -544,27 +588,19 @@ public class RfidEventHandler implements ServiceEntryPoint {
                 daoContext.beginTransaction();
             }
 
-            final int nPagesFastPrinted =
-                    PROXY_PRINT_SERVICE.proxyPrintInboxFast(cardReader,
-                            cardNumber);
-
-            if (nPagesFastPrinted == 0 && nPagesHoldReleased == 0) {
-
-                final String key = "rfid-card-swipe-no-pages";
-
-                throw new ProxyPrintException(Messages.getSystemMessage(
-                        this.getClass(), key, user.getUserId()),
-                        Messages.getLogFileMessage(this.getClass(), key,
-                                user.getUserId()));
-
-            }
-
-            nPages += nPagesFastPrinted;
-        }
-
-        if (nPagesHoldReleased > 0 && !isAlwaysFastRelease) {
             /*
-             * Clear the inbox to prevent Fast Print at next card swipe.
+             * NOTE: this will also clear ALL SafePages.
+             */
+            nPagesReleased += PROXY_PRINT_SERVICE
+                    .proxyPrintInboxFast(cardReader, cardNumber);
+
+        } else if (nHoldJobsReleased > 0 && !isProxyPrintSafePagesClear) {
+            /*
+             * When Proxy Printing is not configured to “Always remove SafePages
+             * after printing”, all SafePages will be ad-hoc cleared after a
+             * Hold Print release. This will prevent that, after all Hold jobs
+             * are released at Hold-only printers, and no Hold jobs exist for
+             * any printer, remaining SafePages will be Fast Printed anyway.
              */
             INBOX_SERVICE.deleteAllPages(user.getUserId());
         }
@@ -573,11 +609,10 @@ public class RfidEventHandler implements ServiceEntryPoint {
 
         final StringBuilder builder = new StringBuilder(96);
 
-        builder.append("User [").append(user.getUserId())
-                .append("] released [").append(nPages)
-                .append("] proxy printed page");
+        builder.append("User [").append(user.getUserId()).append("] released [")
+                .append(nPagesReleased).append("] proxy printed page");
 
-        if (nPages > 1) {
+        if (nPagesReleased > 1) {
             builder.append("s");
         }
 
@@ -591,6 +626,18 @@ public class RfidEventHandler implements ServiceEntryPoint {
                     .append("].");
         }
 
+        if (nPagesReleased == 0) {
+            final String key = "rfid-card-swipe-no-pages";
+
+            throw new ProxyPrintException(
+                    Messages.getSystemMessage(this.getClass(), key,
+                            user.getUserId()),
+                    Messages.getLogFileMessage(this.getClass(), key,
+                            user.getUserId()));
+        }
+
         map.put(KEY_MESSAGE, builder.toString());
+
+        return nPagesReleased;
     }
 }

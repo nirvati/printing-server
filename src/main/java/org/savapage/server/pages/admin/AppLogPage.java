@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,9 +27,10 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.AppLogDao;
 import org.savapage.core.dao.AppLogDao.ListFilter;
-import org.savapage.core.dao.helpers.AppLogLevelEnum;
+import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.helpers.AppLogPagerReq;
 import org.savapage.core.jpa.AppLog;
 import org.savapage.core.services.ServiceContext;
@@ -39,10 +40,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class AppLogPage extends AbstractAdminListPage {
+public final class AppLogPage extends AbstractAdminListPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     private static final Logger LOGGER = LoggerFactory
@@ -57,7 +62,9 @@ public class AppLogPage extends AbstractAdminListPage {
     /**
      *
      */
-    public AppLogPage() {
+    public AppLogPage(final PageParameters parameters) {
+
+        super(parameters);
 
         final String data = getParmValue(POST_PARM_DATA);
         final AppLogPagerReq req = AppLogPagerReq.readReq(data);
@@ -74,7 +81,7 @@ public class AppLogPage extends AbstractAdminListPage {
                     + "] text [" + filter.getContainingText() + "]");
         }
 
-        //this.openServiceContext();
+        // this.openServiceContext();
         //
         final AppLogDao appLogDao =
                 ServiceContext.getDaoContext().getAppLogDao();

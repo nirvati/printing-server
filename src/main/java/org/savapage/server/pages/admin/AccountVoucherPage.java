@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.AccountVoucherDao;
 import org.savapage.core.dao.AccountVoucherDao.ListFilter;
 import org.savapage.core.dao.helpers.AccountVoucherPagerReq;
@@ -34,10 +35,14 @@ import org.savapage.core.services.ServiceContext;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class AccountVoucherPage extends AbstractAdminListPage {
+public final class AccountVoucherPage extends AbstractAdminListPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
@@ -49,7 +54,9 @@ public class AccountVoucherPage extends AbstractAdminListPage {
     /**
      *
      */
-    public AccountVoucherPage() {
+    public AccountVoucherPage(final PageParameters parameters) {
+
+        super(parameters);
 
         final String data = getParmValue(POST_PARM_DATA);
         final AccountVoucherPagerReq req = AccountVoucherPagerReq.readReq(data);
@@ -65,7 +72,7 @@ public class AccountVoucherPage extends AbstractAdminListPage {
         filter.setDateTo(req.getSelect().dateTo());
         filter.setDateNow(new Date());
 
-        //this.openServiceContext();
+        // this.openServiceContext();
 
         //
         final AccountVoucherDao accountVoucherDao =
@@ -79,10 +86,9 @@ public class AccountVoucherPage extends AbstractAdminListPage {
 
         // add(new Label("applog-count", Long.toString(logCount)));
 
-        final List<AccountVoucher> entryList =
-                accountVoucherDao.getListChunk(filter, req.calcStartPosition(),
-                        req.getMaxResults(), req.getSort().getField(), req
-                                .getSort().getAscending());
+        final List<AccountVoucher> entryList = accountVoucherDao.getListChunk(
+                filter, req.calcStartPosition(), req.getMaxResults(),
+                req.getSort().getField(), req.getSort().getAscending());
 
         //
         add(new PropertyListView<AccountVoucher>("voucher-entry-view",

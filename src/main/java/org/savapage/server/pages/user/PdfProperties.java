@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,12 +21,20 @@
  */
 package org.savapage.server.pages.user;
 
+import java.util.List;
+
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.dao.enums.ACLOidEnum;
+import org.savapage.core.dao.enums.ACLPermissionEnum;
+import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.ServiceContext;
+import org.savapage.server.SpSession;
 import org.savapage.server.pages.MarkupHelper;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public class PdfProperties extends AbstractUserPage {
@@ -36,13 +44,45 @@ public class PdfProperties extends AbstractUserPage {
     /**
      *
      */
-    public PdfProperties() {
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
+
+    /**
+     *
+     * @param parameters
+     *            The parms.
+     */
+    public PdfProperties(final PageParameters parameters) {
+
+        super(parameters);
 
         final MarkupHelper helper = new MarkupHelper(this);
 
         //
         helper.encloseLabel("pdf-ecoprint", "",
                 ConfigManager.isEcoPrintEnabled());
+
+        //
+        final org.savapage.core.jpa.User user = SpSession.get().getUser();
+
+        final List<ACLPermissionEnum> permissions = ACCESS_CONTROL_SERVICE
+                .getUserPermission(user, ACLOidEnum.U_INBOX);
+
+        helper.encloseLabel("button-pdf-download", localized("button-download"),
+                permissions == null || ACCESS_CONTROL_SERVICE.hasUserPermission(
+                        permissions, ACLPermissionEnum.DOWNLOAD));
+
+        helper.encloseLabel("button-pdf-send", localized("button-send"),
+                permissions == null || ACCESS_CONTROL_SERVICE.hasUserPermission(
+                        permissions, ACLPermissionEnum.SEND));
+
+        //
+        final Integer privsLetterhead = ACCESS_CONTROL_SERVICE
+                .getUserPrivileges(user, ACLOidEnum.U_LETTERHEAD);
+
+        helper.encloseLabel("prompt-letterhead", localized("prompt-letterhead"),
+                privsLetterhead == null || ACLPermissionEnum.READER
+                        .isPresent(privsLetterhead.intValue()));
     }
 
 }

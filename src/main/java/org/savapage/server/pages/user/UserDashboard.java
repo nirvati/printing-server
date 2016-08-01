@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,11 +30,15 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
-import org.savapage.core.dao.helpers.AppLogLevelEnum;
+import org.savapage.core.dao.enums.ACLOidEnum;
+import org.savapage.core.dao.enums.ACLPermissionEnum;
+import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dto.AccountDisplayInfoDto;
+import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
@@ -51,19 +55,22 @@ import org.savapage.server.pages.StatsPageTotalPanel;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class UserDashboard extends AbstractUserPage {
+public final class UserDashboard extends AbstractUserPage {
 
     private static final long serialVersionUID = 1L;
+
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
 
     /**
      *
      */
-    public UserDashboard() {
+    public UserDashboard(final PageParameters parameters) {
 
-        // this.openServiceContext();
+        super(parameters);
         handlePage();
     }
 
@@ -74,15 +81,10 @@ public class UserDashboard extends AbstractUserPage {
      */
     private void handlePage() {
 
-        final ConfigManager cm = ConfigManager.instance();
-
-        final MarkupHelper helper = new MarkupHelper(this);
-
         final SpSession session = SpSession.get();
 
-        final org.savapage.core.jpa.User user =
-                ServiceContext.getDaoContext().getUserDao()
-                        .findById(session.getUser().getId());
+        final org.savapage.core.jpa.User user = ServiceContext.getDaoContext()
+                .getUserDao().findById(session.getUser().getId());
 
         /*
          * Page Totals.
@@ -102,14 +104,44 @@ public class UserDashboard extends AbstractUserPage {
         envImpactPanel.populate(esu);
 
         /*
-         * Accounting.
+         * Financial.
          */
+        final MarkupHelper helper = new MarkupHelper(this);
+
+        final String keyTitleFinancial = "title-financial";
+
+        final Integer financialPriv = ACCESS_CONTROL_SERVICE.getUserPrivileges(
+                SpSession.get().getUser(), ACLOidEnum.U_FINANCIAL);
+
+        if (financialPriv == null
+                || ACLPermissionEnum.READER.isPresent(financialPriv)) {
+            helper.addLabel(keyTitleFinancial, localized(keyTitleFinancial));
+            showFinancialDetails(helper, user, financialPriv == null
+                    || ACLPermissionEnum.EDITOR.isPresent(financialPriv));
+        } else {
+            helper.discloseLabel(keyTitleFinancial);
+        }
+
+    }
+
+    /**
+     *
+     * @param helper
+     *            The {@link MarkupHelper}.
+     * @param user
+     *            The requesting user.
+     * @param allowFinancialTrx
+     *            {@code true} when financial transactions are allowed.
+     */
+    private void showFinancialDetails(final MarkupHelper helper,
+            final org.savapage.core.jpa.User user,
+            final boolean allowFinancialTrx) {
+
+        final ConfigManager cm = ConfigManager.instance();
+
         final AccountDisplayInfoDto dto =
-                ServiceContext
-                        .getServiceFactory()
-                        .getAccountingService()
-                        .getAccountDisplayInfo(user,
-                                ServiceContext.getLocale(),
+                ServiceContext.getServiceFactory().getAccountingService()
+                        .getAccountDisplayInfo(user, ServiceContext.getLocale(),
                                 SpSession.getAppCurrencySymbol());
 
         // ------------------
@@ -135,31 +167,30 @@ public class UserDashboard extends AbstractUserPage {
             clazzBalance = MarkupHelper.CSS_TXT_ERROR;
             break;
         default:
-            throw new SpException("Status [" + dto.getStatus()
-                    + "] not handled.");
+            throw new SpException(
+                    "Status [" + dto.getStatus() + "] not handled.");
         }
 
         helper.addModifyLabelAttr("balance", dto.getBalance(), "class",
                 clazzBalance);
 
         // Redeem voucher?
-        final Label labelVoucherRedeem =
-                MarkupHelper.createEncloseLabel("button-voucher-redeem",
-                        localized("button-voucher"),
-                        cm.isConfigValue(Key.FINANCIAL_USER_VOUCHERS_ENABLE));
+        final Label labelVoucherRedeem = MarkupHelper.createEncloseLabel(
+                "button-voucher-redeem", localized("button-voucher"),
+                allowFinancialTrx && cm
+                        .isConfigValue(Key.FINANCIAL_USER_VOUCHERS_ENABLE));
 
         add(MarkupHelper.appendLabelAttr(labelVoucherRedeem, "title",
                 localized("button-title-voucher")));
 
         // Credit transfer?
-        final boolean enableTransferCredit =
-                dto.getStatus() == AccountDisplayInfoDto.Status.DEBIT
-                        && cm.isConfigValue(Key.FINANCIAL_USER_TRANSFER_ENABLE);
+        final boolean enableTransferCredit = allowFinancialTrx
+                && dto.getStatus() == AccountDisplayInfoDto.Status.DEBIT
+                && cm.isConfigValue(Key.FINANCIAL_USER_TRANSFER_ENABLE);
 
-        final Label labelTransferCredit =
-                MarkupHelper.createEncloseLabel("button-transfer-credit",
-                        localized("button-transfer-to-user"),
-                        enableTransferCredit);
+        final Label labelTransferCredit = MarkupHelper.createEncloseLabel(
+                "button-transfer-credit", localized("button-transfer-to-user"),
+                enableTransferCredit);
 
         add(MarkupHelper.appendLabelAttr(labelTransferCredit, "title",
                 localized("button-title-transfer-to-user")));
@@ -178,9 +209,9 @@ public class UserDashboard extends AbstractUserPage {
          */
         final BitcoinGateway bitcoinPlugin = pluginMgr.getBitcoinGateway();
 
-        final boolean isBitcoinGateway =
-                bitcoinPlugin != null && bitcoinPlugin.isOnline()
-                        && bitcoinPlugin.isCurrencySupported(appCurrencyCode);
+        final boolean isBitcoinGateway = allowFinancialTrx
+                && bitcoinPlugin != null && bitcoinPlugin.isOnline()
+                && bitcoinPlugin.isCurrencySupported(appCurrencyCode);
 
         if (isBitcoinGateway) {
 
@@ -212,19 +243,18 @@ public class UserDashboard extends AbstractUserPage {
         try {
             externalPlugin = pluginMgr.getExternalPaymentGateway();
 
-            isExternalGateway =
-                    externalPlugin != null
-                            && externalPlugin.isOnline()
-                            && externalPlugin
-                                    .isCurrencySupported(appCurrencyCode);
+            isExternalGateway = allowFinancialTrx && externalPlugin != null
+                    && externalPlugin.isOnline()
+                    && externalPlugin.isCurrencySupported(appCurrencyCode);
 
             if (isExternalGateway) {
-                list.addAll(externalPlugin.getExternalPaymentMethods().values());
+                list.addAll(
+                        externalPlugin.getExternalPaymentMethods().values());
             }
 
         } catch (PaymentGatewayException e) {
-            setResponsePage(new MessageContent(AppLogLevelEnum.ERROR,
-                    e.getMessage()));
+            setResponsePage(
+                    new MessageContent(AppLogLevelEnum.ERROR, e.getMessage()));
             return;
         }
 
@@ -235,7 +265,8 @@ public class UserDashboard extends AbstractUserPage {
             private static final long serialVersionUID = 1L;
 
             @Override
-            protected void populateItem(final ListItem<PaymentMethodInfo> item) {
+            protected void
+                    populateItem(final ListItem<PaymentMethodInfo> item) {
 
                 final PaymentMethodInfo info = item.getModelObject();
 
@@ -244,15 +275,15 @@ public class UserDashboard extends AbstractUserPage {
                 labelWrk.add(new AttributeModifier("src", WebApp
                         .getPaymentMethodImgUrl(info.getMethod(), false)));
 
-                labelWrk.add(new AttributeModifier("title", localized(
-                        "button-title-transfer", info.getMethod().toString()
-                                .toLowerCase())));
+                labelWrk.add(new AttributeModifier("title",
+                        localized("button-title-transfer",
+                                info.getMethod().toString().toLowerCase())));
 
                 labelWrk.add(new AttributeModifier("data-payment-gateway",
                         externalPlugin.getId()));
 
-                labelWrk.add(new AttributeModifier("data-payment-method", info
-                        .getMethod().toString()));
+                labelWrk.add(new AttributeModifier("data-payment-method",
+                        info.getMethod().toString()));
 
                 item.add(labelWrk);
             }

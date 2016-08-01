@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2015 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.reports.JrVoucherPageLayoutEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.MediaUtils;
@@ -36,21 +37,24 @@ import org.savapage.server.pages.VoucherDesignOptionsPanel;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class AccountVoucherBase extends AbstractAdminPage {
+public final class AccountVoucherBase extends AbstractAdminPage {
 
     /**
-     * .
+     * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
 
     /**
      *
      */
-    public AccountVoucherBase() {
+    public AccountVoucherBase(final PageParameters parameters) {
 
-        //openServiceContext();
+        super(parameters);
+
+        // openServiceContext();
 
         /*
          * Option list: Printers

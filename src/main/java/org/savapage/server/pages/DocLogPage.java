@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,23 +27,31 @@ import javax.persistence.EntityManager;
 
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.DocLogDao;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
 import org.savapage.core.dao.impl.DaoContextImpl;
+import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.ServiceContext;
 import org.savapage.server.SpSession;
+import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  */
 public class DocLogPage extends AbstractListPage {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(DocLogPage.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(DocLogPage.class);
+
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
 
     /**
      * Maximum number of pages in the navigation bar. IMPORTANT: this must be an
@@ -53,13 +61,15 @@ public class DocLogPage extends AbstractListPage {
 
     @Override
     protected boolean needMembership() {
-        return isAdminRoleContext();
+        return this.getSessionWebAppType() == WebAppTypeEnum.ADMIN;
     }
 
     /**
      *
      */
-    public DocLogPage() {
+    public DocLogPage(final PageParameters parameters) {
+
+        super(parameters);
 
         if (isAuthErrorHandled()) {
             return;
@@ -71,22 +81,31 @@ public class DocLogPage extends AbstractListPage {
             LOGGER.trace("data : " + data);
         }
 
+        final boolean showFinancialData;
+
         final DocLogPagerReq req = DocLogPagerReq.read(data);
 
         final DocLogDao.Type docType = req.getSelect().getDocType();
 
         Long userId = null;
 
-        final boolean adminWebApp = isAdminRoleContext();
+        if (req.getSelect().getAccountId() == null) {
 
-        if (adminWebApp) {
-            userId = req.getSelect().getUserId();
+            if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
+                userId = req.getSelect().getUserId();
+                showFinancialData = true;
+            } else {
+                /*
+                 * If we are called in a User WebApp context we ALWAYS use the
+                 * user of the current session.
+                 */
+                userId = SpSession.get().getUser().getId();
+
+                showFinancialData = ACCESS_CONTROL_SERVICE.hasUserAccess(
+                        SpSession.get().getUser(), ACLOidEnum.U_FINANCIAL);
+            }
         } else {
-            /*
-             * If we are called in a User WebApp context we ALWAYS use the user
-             * of the current session.
-             */
-            userId = SpSession.get().getUser().getId();
+            showFinancialData = true;
         }
 
         /*
@@ -113,8 +132,8 @@ public class DocLogPage extends AbstractListPage {
                 /*
                  * Step 1: Create panel and add to page.
                  */
-                final DocLogItemPanel panel =
-                        new DocLogItemPanel("doc-entry", item.getModel());
+                final DocLogItemPanel panel = new DocLogItemPanel("doc-entry",
+                        item.getModel(), showFinancialData);
 
                 item.add(panel);
 

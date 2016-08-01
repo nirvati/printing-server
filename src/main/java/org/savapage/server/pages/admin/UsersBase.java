@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,22 +21,75 @@
  */
 package org.savapage.server.pages.admin;
 
+import java.util.List;
+
+import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.dao.UserGroupDao;
+import org.savapage.core.dao.enums.ReservedUserGroupEnum;
+import org.savapage.core.jpa.UserGroup;
+import org.savapage.core.services.ServiceContext;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
+ *
  */
-public class UsersBase extends AbstractAdminPage {
+public final class UsersBase extends AbstractAdminPage {
 
+    /**
+     * Version for serialization.
+     */
     private static final long serialVersionUID = 1L;
 
     /**
      *
      */
-    public UsersBase() {
+    public UsersBase(final PageParameters parameters) {
+
+        super(parameters);
 
         addVisible(ConfigManager.isInternalUsersEnabled(), "button-new",
                 localized("button-new"));
+
+        //
+        final UserGroupDao userGroupDao =
+                ServiceContext.getDaoContext().getUserGroupDao();
+
+        final List<UserGroup> groupList =
+                userGroupDao.getListChunk(new UserGroupDao.ListFilter(), null,
+                        null, UserGroupDao.Field.NAME, true);
+
+        add(new PropertyListView<UserGroup>("option-list-groups", groupList) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void populateItem(final ListItem<UserGroup> item) {
+
+                final UserGroup group = item.getModel().getObject();
+
+                final ReservedUserGroupEnum reservedGroup =
+                        ReservedUserGroupEnum.fromDbName(group.getGroupName());
+
+                final String groupName;
+
+                if (reservedGroup == null) {
+                    groupName = group.getGroupName();
+                } else {
+                    groupName = reservedGroup.getUiName();
+                }
+
+                final Label label = new Label("option-group", groupName);
+                label.add(new AttributeModifier("value", group.getId()));
+                item.add(label);
+            }
+
+        });
+
     }
 }

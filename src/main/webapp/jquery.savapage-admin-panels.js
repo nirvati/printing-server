@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2015 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -554,11 +554,11 @@
 			 */
 			showPlots : function(my) {
 				var _view = _ns.PanelCommon.view, xydata, piedata;
-				
+
 				xydata = _view.jqPlotData('dashboard-xychart', true);
 				if (!xydata) {
 					return false;
-				}				
+				}
 				piedata = _view.jqPlotData('dashboard-piechart', true);
 				if (!piedata) {
 					return false;
@@ -648,7 +648,7 @@
 					 */
 					if (!my.showPlots(my)) {
 						// Failure (and disconnected): stop the timer!
-						my.onUnload(my);						
+						my.onUnload(my);
 					}
 				}
 			},
@@ -677,8 +677,8 @@
 
 				if (my.showPlots(my)) {
 					/*
-				 	* Interval timer: refresh of part.
-				 	*/
+					 * Interval timer: refresh of part.
+					 */
 					my.timeout = window.setInterval(my.refreshSysStatus, my.REFRESH_MSEC);
 				}
 			},
@@ -911,6 +911,11 @@
 				_view.visible($('.imap-enabled'), enabled);
 			},
 
+			onProxyPrintClearInboxEnabled : function(enabled) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.proxyprint-clear-inbox-scope-enabled'), enabled);
+			},
+
 			onProxyPrintEnabled : function(enabled) {
 				var _view = _ns.PanelCommon.view;
 				_view.visible($('.proxyprint-enabled'), enabled);
@@ -933,9 +938,37 @@
 				_view.visible($('.smartschool-print-enabled'), enabled1 || enabled2);
 			},
 
+			onSmartSchoolNodeEnabled : function(enabled1, enabled2) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.smartschool-1-print-node-enabled'), enabled1);
+				_view.visible($('.smartschool-2-print-node-enabled'), enabled2);
+			},
+
+			onSmartSchoolNodeProxyEnabled : function(enabled1, enabled2) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.smartschool-1-print-node-proxy-enabled'), !enabled1);
+				_view.visible($('.smartschool-2-print-node-proxy-enabled'), !enabled2);
+			},
+
 			onSmartSchoolPaperCutEnabled : function(enabled) {
 				var _view = _ns.PanelCommon.view;
 				_view.visible($('.smartschool-papercut-enabled'), enabled);
+			},
+
+			onProxyPrintDelegateEnabled : function(enabled) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.sp-proxyprint-delegate-enable-enabled'), enabled);
+				this.onProxyPrintDelegatePaperCutEnabled( enabled ? _view.isCbChecked($("#proxy-print\\.delegate\\.papercut\\.enable")) : false);
+			},
+
+			onProxyPrintDelegatePaperCutEnabled : function(enabled) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.sp-download-papercut-delegator-cost-enabled'), enabled);
+			},
+
+			onPaperCutEnabled : function(enabled) {
+				var _view = _ns.PanelCommon.view;
+				_view.visible($('.papercut-enabled'), enabled);
 			},
 
 			onFinancialUserTransfersEnabled : function(enabled) {
@@ -980,22 +1013,31 @@
 				my.onAuthModeLocalEnabled();
 				my.onPrintImapEnabled(_view.isCbChecked($('#print\\.imap\\.enable')));
 				my.onProxyPrintEnabled(_view.isCbChecked($('#proxy-print\\.non-secure')));
+				my.onProxyPrintClearInboxEnabled(_view.isCbChecked($('#webapp\\.user\\.proxy-print\\.clear-inbox\\.enable')));
 				my.onWebPrintEnabled(_view.isCbChecked($('#web-print\\.enable')));
 				my.onEcoPrintEnabled(_view.isCbChecked($('#eco-print\\.enable')));
 
 				my.onSmartSchoolEnabled(_view.isCbChecked($('#smartschool\\.1\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.enable')));
+				my.onSmartSchoolNodeEnabled(_view.isCbChecked($('#smartschool\\.1\\.soap\\.print\\.node\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.soap\\.print\\.node\\.enable')));
+				my.onSmartSchoolNodeProxyEnabled(_view.isCbChecked($('#smartschool\\.1\\.soap\\.print\\.node\\.proxy\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.soap\\.print\\.proxy\\.node\\.enable')));
 				my.onSmartSchoolPaperCutEnabled(_view.isCbChecked($('#smartschool\\.papercut\\.enable')));
+				my.onPaperCutEnabled(_view.isCbChecked($('#papercut\\.enable')));
 
 				my.onGcpRefresh(my);
 
 				my.onFinancialUserTransfersEnabled(_view.isCbChecked($('#financial\\.user\\.transfers\\.enable')));
-				
+
 				$('.user-source-group-display').show();
 				$('.user-source-group-edit').hide();
 
 				_view.mobipick($("#sp-smartschool-papercut-student-cost-date-from"));
 				_view.mobipick($("#sp-smartschool-papercut-student-cost-date-to"));
 
+				_view.mobipick($("#sp-papercut-delegator-cost-date-from"));
+				_view.mobipick($("#sp-papercut-delegator-cost-date-to"));
+				
+				my.onProxyPrintDelegatePaperCutEnabled(_view.isCbChecked($('#proxy-print\\.delegate\\.papercut\\.enable')));
+				my.onProxyPrintDelegateEnabled(_view.isCbChecked($('#proxy-print\\.delegate\\.enable')));
 			}
 		};
 
@@ -1325,7 +1367,8 @@
 				my.input.select.id_text = null;
 				my.input.select.email_text = null;
 
-				my.input.select.internal = null;
+				my.input.select.usergroup_id = null;
+
 				// Boolean
 				my.input.select.admin = null;
 				// Boolean
@@ -1359,8 +1402,7 @@
 				$('#sp-user-id-containing-text').val(my.input.select.id_text);
 				$('#sp-user-email-containing-text').val(my.input.select.email_text);
 
-				val = my.input.select.internal;
-				_view.checkRadioValue('sp-user-select-source', val === null ? "" : ( val ? "1" : "0"));
+				$('#sp-user-select-group').val(my.input.select.usergroup_id).selectmenu('refresh');
 
 				val = my.input.select.person;
 				_view.checkRadioValue('sp-user-select-type', val === null ? "" : ( val ? "1" : "0"));
@@ -1392,9 +1434,6 @@
 				//
 				;
 
-				val = _view.getRadioValue('sp-user-select-source');
-				my.input.select.internal = (val === "" ? null : (val === "1"));
-
 				val = _view.getRadioValue('sp-user-select-type');
 				my.input.select.person = (val === "" ? null : (val === "1"));
 
@@ -1415,6 +1454,10 @@
 				present = (sel.val().length > 0);
 				my.input.select.email_text = ( present ? sel.val() : null);
 
+				sel = $('#sp-user-select-group');
+				present = (sel.val() !== "0");
+				my.input.select.usergroup_id = present ? sel.val() : null;
+
 				my.input.sort.field = _view.getRadioValue('sp-user-sort-by');
 				my.input.sort.ascending = _view.isRadioIdSelected('sp-user-sort-dir', 'sp-user-sort-dir-asc');
 			},
@@ -1428,7 +1471,6 @@
 				select : {
 					id_text : null,
 					email_text : null,
-					internal : null,
 					admin : null,
 					person : null,
 					disabled : null,
@@ -1502,6 +1544,274 @@
 					type : 'pie',
 					sliceColors : _view.userChartColors
 				});
+			}
+		};
+
+		/**
+		 *
+		 */
+		_ns.PanelAccountsBase = {
+
+			applyDefaults : function(my) {
+
+				my.input.page = 1;
+				my.input.maxResults = 10;
+
+				my.input.select.name_text = null;
+				// AccountTypeEnum
+				my.input.select.accountType = undefined;
+				// Boolean
+				my.input.select.deleted = false;
+				// Boolean
+				my.input.sort.ascending = true;
+			},
+
+			beforeload : function(my) {
+				$.noop();
+			},
+
+			afterload : function(my) {
+				my.m2v(my);
+				my.page(my, my.input.page);
+			},
+
+			m2v : function(my) {
+				var val, id
+				//
+				, _view = _ns.PanelCommon.view
+				//
+				;
+
+				$('#sp-shared-account-name-containing-text').val(my.input.select.name_text);
+
+				val = my.input.select.deleted;
+				_view.checkRadioValue('sp-shared-account-select-deleted', val === null ? "" : ( val ? "1" : "0"));
+
+				val = my.input.select.accountType;
+				_view.checkRadioValue('sp-shared-account-select-type', val === undefined ? "" : val);
+
+				//
+				id = 'sp-shared-account-sort-dir';
+				_view.checkRadio(id, my.input.sort.ascending ? id + '-asc' : id + '-desc');
+
+			},
+
+			v2m : function(my) {
+
+				var val, sel, present
+				//
+				, _view = _ns.PanelCommon.view
+				//
+				;
+
+				val = _view.getRadioValue('sp-shared-account-select-deleted');
+				my.input.select.deleted = (val === "" ? null : (val === "1"));
+
+				val = _view.getRadioValue('sp-shared-account-select-type');
+				my.input.select.accountType = (val === "" ? undefined : val);
+
+				sel = $('#sp-shared-account-name-containing-text');
+				present = (sel.val().length > 0);
+				my.input.select.name_text = ( present ? sel.val() : null);
+
+				my.input.sort.field = _view.getRadioValue('sp-shared-account-sort-by');
+				my.input.sort.ascending = _view.isRadioIdSelected('sp-shared-account-sort-dir', 'sp-shared-account-sort-dir-asc');
+			},
+
+			// JSON input
+			input : {
+
+				page : 1,
+				maxResults : 10,
+
+				select : {
+					name_text : null,
+					deleted : false
+				},
+				sort : {
+					field : 'name', // name
+					ascending : true
+				}
+			},
+
+			// JSON output
+			output : {
+				lastPage : null,
+				nextPage : null,
+				prevPage : null
+			},
+
+			refresh : function(my, skipBeforeLoad) {
+				_ns.PanelCommon.refreshPanelAdmin('AccountsBase', skipBeforeLoad);
+			},
+
+			// show page
+			page : function(my, nPage) {
+				_ns.PanelCommon.onValidPage(function() {
+					my.input.page = nPage;
+					my.v2m(my);
+					_ns.PanelCommon.loadListPageAdmin(my, 'AccountsPage', '#sp-shared-account-list-page');
+				});
+			},
+
+			getInput : function(my) {
+				return my.input;
+			},
+
+			onOutput : function(my, output) {
+
+				my.output = output;
+				/*
+				 * NOTICE the $().one() construct. Since the page get
+				 * reloaded all the time, we want a single-shot binding.
+				 */
+				$(".sp-shared-accounts-page").one('click', null, function() {
+					my.page(my, parseInt($(this).text(), 10));
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+				$(".sp-shared-accounts-page-next").one('click', null, function() {
+					my.page(my, my.output.nextPage);
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+				$(".sp-shared-accounts-page-prev").one('click', null, function() {
+					my.page(my, my.output.prevPage);
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+
+			}
+		};
+
+		/**
+		 *
+		 */
+		_ns.PanelUserGroupsBase = {
+
+			applyDefaults : function(my) {
+
+				my.input.page = 1;
+				my.input.maxResults = 10;
+
+				my.input.select.name_text = null;
+				// Boolean
+				my.input.sort.ascending = true;
+			},
+
+			beforeload : function(my) {
+				$.noop();
+			},
+
+			afterload : function(my) {
+				my.m2v(my);
+				my.page(my, my.input.page);
+			},
+
+			m2v : function(my) {
+				var id
+				//
+				, _view = _ns.PanelCommon.view
+				//
+				;
+
+				$('#sp-user-group-name-containing-text').val(my.input.select.name_text);
+
+				//
+				id = 'sp-user-group-sort-dir';
+				_view.checkRadio(id, my.input.sort.ascending ? id + '-asc' : id + '-desc');
+
+			},
+
+			v2m : function(my) {
+
+				var sel, present
+				//
+				, _view = _ns.PanelCommon.view
+				//
+				;
+
+				sel = $('#sp-user-group-name-containing-text');
+				present = (sel.val().length > 0);
+				my.input.select.name_text = ( present ? sel.val() : null);
+
+				my.input.sort.ascending = _view.isRadioIdSelected('sp-user-group-sort-dir', 'sp-user-group-sort-dir-asc');
+			},
+
+			// JSON input
+			input : {
+
+				page : 1,
+				maxResults : 10,
+
+				select : {
+					name_text : null
+				},
+				sort : {
+					ascending : true
+				}
+			},
+
+			// JSON output
+			output : {
+				lastPage : null,
+				nextPage : null,
+				prevPage : null
+			},
+
+			refresh : function(my, skipBeforeLoad) {
+				_ns.PanelCommon.refreshPanelAdmin('UserGroupsBase', skipBeforeLoad);
+			},
+
+			// show page
+			page : function(my, nPage) {
+				_ns.PanelCommon.onValidPage(function() {
+					my.input.page = nPage;
+					my.v2m(my);
+					_ns.PanelCommon.loadListPageAdmin(my, 'UserGroupsPage', '#sp-user-group-list-page');
+				});
+			},
+
+			getInput : function(my) {
+				return my.input;
+			},
+
+			onOutput : function(my, output) {
+
+				my.output = output;
+
+				/*
+				 * NOTICE the $().one() construct. Since the page get
+				 * reloaded all the time, we want a single-shot binding.
+				 */
+				$(".sp-user-groups-page").one('click', null, function() {
+					my.page(my, parseInt($(this).text(), 10));
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+				$(".sp-user-groups-page-next").one('click', null, function() {
+					my.page(my, my.output.nextPage);
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+				$(".sp-user-groups-page-prev").one('click', null, function() {
+					my.page(my, my.output.prevPage);
+					/*
+					 * return false so URL is not followed.
+					 */
+					return false;
+				});
+
 			}
 		};
 

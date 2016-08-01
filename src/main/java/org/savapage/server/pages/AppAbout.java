@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,16 +21,16 @@
  */
 package org.savapage.server.pages;
 
-import java.util.Calendar;
+import java.util.Locale;
 
-import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public final class AppAbout extends AbstractPage {
@@ -43,37 +43,30 @@ public final class AppAbout extends AbstractPage {
     /**
      *
      */
-    public AppAbout() {
+    public AppAbout(final PageParameters parameters) {
 
-        add(new Label("app-version", ConfigManager.getAppNameVersion()));
-        add(new Label("current-year", String.valueOf(Calendar.getInstance()
-                .get(Calendar.YEAR))));
-
-        add(new Label("app-name", CommunityDictEnum.SAVAPAGE.getWord()));
-
-        Label labelWrk;
+        super(parameters);
 
         //
-        labelWrk =
-                new Label("app-copyright-owner-url",
-                        CommunityDictEnum.DATRAVERSE_BV.getWord());
-        labelWrk.add(new AttributeModifier("href",
-                CommunityDictEnum.DATRAVERSE_BV_URL.getWord()));
-        add(labelWrk);
+        final HtmlInjectComponent inject = new HtmlInjectComponent("inject",
+                this.getWebAppTypeEnum(parameters), HtmlInjectEnum.ABOUT);
 
-        //
-        labelWrk =
-                new Label("savapage-source-code-url",
-                        localized("source-code-link"));
-        labelWrk.add(new AttributeModifier("href",
-                CommunityDictEnum.COMMUNITY_SOURCE_CODE_URL.getWord()));
-        add(labelWrk);
+        add(inject);
 
-        //
-        final PrinterDriverDownloadPanel downloadPanel =
-                new PrinterDriverDownloadPanel("printerdriver-download-panel");
-        add(downloadPanel);
-        downloadPanel.populate();
+        final MarkupHelper helper = new MarkupHelper(this);
+
+        if (inject.isInjectAvailable()) {
+            helper.discloseLabel("app-version");
+            add(new AppAboutPanel("savapage-info-after-inject"));
+            add(new Label("app-version-number", ConfigManager.getAppVersion()));
+        } else {
+            helper.discloseLabel("savapage-info-after-inject");
+            helper.encloseLabel("app-version",
+                    ConfigManager.getAppNameVersion(), true);
+            add(new Label("app-name",
+                    CommunityDictEnum.SAVAPAGE.getWord(Locale.getDefault())));
+            add(new AppAboutPanel("savapage-info"));
+        }
 
     }
 

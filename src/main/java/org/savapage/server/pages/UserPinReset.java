@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,9 +21,12 @@
  */
 package org.savapage.server.pages;
 
+import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.server.webapp.WebAppTypeEnum;
+
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 public final class UserPinReset extends AbstractAuthPage {
@@ -36,7 +39,9 @@ public final class UserPinReset extends AbstractAuthPage {
     /**
      *
      */
-    public UserPinReset() {
+    public UserPinReset(final PageParameters parameters) {
+
+        super(parameters);
 
         if (isAuthErrorHandled()) {
             return;
@@ -46,7 +51,7 @@ public final class UserPinReset extends AbstractAuthPage {
          * If this page is displayed in the Admin WebApp context, we check the
          * admin authentication (including the need for a valid Membership).
          */
-        if (isAdminRoleContext()) {
+        if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
             checkAdminAuthorization();
         }
     }

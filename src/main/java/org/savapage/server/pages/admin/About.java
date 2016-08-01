@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.SpException;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
@@ -50,19 +51,19 @@ import org.savapage.server.pages.PrinterDriverDownloadPanel;
 
 /**
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public class About extends AbstractAdminPage {
+public final class About extends AbstractAdminPage {
 
     /**
      * .
      */
-    private static final ProxyPrintService PROXY_PRINT_SERVICE = ServiceContext
-            .getServiceFactory().getProxyPrintService();
+    private static final ProxyPrintService PROXY_PRINT_SERVICE =
+            ServiceContext.getServiceFactory().getProxyPrintService();
 
     /**
-     *
+     * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
 
@@ -74,7 +75,9 @@ public class About extends AbstractAdminPage {
     /**
      *
      */
-    public About() {
+    public About(final PageParameters parameters) {
+
+        super(parameters);
 
         try {
             handlePage();
@@ -87,10 +90,11 @@ public class About extends AbstractAdminPage {
      * @throws Exception
      *
      */
-    @SuppressWarnings("serial")
     private void handlePage() throws Exception {
 
         final MemberCard memberCard = MemberCard.instance();
+
+        final MarkupHelper helper = new MarkupHelper(this);
 
         Label labelWrk;
 
@@ -98,8 +102,8 @@ public class About extends AbstractAdminPage {
         add(new Label("version-build", ConfigManager.getAppVersionBuild()));
 
         //
-        add(new Label("version-date",
-                localizedDateTime(org.savapage.core.VersionInfo.getBuildDate())));
+        add(new Label("version-date", localizedDateTime(
+                org.savapage.core.VersionInfo.getBuildDate())));
 
         //
         final DbVersionInfo dbVersionInfo =
@@ -120,15 +124,15 @@ public class About extends AbstractAdminPage {
         add(new Label("version-db-schema", builder.toString()));
 
         //
-        add(new Label("app-license-name", CommunityDictEnum.SAVAPAGE.getWord()));
-        add(new Label("current-year", String.valueOf(Calendar.getInstance()
-                .get(Calendar.YEAR))));
+        add(new Label("app-license-name",
+                CommunityDictEnum.SAVAPAGE.getWord()));
+        add(new Label("current-year",
+                String.valueOf(Calendar.getInstance().get(Calendar.YEAR))));
 
         //
         //
-        labelWrk =
-                new Label("app-copyright-owner-url",
-                        CommunityDictEnum.DATRAVERSE_BV.getWord());
+        labelWrk = new Label("app-copyright-owner-url",
+                CommunityDictEnum.DATRAVERSE_BV.getWord());
         labelWrk.add(new AttributeModifier("href",
                 CommunityDictEnum.DATRAVERSE_BV_URL.getWord()));
         add(labelWrk);
@@ -145,8 +149,8 @@ public class About extends AbstractAdminPage {
         add(new Label("java.version", System.getProperty("java.version")));
         add(new Label("java.vm.name", System.getProperty("java.vm.name")));
 
-        add(new Label("jre-available-processors", Integer.valueOf(Runtime
-                .getRuntime().availableProcessors())));
+        add(new Label("jre-available-processors",
+                Integer.valueOf(Runtime.getRuntime().availableProcessors())));
 
         add(new Label("jre-max-memory", NumberUtil.humanReadableByteCount(
                 Runtime.getRuntime().maxMemory(), true)));
@@ -156,7 +160,6 @@ public class About extends AbstractAdminPage {
         add(new Label("jre-os-arch", System.getProperty("os.arch")));
 
         // ---------- CUPS
-        colorInstalled = null;
         version = PROXY_PRINT_SERVICE.getCupsVersion();
         installed = StringUtils.isNotBlank(version);
 
@@ -171,9 +174,6 @@ public class About extends AbstractAdminPage {
         }
 
         labelWrk = new Label("version-cups", version);
-        if (colorInstalled != null) {
-            labelWrk.add(new AttributeModifier("class", colorInstalled));
-        }
         add(labelWrk);
 
         // ---------- Imagemagick
@@ -267,12 +267,14 @@ public class About extends AbstractAdminPage {
 
                 final SysctlEnum sysctl = item.getModelObject();
                 item.add(new Label("sysctl-key", sysctl.getKey()));
-                item.add(new Label("sysctl-value", SystemInfo.getSysctl(sysctl)));
+                item.add(new Label("sysctl-value",
+                        SystemInfo.getSysctl(sysctl)));
             }
         });
 
         //
-        add(new Label("cat-membership", CommunityDictEnum.COMMUNITY.getWord()));
+        add(new Label("cat-membership",
+                CommunityDictEnum.COMMUNITY.getWord(getLocale())));
 
         // ---------
         String validDays = null;
@@ -285,37 +287,34 @@ public class About extends AbstractAdminPage {
 
         case WRONG_MODULE:
             signalColor = MarkupHelper.CSS_TXT_ERROR;
-            txtStatus =
-                    localized("membership-status-wrong-module",
-                            CommunityDictEnum.MEMBERSHIP.getWord(),
-                            CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                            CommunityDictEnum.MEMBERSHIP.getWord());
+            txtStatus = localized("membership-status-wrong-module",
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
+                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
         case WRONG_COMMUNITY:
             signalColor = MarkupHelper.CSS_TXT_ERROR;
-            txtStatus =
-                    localized("membership-status-wrong-product",
-                            CommunityDictEnum.MEMBERSHIP.getWord(),
-                            memberCard.getProduct(),
-                            CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(),
-                            CommunityDictEnum.MEMBERSHIP.getWord());
+            txtStatus = localized("membership-status-wrong-product",
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
+                    memberCard.getProduct(),
+                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
         case WRONG_VERSION:
             signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus =
-                    localized("membership-status-wrong-version",
-                            CommunityDictEnum.MEMBERSHIP.getWord());
+            txtStatus = localized("membership-status-wrong-version",
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
         case WRONG_VERSION_WITH_GRACE:
             signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus =
                     localized("membership-status-wrong-version-grace-period",
-                            CommunityDictEnum.MEMBERSHIP.getWord(),
+                            CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                             memberCard.getDaysLeftInVisitorPeriod(refDate),
-                            CommunityDictEnum.MEMBERSHIP.getWord());
+                            CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
         case VALID:
@@ -323,60 +322,52 @@ public class About extends AbstractAdminPage {
             signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
 
             if (memberCard.isVisitorCard()) {
-                txtStatus = CommunityDictEnum.VISITOR.getWord();
+                txtStatus = CommunityDictEnum.VISITOR.getWord(getLocale());
             } else {
-                txtStatus = CommunityDictEnum.FELLOW.getWord();
+                txtStatus = CommunityDictEnum.FELLOW.getWord(getLocale());
             }
 
             if (memberCard.getExpirationDate() != null) {
-                validDays =
-                        localized("membership-valid-till-msg",
-                                localizedDate(memberCard.getExpirationDate()),
-                                memberCard.getDaysTillExpiry());
+                validDays = localized("membership-valid-till-msg",
+                        localizedDate(memberCard.getExpirationDate()),
+                        memberCard.getDaysTillExpiry());
             }
             break;
 
         case EXCEEDED:
             signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus =
-                    localized("membership-status-users-exceeded",
-                            CommunityDictEnum.MEMBERSHIP.getWord());
+            txtStatus = localized("membership-status-users-exceeded",
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
         case EXPIRED:
             signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus =
-                    localized("membership-status-expired",
-                            CommunityDictEnum.MEMBERSHIP.getWord());
-            validDays =
-                    localized("membership-expired-msg",
-                            localizedDate(memberCard.getExpirationDate()),
-                            memberCard.getDaysTillExpiry());
+            txtStatus = localized("membership-status-expired",
+                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
+            validDays = localized("membership-expired-msg",
+                    localizedDate(memberCard.getExpirationDate()),
+                    memberCard.getDaysTillExpiry());
             break;
 
         case VISITOR_EDITION:
             signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            txtStatus = CommunityDictEnum.VISITING_GUEST.getWord();
+            txtStatus = CommunityDictEnum.VISITING_GUEST.getWord(getLocale());
             break;
 
         case VISITOR:
             signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            txtStatus =
-                    localized("membership-status-visit",
-                            CommunityDictEnum.VISITING_GUEST.getWord(),
-                            memberCard.getDaysLeftInVisitorPeriod(refDate));
+            txtStatus = localized("membership-status-visit",
+                    CommunityDictEnum.VISITING_GUEST.getWord(getLocale()),
+                    memberCard.getDaysLeftInVisitorPeriod(refDate));
             break;
 
         case VISITOR_EXPIRED:
             signalColor = MarkupHelper.CSS_TXT_WARN;
 
-            txtStatus =
-                    localized("membership-status-visit-expired",
-                            CommunityDictEnum.VISITING_GUEST.getWord(),
-                            localizedDate(DateUtils.addDays(
-                                    new Date(),
-                                    memberCard.getDaysLeftInVisitorPeriod(
-                                            refDate).intValue())));
+            txtStatus = localized("membership-status-visit-expired",
+                    CommunityDictEnum.VISITING_GUEST.getWord(getLocale()),
+                    localizedDate(DateUtils.addDays(new Date(), memberCard
+                            .getDaysLeftInVisitorPeriod(refDate).intValue())));
             break;
 
         default:
@@ -386,13 +377,11 @@ public class About extends AbstractAdminPage {
         }
 
         // -------------
-        final String styleInfo =
-                String.format("class=\"%s %s\"", MarkupHelper.CSS_TXT_WRAP,
-                        signalColor);
+        final String styleInfo = String.format("class=\"%s %s\"",
+                MarkupHelper.CSS_TXT_WRAP, signalColor);
 
-        final String styleInfoValid =
-                String.format("class=\"%s %s\"", MarkupHelper.CSS_TXT_WRAP,
-                        MarkupHelper.CSS_TXT_COMMUNITY);
+        final String styleInfoValid = String.format("class=\"%s %s\"",
+                MarkupHelper.CSS_TXT_WRAP, MarkupHelper.CSS_TXT_COMMUNITY);
 
         final String liFormat = "<li><h3>%s</h3><div %s>%s</div></li>";
 
@@ -401,18 +390,14 @@ public class About extends AbstractAdminPage {
         if (memberCard.hasMemberCardFile()) {
 
             //
-            htmlMembership =
-                    String.format(
-                            liFormat,
-                            CommunityDictEnum.MEMBER.getWord(),
-                            styleInfo,
-                            StringUtils.defaultString(
-                                    memberCard.getMemberOrganisation(), "-"));
+            htmlMembership = String.format(liFormat,
+                    CommunityDictEnum.MEMBER.getWord(getLocale()), styleInfo,
+                    StringUtils.defaultString(
+                            memberCard.getMemberOrganisation(), "-"));
 
             //
-            htmlMembership +=
-                    String.format(liFormat, localized("membership-status"),
-                            styleInfo, txtStatus);
+            htmlMembership += String.format(liFormat,
+                    localized("membership-status"), styleInfo, txtStatus);
 
             //
             htmlMembership +=
@@ -434,10 +419,9 @@ public class About extends AbstractAdminPage {
 
             //
             if (validDays != null) {
-                htmlMembership +=
-                        String.format(liFormat,
-                                localized("membership-valid-till"), styleInfo,
-                                validDays);
+                htmlMembership += String.format(liFormat,
+                        localized("membership-valid-till"), styleInfo,
+                        validDays);
             }
             //
             htmlMembership +=
@@ -446,9 +430,8 @@ public class About extends AbstractAdminPage {
 
         } else {
             //
-            htmlMembership =
-                    String.format(liFormat, localized("membership-status"),
-                            styleInfo, txtStatus);
+            htmlMembership = String.format(liFormat,
+                    localized("membership-status"), styleInfo, txtStatus);
 
         }
 
@@ -456,9 +439,8 @@ public class About extends AbstractAdminPage {
                 .setEscapeModelStrings(false));
 
         //
-        labelWrk =
-                new Label("membership-participants",
-                        localizedNumber(memberCard.getMemberParticipants()));
+        labelWrk = new Label("membership-participants",
+                helper.localizedNumber(memberCard.getMemberParticipants()));
         labelWrk.add(new AttributeModifier("class", signalColor));
         add(labelWrk);
 
@@ -469,31 +451,29 @@ public class About extends AbstractAdminPage {
             signalColor = MarkupHelper.CSS_TXT_VALID;
         }
 
-        labelWrk =
-                new Label("membership-users",
-                        localizedNumber(userDAO.countActiveUsers()));
+        labelWrk = new Label("membership-users",
+                helper.localizedNumber(userDAO.countActiveUsers()));
         labelWrk.add(new AttributeModifier("class", signalColor));
         add(labelWrk);
 
-        add(new Label("button-import-membercard", localized(
-                "button-import-membercard",
-                CommunityDictEnum.MEMBER_CARD.getWord())));
+        add(new Label("button-import-membercard",
+                localized("button-import-membercard",
+                        CommunityDictEnum.MEMBER_CARD.getWord(getLocale()))));
 
         //
-        final String urlHelpDesk =
-                ConfigManager.instance().getConfigValue(
-                        Key.COMMUNITY_HELPDESK_URL);
+        final String urlHelpDesk = ConfigManager.instance()
+                .getConfigValue(Key.COMMUNITY_HELPDESK_URL);
 
         labelWrk = new Label("savapage-helpdesk-url", urlHelpDesk);
         labelWrk.add(new AttributeModifier("href", urlHelpDesk));
         add(labelWrk);
 
         //
-        labelWrk =
-                new Label("savapage-source-code-url",
-                        localized("source-code-link"));
+        labelWrk = new Label("savapage-source-code-url",
+                localized("source-code-link"));
         labelWrk.add(new AttributeModifier("href",
-                CommunityDictEnum.COMMUNITY_SOURCE_CODE_URL.getWord()));
+                CommunityDictEnum.COMMUNITY_SOURCE_CODE_URL
+                        .getWord(getLocale())));
         add(labelWrk);
 
         //
