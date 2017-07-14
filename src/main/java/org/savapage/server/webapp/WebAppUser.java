@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -23,51 +23,45 @@ package org.savapage.server.webapp;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.wicket.AttributeModifier;
-import org.apache.wicket.Component;
-import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.ajax.markup.html.form.AjaxButton;
-import org.apache.wicket.extensions.ajax.markup.html.form.upload.UploadProgressBar;
 import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.html.basic.Label;
-import org.apache.wicket.markup.html.form.DropDownChoice;
-import org.apache.wicket.markup.html.form.Form;
-import org.apache.wicket.markup.html.form.IChoiceRenderer;
-import org.apache.wicket.markup.html.form.upload.FileUpload;
-import org.apache.wicket.markup.html.form.upload.FileUploadField;
-import org.apache.wicket.markup.html.panel.FeedbackPanel;
-import org.apache.wicket.model.IModel;
-import org.apache.wicket.model.LoadableDetachableModel;
-import org.apache.wicket.model.PropertyModel;
-import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
-import org.apache.wicket.request.cycle.RequestCycle;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.PropertyListView;
+import org.apache.wicket.request.IRequestParameters;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.apache.wicket.util.lang.Bytes;
+import org.apache.wicket.util.string.StringValue;
+import org.savapage.core.SpException;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
-import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.crypto.OneTimeAuthToken;
-import org.savapage.core.dao.enums.DocLogProtocolEnum;
-import org.savapage.core.dao.enums.ReservedIppQueueEnum;
-import org.savapage.core.doc.DocContent;
-import org.savapage.core.doc.DocContentTypeEnum;
-import org.savapage.core.fonts.InternalFontFamilyEnum;
 import org.savapage.core.jpa.User;
-import org.savapage.core.print.server.DocContentPrintException;
-import org.savapage.core.print.server.DocContentPrintReq;
-import org.savapage.core.services.QueueService;
+import org.savapage.core.jpa.UserEmail;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.util.InetUtils;
-import org.savapage.core.util.NumberUtil;
+import org.savapage.core.services.UserService;
+import org.savapage.core.users.conf.UserAliasList;
+import org.savapage.ext.oauth.OAuthClientPlugin;
+import org.savapage.ext.oauth.OAuthPluginException;
+import org.savapage.ext.oauth.OAuthProviderEnum;
+import org.savapage.ext.oauth.OAuthUserInfo;
 import org.savapage.server.SpSession;
+import org.savapage.server.WebApp;
+import org.savapage.server.WebAppParmEnum;
+import org.savapage.server.ext.ServerPluginManager;
+import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.pages.FontOptionsPanel;
+import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,39 +77,17 @@ public final class WebAppUser extends AbstractWebAppPage {
     private final static String PAGE_PARM_AUTH_TOKEN = "auth_token";
     private final static String PAGE_PARM_AUTH_TOKEN_USERID = "auth_user";
 
+    /**
+     *
+     */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(WebAppUser.class);
 
     /**
      *
      */
-    private static final QueueService QUEUE_SERVICE =
-            ServiceContext.getServiceFactory().getQueueService();
-
-    /**
-     * "Bean" attribute used for the selected font from the Form. Note: Wicket
-     * needs the getter.
-     */
-    private InternalFontFamilyEnum selectedUploadFont;
-
-    /**
-     *
-     */
-    private FileUploadField fileUploadField;
-
-    /**
-     *
-     */
-    private Long maxUploadMb;
-
-    public InternalFontFamilyEnum getSelectedUploadFont() {
-        return selectedUploadFont;
-    }
-
-    public void setSelectedUploadFont(
-            final InternalFontFamilyEnum selectedUploadFont) {
-        this.selectedUploadFont = selectedUploadFont;
-    }
+    private static final UserService USER_SERVICE =
+            ServiceContext.getServiceFactory().getUserService();
 
     @Override
     protected boolean isJqueryCoreRenderedByWicket() {
@@ -138,147 +110,233 @@ public final class WebAppUser extends AbstractWebAppPage {
 
     /**
      *
+     * @author Rijk Ravestein
+     *
      */
-    private class MyFileUploadForm<Leeg> extends Form<Void> {
+    private enum UploadNextButton {
+        PRINT, PDF, INBOX;
+    }
+
+    /**
+     * We use this workaround, because <wicket:enclosure> does not work (Wicket
+     * bug?).
+     */
+    private final class UploadNextButtonView
+            extends PropertyListView<UploadNextButton> {
 
         private static final long serialVersionUID = 1L;
 
         /**
          *
          * @param id
+         *            Wicket id.
+         * @param entryList
+         *            Button list.
          */
-        public MyFileUploadForm(String id) {
-            super(id);
-
+        UploadNextButtonView(final String id,
+                final List<UploadNextButton> entryList) {
+            super(id, entryList);
         }
 
-        /**
-         * @see org.apache.wicket.markup.html.form.Form#onSubmit()
-         */
         @Override
-        protected void onSubmit() {
+        protected void populateItem(final ListItem<UploadNextButton> item) {
 
-            final String originatorIp =
-                    ((ServletWebRequest) RequestCycle.get().getRequest())
-                            .getContainerRequest().getRemoteAddr();
+            final UploadNextButton button = item.getModelObject();
 
-            if (!InetUtils
-                    .isIp4AddrInCidrRanges(
-                            ConfigManager.instance().getConfigValue(
-                                    Key.WEB_PRINT_LIMIT_IP_ADDRESSES),
-                            originatorIp)) {
+            final String htmlId;
+            final String cssClass;
+            final String uiText;
 
-                error(localized("msg-file-upload-ip-not-allowed"));
-                return;
+            switch (button) {
+            case PRINT:
+                htmlId = "sp-file-upload-print-button";
+                cssClass = "ui-icon-main-print";
+                uiText = HtmlButtonEnum.PRINT.uiText(getPage().getLocale());
+                break;
+
+            case PDF:
+                htmlId = "sp-file-upload-pdf-button";
+                cssClass = "ui-icon-main-pdf-properties";
+                uiText = "PDF";
+                break;
+
+            default:
+                htmlId = "sp-file-upload-inbox-button";
+                cssClass = "ui-icon-main-arr-return";
+                uiText = getLocalizer().getString("button-inbox", getPage());
+                break;
             }
 
-            final List<FileUpload> uploads = fileUploadField.getFileUploads();
+            //
+            Label label = new Label("next-button", uiText);
 
-            if (uploads == null || uploads.isEmpty()) {
-                /*
-                 * display uploaded info
-                 */
-                warn(getLocalizer().getString("msg-file-upload-no-file", this));
-                return;
-            }
+            MarkupHelper.modifyLabelAttr(label, MarkupHelper.ATTR_ID, htmlId);
+            MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_CLASS,
+                    cssClass);
 
-            FileUpload uploadedFile = fileUploadField.getFileUploads().get(0);
+            item.add(label);
+        }
+    }
 
-            if (uploadedFile == null) {
-                /*
-                 * display uploaded info
-                 */
-                warn(getLocalizer().getString("msg-file-upload-no-file", this));
-                return;
-            }
+    /**
+     * Formats userid for logging.
+     *
+     * @param useridRaw
+     *            The raw userid as received.
+     * @param userid
+     *            The userid used (from alias)
+     * @return The formatted userid
+     */
+    private static String formatUserId(final String useridRaw,
+            final String userid) {
+        if (useridRaw.equals(userid)) {
+            return useridRaw;
+        }
+        return String.format("%s → %s", useridRaw, userid);
+    }
 
-            final String fileSize = NumberUtil
-                    .humanReadableByteCount(uploadedFile.getSize(), true);
+    /**
+     * Checks OAuth login request.
+     *
+     * @param mutableProvider
+     *            The AOuth provider, or {@code null} when not found.
+     * @return {@code null} when OAuth is <i>not</i> applicable.
+     *         {@link Boolean#FALSE} when authentication failed.
+     */
+    private Boolean checkOAuthToken(
+            final MutableObject<OAuthProviderEnum> mutableProvider) {
 
-            info(String.format("%s (%s)", uploadedFile.getClientFileName(),
-                    fileSize));
+        final IRequestParameters reqParms =
+                this.getRequestCycle().getRequest().getRequestParameters();
 
-            try {
+        final StringValue oauthProviderValue =
+                reqParms.getParameterValue(WebAppParmEnum.SP_OAUTH.parm());
 
-                AdminPublisher.instance().publish(PubTopicEnum.WEBPRINT,
-                        PubLevelEnum.INFO,
-                        localized("msg-admin-file-upload",
-                                SpSession.get().getUser().getUserId(),
-                                uploadedFile.getClientFileName(), fileSize));
-
-                // Convert file to PDF.
-                handleFileUpload(originatorIp, uploadedFile);
-
-                info(getLocalizer().getString("msg-file-process-success",
-                        this));
-
-            } catch (Exception e) {
-                error(localized("msg-file-process-error", e.getMessage()));
-            }
+        if (oauthProviderValue.isEmpty()) {
+            return null;
         }
 
-        /**
-         *
-         * @param originatorIp
-         * @param uploadedFile
-         * @throws DocContentPrintException
-         * @throws IOException
+        final String oauthProvider = oauthProviderValue.toString();
+
+        final ServerPluginManager pluginManager =
+                WebApp.get().getPluginManager();
+
+        OAuthClientPlugin plugin = null;
+
+        for (final OAuthProviderEnum value : OAuthProviderEnum.values()) {
+            if (oauthProvider.equalsIgnoreCase(value.toString())) {
+                plugin = pluginManager.getOAuthClient(value);
+            }
+            if (plugin == null) {
+                continue;
+            }
+            break;
+        }
+
+        if (plugin == null) {
+            LOGGER.error(String.format("OAuth [%s]: plugin not found.",
+                    oauthProvider));
+            return Boolean.FALSE;
+        }
+
+        mutableProvider.setValue(plugin.getProvider());
+
+        /*
+         * Collect the parameters for the callback.
          */
-        private void handleFileUpload(final String originatorIp,
-                final FileUpload uploadedFile)
-                throws DocContentPrintException, IOException {
+        final Map<String, String> parms = new HashMap<>();
 
-            final User user = SpSession.get().getUser();
-            final String fileName = uploadedFile.getClientFileName();
-
-            final InternalFontFamilyEnum preferredFont =
-                    ((WebAppUser) this.getParent()).getSelectedUploadFont();
-
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String.format("User [%s] uploaded file [%s] [%s]",
-                        user.getUserId(), uploadedFile.getContentType(),
-                        uploadedFile.getClientFileName()));
+        for (final String name : reqParms.getParameterNames()) {
+            final StringValue value = reqParms.getParameterValue(name);
+            if (!value.isEmpty()) {
+                parms.put(name, value.toString());
             }
-
-            ServiceContext.open();
-
-            try {
-
-                DocContentTypeEnum contentType = DocContent
-                        .getContentTypeFromMime(uploadedFile.getContentType());
-
-                if (contentType == null) {
-                    contentType = DocContent.getContentTypeFromFile(
-                            uploadedFile.getClientFileName());
-
-                    if (LOGGER.isWarnEnabled()) {
-                        LOGGER.warn(String.format(
-                                "No content type found for [%s], "
-                                        + "using [%s] based on file extension.",
-                                uploadedFile.getContentType(), contentType));
-                    }
-                }
-
-                final DocContentPrintReq docContentPrintReq =
-                        new DocContentPrintReq();
-
-                docContentPrintReq.setContentType(contentType);
-                docContentPrintReq.setFileName(fileName);
-                docContentPrintReq.setOriginatorEmail(null);
-                docContentPrintReq.setOriginatorIp(originatorIp);
-                docContentPrintReq.setPreferredOutputFont(preferredFont);
-                docContentPrintReq.setProtocol(DocLogProtocolEnum.HTTP);
-                docContentPrintReq.setTitle(fileName);
-
-                QUEUE_SERVICE.printDocContent(ReservedIppQueueEnum.WEBPRINT,
-                        user, true, docContentPrintReq,
-                        uploadedFile.getInputStream());
-
-            } finally {
-                ServiceContext.close();
-            }
-
         }
+
+        /*
+         * Leave no trace, clear all parameters.
+         */
+        this.getPageParameters().clearNamed();
+
+        /*
+         * Perform the callback.
+         */
+        final OAuthUserInfo userInfo;
+        try {
+            userInfo = plugin.onCallBack(parms);
+        } catch (IOException | OAuthPluginException e) {
+            throw new SpException(e.getMessage());
+        }
+
+        //
+        if (userInfo == null) {
+            LOGGER.error(
+                    String.format("OAuth [%s]: no userinfo.", oauthProvider));
+            return Boolean.FALSE;
+        }
+
+        final String userid = userInfo.getUserId();
+        final String email = userInfo.getEmail();
+
+        if (userid == null && email == null) {
+            LOGGER.error(
+                    String.format("OAuth [%s]: no userid or email in userinfo.",
+                            oauthProvider));
+            return Boolean.FALSE;
+        }
+
+        final User authUser;
+
+        if (userid == null) {
+            final UserEmail userEmail = ServiceContext.getDaoContext()
+                    .getUserEmailDao().findByEmail(email);
+            if (userEmail == null) {
+                LOGGER.warn(String.format("OAuth [%s] email [%s]: not found.",
+                        oauthProvider, email));
+                return Boolean.FALSE;
+            }
+            authUser = userEmail.getUser();
+
+        } else if (email == null) {
+            authUser = ServiceContext.getDaoContext().getUserDao()
+                    .findActiveUserByUserId(userid);
+            if (authUser == null) {
+                LOGGER.warn(String.format("OAuth [%s] user [%s]: not found.",
+                        oauthProvider, email));
+                return Boolean.FALSE;
+            }
+        } else {
+            return Boolean.FALSE;
+        }
+
+        if (authUser.getDeleted().booleanValue()
+                || authUser.getDisabledPrintIn().booleanValue()) {
+            LOGGER.warn(
+                    String.format("OAuth [%s] user [%s]: deleted or disabled.",
+                            oauthProvider, authUser.getUserId()));
+            return Boolean.FALSE;
+        }
+
+        /*
+         * Yes, we are authenticated.
+         */
+        final SpSession session = SpSession.get();
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug(String.format("OAuth [%s] user [%s]: OK [session: %s]",
+                    oauthProvider, authUser.getUserId(), session.getId()));
+        }
+
+        session.setUser(authUser);
+
+        /*
+         * Pass the WebAppParmEnum.SP_LOGIN_OAUTH.parm() so JavaScript can act
+         * upon it.
+         */
+        this.getPageParameters().add(WebAppParmEnum.SP_LOGIN_OAUTH.parm(),
+                oauthProvider);
+
+        return Boolean.TRUE;
     }
 
     /**
@@ -293,12 +351,18 @@ public final class WebAppUser extends AbstractWebAppPage {
         final String token =
                 this.getParmValue(parameters, false, PAGE_PARM_AUTH_TOKEN);
 
-        final String userid = this.getParmValue(parameters, false,
-                PAGE_PARM_AUTH_TOKEN_USERID);
-
-        if (userid == null || token == null) {
+        if (token == null) {
             return;
         }
+
+        final String useridRaw = this.getParmValue(parameters, false,
+                PAGE_PARM_AUTH_TOKEN_USERID);
+
+        if (useridRaw == null) {
+            return;
+        }
+
+        final String userid = UserAliasList.instance().getUserName(useridRaw);
 
         final User sessionUser = SpSession.get().getUser();
 
@@ -309,8 +373,9 @@ public final class WebAppUser extends AbstractWebAppPage {
         final long msecExpiry = ConfigManager.instance()
                 .getConfigLong(Key.WEB_LOGIN_TTP_TOKEN_EXPIRY_MSECS);
 
-        if (!OneTimeAuthToken.isTokenValid(userid, token, msecExpiry)) {
-            final String msg = localized("msg-authtoken-denied", userid);
+        if (!OneTimeAuthToken.isTokenValid(useridRaw, token, msecExpiry)) {
+            final String msg = localized("msg-authtoken-denied",
+                    formatUserId(useridRaw, userid));
             AdminPublisher.instance().publish(PubTopicEnum.USER,
                     PubLevelEnum.WARN, msg);
             LOGGER.warn(msg);
@@ -322,8 +387,8 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         if (authUser == null) {
 
-            final String msg =
-                    localized("msg-authtoken-user-not-found", userid);
+            final String msg = localized("msg-authtoken-user-not-found",
+                    formatUserId(useridRaw, userid));
             AdminPublisher.instance().publish(PubTopicEnum.USER,
                     PubLevelEnum.WARN, msg);
             LOGGER.warn(msg);
@@ -331,15 +396,31 @@ public final class WebAppUser extends AbstractWebAppPage {
             return;
         }
 
+        try {
+            USER_SERVICE.lazyUserHomeDir(authUser);
+        } catch (IOException e) {
+            final String msg =
+                    String.format("User [%s] inbox could not be created: %s",
+                            authUser.getUserId(), e.getMessage());
+            AdminPublisher.instance().publish(PubTopicEnum.USER,
+                    PubLevelEnum.ERROR, msg);
+            LOGGER.error(msg);
+            return;
+        }
+
+        /*
+         * Yes, we are authenticated, and no exceptions.
+         */
         SpSession.get().setUser(authUser, true);
 
-        final String msg = localized("msg-authtoken-accepted", userid);
+        final String msg = localized("msg-authtoken-accepted",
+                formatUserId(useridRaw, userid));
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
                 msg);
 
         if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace(String.format("User [%s] authenticated with token: %s",
-                    userid, token));
+            LOGGER.trace(String.format("User %s authenticated with token: %s",
+                    formatUserId(useridRaw, userid), token));
         } else if (LOGGER.isInfoEnabled()) {
             LOGGER.info(msg);
         }
@@ -359,34 +440,47 @@ public final class WebAppUser extends AbstractWebAppPage {
             return;
         }
 
-        checkOneTimeAuthToken(parameters);
+        final MutableObject<OAuthProviderEnum> mutableProvider =
+                new MutableObject<>();
 
+        final Boolean oauth = checkOAuthToken(mutableProvider);
+
+        if (oauth == null) {
+
+            checkOneTimeAuthToken(parameters);
+
+        } else if (!oauth.booleanValue()) {
+
+            final PageParameters parms = new PageParameters();
+
+            parms.set(WebAppParmEnum.SP_APP.parm(), this.getWebAppType());
+            parms.set(WebAppParmEnum.SP_LOGIN_OAUTH.parm(),
+                    mutableProvider.toString());
+
+            setResponsePage(WebAppOAuthMsg.class, parms);
+            return;
+        }
+
+        //
         final String appTitle = getWebAppTitle(null);
 
         add(new Label("app-title", appTitle));
 
         addZeroPagePanel(WebAppTypeEnum.USER);
 
-        maxUploadMb = ConfigManager.instance()
-                .getConfigLong(Key.WEB_PRINT_MAX_FILE_MB);
-
-        if (maxUploadMb == null) {
-            maxUploadMb = IConfigProp.WEBPRINT_MAX_FILE_MB_V_DEFAULT;
-        }
-
-        fileUploadMarkup();
+        webPrintdMarkup();
 
         addFileDownloadApiPanel();
 
-        /*
-         * NOTE: Since Wicket 7 a panel is needed to make <wicket:enclosure>
-         * work.
-         */
-        final UserDashboardPanel dashboardPanel =
-                new UserDashboardPanel("page-dashboard-panel");
+        //
+        final List<UploadNextButton> nextButtons = new ArrayList<>();
 
-        add(dashboardPanel);
-        dashboardPanel.populate();
+        nextButtons.add(UploadNextButton.PRINT);
+        nextButtons.add(UploadNextButton.PDF);
+        nextButtons.add(UploadNextButton.INBOX);
+
+        add(new UploadNextButtonView("next-buttons", nextButtons));
+
     }
 
     @Override
@@ -401,140 +495,47 @@ public final class WebAppUser extends AbstractWebAppPage {
 
     @Override
     protected Set<JavaScriptLibrary> getJavaScriptToRender() {
-        return EnumSet.allOf(JavaScriptLibrary.class);
+
+        final EnumSet<JavaScriptLibrary> libs =
+                EnumSet.allOf(JavaScriptLibrary.class);
+
+        return libs;
     }
 
     /**
-     * Creates the markup for the Ajax File upload.
      *
-     * http://www.wicket-library.com/wicket-examples-6.0.x/upload/single?1
+     * @return the
      */
-    private void fileUploadMarkup() {
+    private static String getHtmlAcceptString() {
 
-        /*
-         * Supported types.
-         */
-        add(new Label("file-upload-types-docs",
-                DocContent.getSupportedDocsInfo()));
+        final StringBuilder html = new StringBuilder();
 
-        add(new Label("file-upload-types-graphics",
-                DocContent.getSupportedGraphicsInfo()));
+        for (final String ext : WebPrintHelper
+                .getSupportedFileExtensions(true)) {
+            if (html.length() > 0) {
+                html.append(",");
+            }
+            html.append(ext);
+        }
 
-        add(new Label("file-upload-max-size", maxUploadMb.toString() + " MB"));
+        return html.toString();
+    }
 
-        /*
-         * Create the form.
-         */
-        Form<?> form = new MyFileUploadForm<>("fileUploadForm");
+    /**
+     * Creates the markup for the Web Print File upload.
+     */
+    private void webPrintdMarkup() {
 
-        form.setMultiPart(false);
+        final Label fileUploadField = new Label("fileUpload");
+        fileUploadField
+                .add(new AttributeModifier("accept", getHtmlAcceptString()));
+        add(fileUploadField);
 
-        form.setMaxSize(Bytes.megabytes(maxUploadMb));
-
-        add(form);
-
-        /*
-         * Create the file upload field.
-         */
-        fileUploadField = new FileUploadField("fileUpload");
-        fileUploadField.add(new AttributeModifier("accept",
-                DocContent.getHtmlAcceptString()));
-
-        form.add(fileUploadField);
-
-        /*
-         * The progress bar.
-         */
-        form.add(new UploadProgressBar("upload-progress", form));
-
-        /*
-         * The feedback panel.
-         */
-        final Component feedback = new FeedbackPanel("fileUploadFeedback")
-                .setOutputMarkupPlaceholderTag(true);
-        form.add(feedback);
-
-        /*
-         *
-         */
-        this.setSelectedUploadFont(ConfigManager
+        //
+        final FontOptionsPanel fontOptionsPanel =
+                new FontOptionsPanel("file-upload-fontfamily-options");
+        fontOptionsPanel.populate(ConfigManager
                 .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY));
-
-        final DropDownChoice<InternalFontFamilyEnum> fileUploadFontDropDown =
-                new DropDownChoice<>("fileUploadFontSelect",
-                        new PropertyModel<InternalFontFamilyEnum>(this,
-                                "selectedUploadFont"),
-                        new LoadableDetachableModel<List<InternalFontFamilyEnum>>() {
-
-                            private static final long serialVersionUID = 1L;
-
-                            @Override
-                            protected List<InternalFontFamilyEnum> load() {
-                                return new ArrayList<>(Arrays.asList(
-                                        InternalFontFamilyEnum.values()));
-                            }
-                        }, new IChoiceRenderer<InternalFontFamilyEnum>() {
-
-                            private static final long serialVersionUID = 1L;
-
-                            @Override
-                            public Object getDisplayValue(
-                                    final InternalFontFamilyEnum object) {
-                                return object.uiText(getLocale());
-                            }
-
-                            @Override
-                            public String getIdValue(
-                                    final InternalFontFamilyEnum object,
-                                    final int index) {
-                                return object.toString();
-                            }
-
-                            @Override
-                            public InternalFontFamilyEnum getObject(String arg0,
-                                    IModel<? extends List<? extends InternalFontFamilyEnum>> arg1) {
-                                return InternalFontFamilyEnum.valueOf(arg0);
-                            }
-                        });
-
-        form.add(fileUploadFontDropDown);
-
-        /*
-         * Create the ajax button used to submit the form.
-         */
-        AjaxButton ajaxButton = new AjaxButton("ajaxSubmitFileUpload") {
-
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            protected void onSubmit(final AjaxRequestTarget target,
-                    final Form<?> form) {
-                // ajax-update the feedback panel
-                target.add(feedback);
-            }
-
-            @Override
-            protected void onError(final AjaxRequestTarget target,
-                    final Form<?> form) {
-                LOGGER.error("error uploading file");
-                // ajax-update the feedback panel
-                target.add(feedback);
-            }
-
-        };
-
-        ajaxButton.add(new AttributeModifier("value",
-                getLocalizer().getString("button-file-upload", this)));
-
-        form.add(ajaxButton);
-
-        /*
-         *
-         */
-        final Label labelWrk = new Label("file-upload-reset");
-        labelWrk.add(new AttributeModifier("value",
-                getLocalizer().getString("button-file-upload-reset", this)));
-        form.add(labelWrk);
-
+        add(fontOptionsPanel);
     }
 }

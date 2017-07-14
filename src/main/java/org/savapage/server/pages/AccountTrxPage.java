@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -26,6 +26,7 @@ import java.text.MessageFormat;
 import java.text.ParseException;
 import java.util.List;
 
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.behavior.AttributeAppender;
@@ -42,7 +43,9 @@ import org.savapage.core.dao.enums.AccountTrxTypeEnum;
 import org.savapage.core.dao.enums.DaoEnumHelper;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.helpers.AccountTrxPagerReq;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.DocLog;
@@ -50,6 +53,7 @@ import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserAccount;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.JobTicketSupplierData;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.BitcoinUtil;
 import org.savapage.core.util.CurrencyUtil;
@@ -157,11 +161,9 @@ public class AccountTrxPage extends AbstractListPage {
             item.add(new Label("trxActor", accountTrx.getTransactedBy()));
 
             //
-            final String currencySymbol =
-                    String.format("%s ",
-                            CurrencyUtil.getCurrencySymbol(
-                                    accountTrx.getCurrencyCode(),
-                                    getSession().getLocale()));
+            final String currencySymbol = String.format("%s ",
+                    CurrencyUtil.getCurrencySymbol(accountTrx.getCurrencyCode(),
+                            getSession().getLocale()));
 
             final String amount;
             final String balance;
@@ -215,10 +217,11 @@ public class AccountTrxPage extends AbstractListPage {
             final boolean showDocLogTitle = ConfigManager.instance()
                     .isConfigValue(Key.WEBAPP_DOCLOG_SHOW_DOC_TITLE);
 
-            String printOutInfo = null;
+            StringBuilder printOutInfo = new StringBuilder();
             String comment = accountTrx.getComment();
             String imageSrc = null;
             String delegate = null;
+            String jobticket = null;
 
             //
             String msgKey;
@@ -284,13 +287,12 @@ public class AccountTrxPage extends AbstractListPage {
                 int totalPagesIn = docLog.getNumberOfPages().intValue()
                         * accountTrx.getTransactionWeight().intValue();
 
-                if (totalPagesIn == 1) {
-                    msgKey = "printed-pages-one";
-                } else {
-                    msgKey = "printed-pages-multiple";
-                }
+                printOutInfo.append(String.format("%d %s", totalPagesIn,
+                        PrintOutNounEnum.PAGE.uiText(getLocale(),
+                                totalPagesIn > 1)));
 
-                printOutInfo = localized(msgKey, String.valueOf(totalPagesIn));
+                helper.encloseLabel("printOutCopies", "", false);
+                helper.encloseLabel("printOutSheets", "", false);
 
                 comment = cmt.toString();
 
@@ -305,17 +307,32 @@ public class AccountTrxPage extends AbstractListPage {
 
                 key = "type-print-out";
 
-                int totalPagesOut = docLog.getNumberOfPages().intValue()
-                        * accountTrx.getTransactionWeight().intValue();
+                final int totalPagesOut = docLog.getNumberOfPages().intValue();
 
-                if (totalPagesOut == 1) {
-                    msgKey = "printed-pages-one";
-                } else {
-                    msgKey = "printed-pages-multiple";
-                }
+                printOutInfo.append(String.format("%d %s", totalPagesOut,
+                        PrintOutNounEnum.PAGE.uiText(getLocale(),
+                                totalPagesOut > 1)));
 
-                printOutInfo = localized(msgKey, String.valueOf(totalPagesOut));
+                final int nCopies =
+                        accountTrx.getTransactionWeight().intValue();
 
+                //
+                final int nSheets =
+                        nCopies * printOut.getNumberOfSheets().intValue()
+                                / printOut.getNumberOfCopies().intValue();
+
+                helper.encloseLabel("printOutCopies",
+                        String.format("%d %s",
+                                nCopies, PrintOutNounEnum.COPY
+                                        .uiText(getLocale(), nCopies > 1)),
+                        true);
+
+                helper.encloseLabel("printOutSheets",
+                        String.format("%d %s",
+                                nSheets, PrintOutNounEnum.SHEET
+                                        .uiText(getLocale(), nSheets > 1)),
+                        true);
+                //
                 comment = printOut.getPrinter().getDisplayName();
 
                 if (showDocLogTitle
@@ -328,10 +345,9 @@ public class AccountTrxPage extends AbstractListPage {
 
                 final User userActor = docLog.getUser();
 
-                if (accountType == AccountTypeEnum.SHARED) {
+                if (accountType == AccountTypeEnum.SHARED
+                        || accountType == AccountTypeEnum.GROUP) {
                     delegate = localized("by-user", userActor.getUserId());
-                } else if (accountType == AccountTypeEnum.GROUP) {
-                    // TODO
                 } else {
                     final User userSubject = this.getUserSubject(accountTrx);
                     if (userSubject != null
@@ -340,6 +356,33 @@ public class AccountTrxPage extends AbstractListPage {
                                 localized("by-delegate", userActor.getUserId());
                     }
                 }
+
+                final PrintModeEnum printMode = EnumUtils
+                        .getEnum(PrintModeEnum.class, printOut.getPrintMode());
+
+                if (printMode == PrintModeEnum.TICKET
+                        || printMode == PrintModeEnum.TICKET_C
+                        || printMode == PrintModeEnum.TICKET_E) {
+
+                    final String operator;
+
+                    if (docLog.getExternalData() == null) {
+                        operator = null;
+
+                    } else {
+                        final JobTicketSupplierData supplierData =
+                                JobTicketSupplierData.create(
+                                        JobTicketSupplierData.class,
+                                        docLog.getExternalData());
+                        operator = supplierData.getOperator();
+                    }
+                    jobticket = String.format("%s %s (%s)",
+                            printMode.uiText(getLocale()),
+                            StringUtils.defaultString(docLog.getExternalId(),
+                                    "???"),
+                            StringUtils.defaultString(operator, "???"));
+                }
+
                 break;
 
             default:
@@ -347,7 +390,10 @@ public class AccountTrxPage extends AbstractListPage {
                         "TrxType [" + trxType + "] unknown: not handled");
             }
 
+            //
+
             helper.encloseLabel("delegate", delegate, delegate != null);
+            helper.encloseLabel("jobticket", jobticket, jobticket != null);
 
             final boolean isExtBitcoin =
                     StringUtils.isNotBlank(accountTrx.getExtCurrencyCode())
@@ -484,8 +530,17 @@ public class AccountTrxPage extends AbstractListPage {
             item.add(createVisibleLabel(StringUtils.isNotBlank(comment),
                     "comment", comment));
             //
-            item.add(createVisibleLabel(StringUtils.isNotBlank(printOutInfo),
-                    "printOut", printOutInfo));
+            item.add(createVisibleLabel(printOutInfo.length() > 0, "printOut",
+                    printOutInfo.toString()));
+
+            if (printOut == null) {
+                helper.discloseLabel("printout-options");
+            } else {
+                final PrintOutOptionsPanel panel =
+                        new PrintOutOptionsPanel("printout-options");
+                panel.populate(printOut);
+                item.add(panel);
+            }
 
             if (trxType == AccountTrxTypeEnum.GATEWAY
                     && accountTrx.getExtAmount() != null) {

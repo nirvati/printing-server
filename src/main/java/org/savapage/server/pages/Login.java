@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,24 +14,36 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
 package org.savapage.server.pages;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.IRequestParameters;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.dao.DeviceDao;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
+import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.UserAuth;
+import org.savapage.ext.oauth.OAuthProviderEnum;
+import org.savapage.server.WebApp;
+import org.savapage.server.WebAppParmEnum;
+import org.savapage.server.ext.ServerPluginHelper;
+import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -46,8 +58,12 @@ public final class Login extends AbstractPage {
 
     /**
      *
+     * @param parameters
+     *            The page parameters.
      */
-    public Login() {
+    public Login(final PageParameters parameters) {
+
+        super(parameters);
 
         add(new Label("title",
                 localized("title", CommunityDictEnum.SAVAPAGE.getWord())));
@@ -65,14 +81,15 @@ public final class Login extends AbstractPage {
         final IRequestParameters parms =
                 getRequestCycle().getRequest().getPostParameters();
 
-        final WebAppTypeEnum webAppType = EnumUtils.getEnum(
-                WebAppTypeEnum.class, parms.getParameterValue("webAppType")
-                        .toString(WebAppTypeEnum.UNDEFINED.toString()));
+        final WebAppTypeEnum webAppType =
+                EnumUtils.getEnum(WebAppTypeEnum.class,
+                        parms.getParameterValue(POST_PARM_WEBAPPTYPE)
+                                .toString(WebAppTypeEnum.UNDEFINED.toString()));
 
         final HtmlInjectComponent htmlInject = new HtmlInjectComponent(
                 "login-inject", webAppType, HtmlInjectEnum.LOGIN);
 
-        MarkupHelper helper = new MarkupHelper(this);
+        final MarkupHelper helper = new MarkupHelper(this);
 
         if (htmlInject.isInjectAvailable()) {
             add(htmlInject);
@@ -123,5 +140,91 @@ public final class Login extends AbstractPage {
 
         //
         addVisible(userAuth.isAuthIdPinReq(), "login-id-pin", "");
+
+        // For now, restrict OAuth to User Web App only...
+        final boolean localLoginRestricted = webAppType != WebAppTypeEnum.USER
+                || parms.getParameterValue(WebAppParmEnum.SP_LOGIN_LOCAL.parm())
+                        .toString() != null;
+
+        addOAuthButtons(localLoginRestricted);
+    }
+
+    /**
+     *
+     * @param localLoginRestricted
+     *            If {@code true}, login is restricted to local methods.
+     */
+    private void addOAuthButtons(final boolean localLoginRestricted) {
+
+        final List<OAuthProviderEnum> list = new ArrayList<>();
+
+        if (!localLoginRestricted) {
+            final ServerPluginManager mgr = WebApp.get().getPluginManager();
+
+            for (final OAuthProviderEnum value : mgr.getOAuthClientPlugins()
+                    .keySet()) {
+                list.add(value);
+            }
+        }
+
+        add(new PropertyListView<OAuthProviderEnum>("ext-supplier-icons",
+                list) {
+
+            private static final long serialVersionUID = 1L;
+
+            private static final String OAUTH_PROVIDER_ICON_FORMAT =
+                    ".ui-icon-ext-oauth-provider-%s:after { " + "background: "
+                            + "url(%s) " + "50%% 50%% no-repeat; "
+                            + "background-size: 22px 22px; "
+                            + "padding-left: 15px; "
+                            + "-webkit-border-radius: 0 !important; "
+                            + "border-radius: 0 !important; }";
+
+            @Override
+            protected void
+                    populateItem(final ListItem<OAuthProviderEnum> item) {
+
+                final OAuthProviderEnum provider = item.getModelObject();
+                final ExternalSupplierEnum supplier =
+                        ServerPluginHelper.getEnum(provider);
+
+                final Label label = new Label("ext-supplier-icon",
+                        String.format(OAUTH_PROVIDER_ICON_FORMAT,
+                                provider.toString().toLowerCase(), WebApp
+                                        .getExtSupplierEnumImgUrl(supplier)));
+
+                label.setEscapeModelStrings(false);
+                item.add(label);
+            }
+        });
+
+        add(new PropertyListView<OAuthProviderEnum>("oauth-buttons", list) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void
+                    populateItem(final ListItem<OAuthProviderEnum> item) {
+
+                final OAuthProviderEnum provider = item.getModelObject();
+
+                final Label label = new Label("oauth-button", "&nbsp;");
+
+                MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_CLASS,
+                        String.format("ui-icon-ext-oauth-provider-%s",
+                                provider.toString().toLowerCase()));
+
+                MarkupHelper.modifyLabelAttr(label, MarkupHelper.ATTR_TITLE,
+                        provider.uiText());
+
+                MarkupHelper.modifyLabelAttr(label,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, provider.toString());
+
+                label.setEscapeModelStrings(false);
+                item.add(label);
+            }
+
+        });
+
     }
 }

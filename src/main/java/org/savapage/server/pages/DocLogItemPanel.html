@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 
@@ -48,8 +48,9 @@
 		</wicket:enclosure>
 	</div>
 	<div class="sp-txt-wrap">
-		<wicket:enclosure child="printoutMode">
-			<span wicket:id="printoutMode" /> &bull; </wicket:enclosure>
+		<wicket:enclosure child="printoutMode"> &bull;
+			<span class="sp-txt-info" wicket:id="printoutMode" /> &bull; 
+		</wicket:enclosure>
 		<span wicket:id="totals" />
 		<wicket:enclosure child="job-id"> &bull; <wicket:message
 				key="job-id" />
@@ -61,14 +62,17 @@
 		<wicket:enclosure child="papersize"> &bull; <span
 				wicket:id="papersize" />
 		</wicket:enclosure>
+		<wicket:enclosure child="landscape"> &bull; <span
+				class="sp-txt-info" wicket:id="landscape" />
+		</wicket:enclosure>
 		<wicket:enclosure child="letterhead"> &bull; <span
 				wicket:id="letterhead" />
 		</wicket:enclosure>
 		<wicket:enclosure child="duplex"> &bull; <span
 				class="sp-txt-valid" wicket:id="duplex" />
 		</wicket:enclosure>
-		<wicket:enclosure child="singlex"> &bull; <span
-				class="sp-txt-info" wicket:id="singlex" />
+		<wicket:enclosure child="simplex"> &bull; <span
+				class="sp-txt-info" wicket:id="simplex" />
 		</wicket:enclosure>
 		<wicket:enclosure child="color"> &bull; <span
 				class="sp-txt-warn" wicket:id="color" />
@@ -82,6 +86,33 @@
 		<wicket:enclosure child="removeGraphics"> &bull; <span
 				class="sp-txt-valid" wicket:id="removeGraphics" />
 		</wicket:enclosure>
+		<wicket:enclosure child="collate"> &bull; <span
+				class="sp-txt-info" wicket:id="collate" />
+		</wicket:enclosure>
+		<wicket:enclosure child="punch"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="punch" />
+		</wicket:enclosure>
+		<wicket:enclosure child="staple"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="staple" />
+		</wicket:enclosure>
+		<wicket:enclosure child="fold"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="fold" />
+		</wicket:enclosure>
+		<wicket:enclosure child="booklet"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="booklet" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jobticket-media"> &bull; <span
+				class="sp-txt-job-ticket-attr" wicket:id="jobticket-media" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jobticket-copy"> &bull; <span
+				class="sp-txt-job-ticket-attr" wicket:id="jobticket-copy" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jobticket-finishings-ext"> &bull; <span
+				class="sp-txt-job-ticket-attr" wicket:id="jobticket-finishings-ext" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jobticket-custom-ext"> &bull; <span
+				class="sp-txt-job-ticket-attr" wicket:id="jobticket-custom-ext" />
+		</wicket:enclosure>
 		<wicket:enclosure child="drm"> &bull; <span
 				class="sp-txt-warn" wicket:id="drm" />
 			<span wicket:id="print-in-denied-reason-hyphen" />
@@ -93,6 +124,15 @@
 		<wicket:enclosure child="userpw"> &bull; <span
 				wicket:id="userpw" />
 		</wicket:enclosure>
+		<wicket:enclosure child="media-source"> &bull; <span
+				wicket:id="media-source" />
+		</wicket:enclosure>
+		<wicket:enclosure child="output-bin"> &gt; <span
+				wicket:id="output-bin" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jog-offset"> (<span
+				wicket:id="jog-offset" />)
+        </wicket:enclosure>
 		<wicket:enclosure child="cost-currency"> &bull; <span
 				wicket:id="cost-currency" />
 		</wicket:enclosure>
@@ -118,19 +158,8 @@
 		</p>
 	</wicket:enclosure>
 
-	<wicket:enclosure child="extSupplier">
-		<p class="sp-txt-wrap">
-			<wicket:enclosure child="extSupplierImg">
-				<img wicket:id="extSupplierImg" src="" height="12" />
-			</wicket:enclosure>
-			<wicket:enclosure child="extSupplier">
-				<span style="font-size: small;" wicket:id="extSupplier" />
-			</wicket:enclosure>
-			<wicket:enclosure child="extStatus">
-                    &bull; <span style="font-size: small;"
-					wicket:id="extStatus" />
-			</wicket:enclosure>
-		</p>
+	<wicket:enclosure child="extSupplierPanel">
+		<wicket:panel wicket:id="extSupplierPanel" />
 	</wicket:enclosure>
 
 	<p class="ui-li-aside">

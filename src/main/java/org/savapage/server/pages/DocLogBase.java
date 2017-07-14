@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -31,11 +31,13 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.IppQueueDao;
 import org.savapage.core.dao.PrinterDao;
+import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.IppQueue;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.jpa.User;
+import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.server.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
@@ -47,6 +49,9 @@ import org.savapage.server.webapp.WebAppTypeEnum;
 public class DocLogBase extends AbstractAuthPage {
 
     private static final long serialVersionUID = 1L;
+
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
 
     /**
      *
@@ -69,26 +74,40 @@ public class DocLogBase extends AbstractAuthPage {
             checkAdminAuthorization();
         }
 
-        handlePage(webAppType == WebAppTypeEnum.ADMIN);
+        if (webAppType == WebAppTypeEnum.JOBTICKETS) {
+
+            final User user = SpSession.get().getUser();
+
+            if (user == null || !ACCESS_CONTROL_SERVICE.hasAccess(user,
+                    ACLRoleEnum.JOB_TICKET_OPERATOR)) {
+
+                this.setResponsePage(NotAuthorized.class);
+                setAuthErrorHandled(true);
+            }
+
+        }
+
+        handlePage(webAppType);
     }
 
     /**
      *
-     * @param em
+     * @param webAppType
+     *            The Web App Type this page is part of.
      */
-    private void handlePage(final boolean adminWebApp) {
+    private void handlePage(final WebAppTypeEnum webAppType) {
 
         final String data = getParmValue(POST_PARM_DATA);
 
-        DocLogPagerReq req = DocLogPagerReq.read(data);
+        final DocLogPagerReq req = DocLogPagerReq.read(data);
 
-        Long userId = null;
+        final Long userId;
         Long accountId = null;
 
-        boolean userNameVisible = false;
-        boolean accountNameVisible = false;
+        final boolean userNameVisible;
+        final boolean accountNameVisible;
 
-        if (adminWebApp) {
+        if (webAppType == WebAppTypeEnum.ADMIN) {
 
             userId = req.getSelect().getUserId();
             userNameVisible = (userId != null);
@@ -96,12 +115,20 @@ public class DocLogBase extends AbstractAuthPage {
             accountId = req.getSelect().getAccountId();
             accountNameVisible = (accountId != null);
 
+        } else if (webAppType == WebAppTypeEnum.JOBTICKETS) {
+
+            userId = null;
+            userNameVisible = false;
+            accountNameVisible = false;
+
         } else {
             /*
              * If we are called in a User WebApp context we ALWAYS use the user
              * of the current session.
              */
             userId = SpSession.get().getUser().getId();
+            userNameVisible = false;
+            accountNameVisible = false;
         }
 
         //
@@ -141,18 +168,36 @@ public class DocLogBase extends AbstractAuthPage {
         //
         final MarkupHelper helper = new MarkupHelper(this);
 
-        final String attribute = "value";
+        final String htmlAttrValue = "value";
 
-        helper.addModifyLabelAttr("select-type-all", attribute,
+        helper.addModifyLabelAttr("select-type-all", htmlAttrValue,
                 DocLogDao.Type.ALL.toString());
-        helper.addModifyLabelAttr("select-type-in", attribute,
+        helper.addModifyLabelAttr("select-type-in", htmlAttrValue,
                 DocLogDao.Type.IN.toString());
-        helper.addModifyLabelAttr("select-type-out", attribute,
+        helper.addModifyLabelAttr("select-type-out", htmlAttrValue,
                 DocLogDao.Type.OUT.toString());
-        helper.addModifyLabelAttr("select-type-pdf", attribute,
+        helper.addModifyLabelAttr("select-type-pdf", htmlAttrValue,
                 DocLogDao.Type.PDF.toString());
-        helper.addModifyLabelAttr("select-type-print", attribute,
+        helper.addModifyLabelAttr("select-type-print", htmlAttrValue,
                 DocLogDao.Type.PRINT.toString());
+        //
+        final boolean ticketButtonVisible;
+
+        if (webAppType == WebAppTypeEnum.ADMIN
+                || webAppType == WebAppTypeEnum.JOBTICKETS) {
+            ticketButtonVisible = true;
+        } else {
+            final User user = SpSession.get().getUser();
+            ticketButtonVisible = user != null && ACCESS_CONTROL_SERVICE
+                    .hasAccess(user, ACLRoleEnum.JOB_TICKET_CREATOR);
+        }
+
+        if (ticketButtonVisible) {
+            helper.addModifyLabelAttr("select-type-ticket", htmlAttrValue,
+                    DocLogDao.Type.TICKET.toString());
+        } else {
+            helper.discloseLabel("select-type-ticket");
+        }
 
         //
         helper.encloseLabel("select-and-sort-user", userName, userNameVisible);
@@ -212,17 +257,17 @@ public class DocLogBase extends AbstractAuthPage {
         /*
          *
          */
-        final Long printerId = req.getSelect().getPrinterId();
-        if (printerId != null) {
+        if (req.getSelect() != null) {
 
-        }
+            final Long printerId = req.getSelect().getPrinterId();
+            if (printerId != null) {
 
-        /*
-         *
-         */
-        final Long queueId = req.getSelect().getQueueId();
-        if (queueId != null) {
+            }
 
+            final Long queueId = req.getSelect().getQueueId();
+            if (queueId != null) {
+
+            }
         }
 
     }

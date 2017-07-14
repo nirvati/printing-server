@@ -1,7 +1,7 @@
 /*! SavaPage jQuery Mobile Admin Job Tickets Web App | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
@@ -16,7 +16,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -99,10 +99,14 @@
 						_view.pages.jobTickets.load().show();
 					}
 
-				} else if (_view.isLoginPageActive()) {
-					_view.pages.login.notifyLoginFailed(authMode, data.result.txt);
 				} else {
-					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
+					_view.pages.login.notifyLogout();
+
+					if (_view.isLoginPageActive()) {
+						_view.pages.login.notifyLoginFailed(authMode, data.result.txt);
+					} else {
+						_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
+					}
 				}
 			};
 
@@ -140,7 +144,7 @@
 				_model.maxIdleSeconds = res.maxIdleSeconds;
 
 				// NOTE: authCardSelfAssoc is DISABLED
-				_view.pages.login.setAuthMode(res.authName, res.authId, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, null, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+				_view.pages.login.setAuthMode(res.authName, res.authId, res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, null, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
 
 				language = _util.getUrlParam(_ns.URL_PARM.LANGUAGE);
 				if (!language) {
@@ -415,6 +419,8 @@
 			//
 			, _ctrl
 			//
+			, _nativeLogin
+			//
 			;
 
 			_ns.commonWebAppInit();
@@ -443,20 +449,26 @@
 
 			_ctrl = new _ns.Controller(_i18n, _model, _view, _api);
 
-			/**
-			 *
-			 */
-			this.init = function() {
-
-				_ns.initWebApp('JOBTICKETS');
-
-				_ctrl.init();
-
+			_nativeLogin = function(user, authMode) {
 				if (_model.authToken.user && _model.authToken.token) {
 					_ctrl.login(_view.AUTH_MODE_NAME, _model.authToken.user, null, _model.authToken.token);
 				} else {
 					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
 				}
+			};
+
+			/**
+			 *
+			 */
+			this.init = function() {
+
+				var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER), authMode = _ns.Utils.getUrlParam(_ns.URL_PARM.LOGIN);
+
+				_ns.initWebApp('JOBTICKETS');
+
+				_ctrl.init();
+
+				_nativeLogin(user, authMode);
 
 				$(window).on('beforeunload', function() {
 					// By NOT returning anything the unload dialog will not show.

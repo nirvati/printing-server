@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,17 +14,17 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
 package org.savapage.server.webapp;
 
-import java.io.File;
 import java.util.Locale;
 import java.util.Set;
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.markup.head.CssHeaderItem;
 import org.apache.wicket.markup.head.HeaderItem;
@@ -35,7 +35,6 @@ import org.apache.wicket.markup.head.StringHeaderItem;
 import org.apache.wicket.markup.html.IHeaderContributor;
 import org.apache.wicket.request.mapper.parameter.INamedParameters.NamedPair;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.savapage.core.VersionInfo;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
@@ -44,6 +43,7 @@ import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.server.CustomWebServlet;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
+import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.pages.AbstractPage;
 
@@ -111,13 +111,29 @@ public abstract class AbstractWebAppPage extends AbstractPage
         SPARKLINE
     }
 
+    /**
+     * .
+     */
     private static final String CSS_FILE_WICKET_SAVAPAGE =
             "wicket.savapage.css";
+
+    /**
+     * .
+     */
     private static final String CSS_FILE_JQUERY_SAVAPAGE =
             "jquery.savapage.css";
 
+    /**
+     * .
+     */
     static final String JS_FILE_JQUERY_SAVAPAGE_PAGE_PRINT_DELEGATION =
             "jquery.savapage-page-print-delegation.js";
+
+    /**
+     * .
+     */
+    static final String CSS_FILE_JQUERY_MOBILE_THEME_ICONS =
+            "jquery.mobile.icons.min.css";
 
     /**
      *
@@ -129,7 +145,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
     /**
      *
      * @param suffix
-     * @return
+     *            The title suffix, {@code null}. when not applicable.
+     * @return The web title
      */
     protected static String getWebAppTitle(final String suffix) {
 
@@ -159,7 +176,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
 
         super(parameters);
 
-        final String language = parameters.get("language").toString();
+        final String language =
+                parameters.get(WebAppParmEnum.SP_LANG.parm()).toString();
 
         if (language != null) {
             getSession().setLocale(new Locale(language));
@@ -172,7 +190,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
      */
     protected final void setWebAppCountExceededResponse() {
         final PageParameters parms = new PageParameters();
-        parms.set(WebAppCountExceededMsg.PARM_WEBAPPTYPE, this.getWebAppType());
+        parms.set(WebAppParmEnum.SP_APP.parm(), this.getWebAppType());
         setResponsePage(WebAppCountExceededMsg.class, parms);
     }
 
@@ -198,7 +216,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
         }
 
         final boolean isZeroPanel =
-                !parameters.get(ZeroPagePanel.PARM_SUBMIT_INDICATOR).isEmpty();
+                !parameters.get(WebAppParmEnum.SP_ZERO.parm()).isEmpty();
 
         return !isZeroPanel && SpSession.get().getAuthWebAppCount() > 0;
     }
@@ -248,16 +266,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
                     + "%s" + "\n" + "/*]]>*/" + "\n</script>\n";
 
     /**
-     * The prefix for SavaPage URL parameters.
-     */
-    private static final String URL_PARM_PFX = "sp-";
-
-    /**
-     * URL parameter to pass user id.
-     */
-    public static final String URL_PARM_USER = URL_PARM_PFX + "user";
-
-    /**
      * Renders tiny JavaScript snippet at the very start of the page to
      * workaround the Browser F5 refresh problem.
      * <p>
@@ -288,7 +296,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
      */
     protected final void
             renderInitialJavaScript(final IHeaderResponse response) {
-
         /*
          * Use the current URL path as mount path ...
          */
@@ -298,18 +305,52 @@ public abstract class AbstractWebAppPage extends AbstractPage
         /*
          * ... and append our own sp-* URL parameters.
          */
+        int nParms = 0;
+
         for (final NamedPair pair : this.getPageParameters().getAllNamed()) {
-            if (pair.getKey().startsWith(URL_PARM_PFX)) {
-                if (mountPath.length() > 0) {
+
+            /*
+             * Skip transient parameters.
+             */
+            if (pair.getKey().equals(WebAppParmEnum.SP_ZERO.parm())) {
+                continue;
+            }
+
+            /*
+             * IMPORTANT: The WebAppParmEnum.SP_OAUTH, at this point, means that
+             * the OAuth callback is already handled. Therefore we add a
+             * separate indicator parameter so javascript can identify OAuth and
+             * further handle the login.
+             */
+            if (pair.getKey().equals(WebAppParmEnum.SP_OAUTH.parm())) {
+                mountPath.append("?")
+                        .append(WebAppParmEnum.SP_LOGIN_OAUTH.parm())
+                        .append("=").append(pair.getValue());
+                nParms++;
+                continue;
+            }
+
+            /*
+             * IMPORTANT: Keep the WebAppParmEnum.SP_LOGIN_OAUTH.parm().
+             */
+
+            /*
+             * Preserve sp-* parms.
+             */
+            if (pair.getKey().startsWith(WebAppParmEnum.parmPrefix())) {
+
+                if (nParms == 0) {
                     mountPath.append("?");
                 } else {
                     mountPath.append("&");
                 }
+
                 mountPath.append(pair.getKey()).append("=")
                         .append(pair.getValue());
+
+                nParms++;
             }
         }
-
         final String javascript =
                 String.format(INITIAL_JAVASCRIPT_FORMAT, mountPath.toString());
 
@@ -329,16 +370,19 @@ public abstract class AbstractWebAppPage extends AbstractPage
      *            The "nocache" string.
      *
      */
-    protected abstract void renderWebAppTypeJsFiles(
-            final IHeaderResponse response, final String nocache);
+    protected abstract void renderWebAppTypeJsFiles(IHeaderResponse response,
+            String nocache);
 
     /**
+     * Renders a JavaScript file.
      *
      * @param response
      *            The {@link IHeaderResponser}.
      * @param url
+     *            The URL of the file to render.
      */
-    protected void renderJs(final IHeaderResponse response, final String url) {
+    protected final void renderJs(final IHeaderResponse response,
+            final String url) {
         response.render(JavaScriptHeaderItem.forUrl(url));
     }
 
@@ -347,7 +391,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
      * files.
      * <p>
      * This is needed so the web browser is triggered to reload the JS and CSS
-     * files when the {@link VersionInfo#VERSION_D_BUILD} value changes.
+     * files when there is a new Web App version.
      * </p>
      *
      * @return the URL parameter.
@@ -393,7 +437,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
      *            The property key.
      * @return {@code null} when not found (or empty).
      */
-    private static String getCssFileName(IConfigProp.Key key) {
+    private static String getCssFileName(final IConfigProp.Key key) {
         final String fileName = ConfigManager.instance().getConfigValue(key);
         if (StringUtils.isNotBlank(fileName)) {
             return fileName;
@@ -404,8 +448,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
     /**
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
-     * @return The jQuery Mobile Theme CSS {@link File}, or {@code null} when
-     *         not applicable.
+     * @return The jQuery Mobile Theme CSS file, or {@code null} when not
+     *         applicable.
      */
     private String getCssThemeFileName(final WebAppTypeEnum webAppType) {
 
@@ -442,6 +486,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
     }
 
     /**
+     * @param webAppType
+     *            The type of Web App.
      * @return The custom CSS filename, or {@code null} when not applicable.
      */
     private String getCssCustomFileName(final WebAppTypeEnum webAppType) {
@@ -524,9 +570,10 @@ public abstract class AbstractWebAppPage extends AbstractPage
                     String.format("/%s/%s%s", CustomWebServlet.PATH_BASE_THEMES,
                             customThemeCssFileName, nocache)));
 
-            response.render(CssHeaderItem.forUrl(
-                    String.format("%s/%s%s", CustomWebServlet.PATH_BASE_THEMES,
-                            "jquery.mobile.icons.min.css", nocache)));
+            response.render(CssHeaderItem.forUrl(String.format("/%s/%s%s%s",
+                    CustomWebServlet.PATH_BASE_THEMES,
+                    FilenameUtils.getPath(customThemeCssFileName),
+                    CSS_FILE_JQUERY_MOBILE_THEME_ICONS, nocache)));
 
             response.render(WebApp.getWebjarsCssRef(
                     WEBJARS_PATH_JQUERY_MOBILE_STRUCTURE_CSS));
@@ -587,7 +634,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
             response.render(
                     WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_JQPLOT_JS));
 
-            for (String plugin : new String[] { "jqplot.highlighter.js",
+            for (String plugin : new String[] {"jqplot.highlighter.js",
                     "jqplot.pieRenderer.js", "jqplot.json2.js",
                     "jqplot.logAxisRenderer.js",
                     "jqplot.dateAxisRenderer.js" }) {
@@ -634,18 +681,20 @@ public abstract class AbstractWebAppPage extends AbstractPage
      *
      */
     protected final void addFileDownloadApiPanel() {
-        FileDownloadApiPanel apiPanel = new FileDownloadApiPanel(
-                "file-download-api-panel", this.getWebAppType());
+        FileDownloadApiPanel apiPanel =
+                new FileDownloadApiPanel("file-download-api-panel");
         add(apiPanel);
+        apiPanel.populate(this.getWebAppType());
     }
 
     /**
-     *
+     * @param webAppType
+     *            The type to Web App.
      */
     protected final void addZeroPagePanel(final WebAppTypeEnum webAppType) {
         final ZeroPagePanel zeroPanel = new ZeroPagePanel("zero-page-panel");
+        zeroPanel.populate(webAppType, this.getPageParameters());
         add(zeroPanel);
-        zeroPanel.populate(webAppType);
     }
 
 }

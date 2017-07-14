@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -36,10 +36,9 @@ import org.savapage.core.SpException;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
-import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.UserDao;
-import org.savapage.core.doc.OfficeToPdf;
 import org.savapage.core.doc.XpsToPdf;
+import org.savapage.core.doc.soffice.SOfficeHelper;
 import org.savapage.core.jpa.tools.DbVersionInfo;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
@@ -68,7 +67,7 @@ public final class About extends AbstractAdminPage {
     private static final long serialVersionUID = 1L;
 
     @Override
-    protected final boolean needMembership() {
+    protected boolean needMembership() {
         return false;
     }
 
@@ -159,6 +158,22 @@ public final class About extends AbstractAdminPage {
         add(new Label("jre-os-version", System.getProperty("os.version")));
         add(new Label("jre-os-arch", System.getProperty("os.arch")));
 
+        add(new Label("jre-java.io.tmpdir",
+                System.getProperty("java.io.tmpdir")));
+
+        add(new Label("app.dir.tmp-key",
+                ConfigManager.SERVER_PROP_APP_DIR_TMP));
+        add(new Label("app.dir.tmp", ConfigManager.getAppTmpDir()));
+
+        add(new Label("app.dir.safepages-key",
+                ConfigManager.SERVER_PROP_APP_DIR_SAFEPAGES));
+        add(new Label("app.dir.safepages",
+                ConfigManager.getSafePagesHomeDir()));
+
+        add(new Label("app.dir.letterheads-key",
+                ConfigManager.SERVER_PROP_APP_DIR_LETTERHEADS));
+        add(new Label("app.dir.letterheads", ConfigManager.getLetterheadDir()));
+
         // ---------- CUPS
         version = PROXY_PRINT_SERVICE.getCupsVersion();
         installed = StringUtils.isNotBlank(version);
@@ -235,7 +250,7 @@ public final class About extends AbstractAdminPage {
 
         // ---------- LibreOffice
         colorInstalled = null;
-        version = OfficeToPdf.getLibreOfficeVersion();
+        version = SOfficeHelper.getLibreOfficeVersion();
         installed = StringUtils.isNotBlank(version);
         if (!installed) {
             version = localized("not-installed");
@@ -461,11 +476,18 @@ public final class About extends AbstractAdminPage {
                         CommunityDictEnum.MEMBER_CARD.getWord(getLocale()))));
 
         //
-        final String urlHelpDesk = ConfigManager.instance()
-                .getConfigValue(Key.COMMUNITY_HELPDESK_URL);
+        final String urlHelpDesk =
+                CommunityDictEnum.SAVAPAGE_SUPPORT_URL.getWord();
 
         labelWrk = new Label("savapage-helpdesk-url", urlHelpDesk);
         labelWrk.add(new AttributeModifier("href", urlHelpDesk));
+        add(labelWrk);
+
+        //
+        labelWrk = new Label("savapage-url",
+                CommunityDictEnum.SAVAPAGE_WWW_DOT_ORG.getWord());
+        labelWrk.add(new AttributeModifier("href",
+                CommunityDictEnum.SAVAPAGE_WWW_DOT_ORG_URL.getWord()));
         add(labelWrk);
 
         //

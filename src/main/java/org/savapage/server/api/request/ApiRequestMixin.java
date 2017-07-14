@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -32,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.dao.AccountDao;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.jpa.User;
 import org.savapage.core.json.rpc.AbstractJsonRpcMethodResponse;
@@ -159,6 +160,12 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
      */
     protected static final UserGroupService USER_GROUP_SERVICE =
             ServiceContext.getServiceFactory().getUserGroupService();
+
+    /**
+     * .
+     */
+    protected static final AccountDao ACCOUNT_DAO =
+            ServiceContext.getDaoContext().getAccountDao();
 
     //
 
@@ -303,8 +310,27 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
      */
     private void createApiResult(final ApiResultCodeEnum code, final String msg,
             final String txt) {
-
         final Map<String, Object> out = this.getResponseMap();
+        createApiResult(out, code, msg, txt);
+    }
+
+    /**
+     * Creates the API result on parameter {@code out}.
+     *
+     * @param out
+     *            The Map to put the result on.
+     * @param code
+     *            The {@link #ApiResultCodeEnum}.
+     * @param msg
+     *            The key of the message
+     * @param txt
+     *            The message text.
+     * @return the {@code out} parameter.
+     *
+     */
+    public static Map<String, Object> createApiResult(
+            final Map<String, Object> out, final ApiResultCodeEnum code,
+            final String msg, final String txt) {
 
         final Map<String, Object> result = new HashMap<String, Object>();
 
@@ -319,6 +345,22 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
         if (txt != null) {
             result.put(RSP_KEY_TXT, txt);
         }
+        return out;
+    }
+
+    /**
+     * Creates API result with a single text message.
+     *
+     * @param code
+     *            The {@link ApiResultCodeEnum}.
+     * @param text
+     *            The message text
+     * @return the {@code out} parameter.
+     */
+    public static Map<String, Object> createApiResultText(
+            final ApiResultCodeEnum code, final String text) {
+        final Map<String, Object> out = new HashMap<>();
+        return createApiResult(out, code, "msg-single-parm", text);
     }
 
     /**

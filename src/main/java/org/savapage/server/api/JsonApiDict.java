@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -39,14 +39,20 @@ import org.savapage.server.api.request.ReqDeviceGet;
 import org.savapage.server.api.request.ReqDeviceSet;
 import org.savapage.server.api.request.ReqGenerateUuid;
 import org.savapage.server.api.request.ReqJobTicketCancel;
-import org.savapage.server.api.request.ReqJobTicketPrint;
+import org.savapage.server.api.request.ReqJobTicketExec;
+import org.savapage.server.api.request.ReqJobTicketPrintCancel;
+import org.savapage.server.api.request.ReqJobTicketPrintClose;
+import org.savapage.server.api.request.ReqJobTicketSave;
 import org.savapage.server.api.request.ReqLogin;
 import org.savapage.server.api.request.ReqLogout;
+import org.savapage.server.api.request.ReqOAuthUrl;
 import org.savapage.server.api.request.ReqOutboxCancelAll;
 import org.savapage.server.api.request.ReqOutboxCancelJob;
 import org.savapage.server.api.request.ReqOutboxExtend;
 import org.savapage.server.api.request.ReqPosDepositQuickSearch;
 import org.savapage.server.api.request.ReqPrintDelegationSet;
+import org.savapage.server.api.request.ReqPrinterGet;
+import org.savapage.server.api.request.ReqPrinterOptValidate;
 import org.savapage.server.api.request.ReqPrinterPrint;
 import org.savapage.server.api.request.ReqPrinterQuickSearch;
 import org.savapage.server.api.request.ReqPrinterSet;
@@ -64,6 +70,7 @@ import org.savapage.server.api.request.ReqUserGroupSet;
 import org.savapage.server.api.request.ReqUserGroupsAddRemove;
 import org.savapage.server.api.request.ReqUserInitInternal;
 import org.savapage.server.api.request.ReqUserNotifyAccountChange;
+import org.savapage.server.api.request.ReqUserPasswordErase;
 import org.savapage.server.api.request.ReqUserQuickSearch;
 import org.savapage.server.api.request.ReqUserSet;
 import org.savapage.server.webapp.WebAppTypeEnum;
@@ -130,7 +137,15 @@ public class JsonApiDict {
     public static final String REQ_LANGUAGE = "language";
 
     public static final String REQ_JOBTICKET_DELETE = "jobticket-delete";
-    public static final String REQ_JOBTICKET_PRINT = "jobticket-print";
+    public static final String REQ_JOBTICKET_EXECUTE = "jobticket-execute";
+    public static final String REQ_JOBTICKET_SAVE = "jobticket-save";
+
+    public static final String REQ_JOBTICKET_PRINT_CANCEL =
+            "jobticket-print-cancel";
+    public static final String REQ_JOBTICKET_PRINT_CLOSE =
+            "jobticket-print-close";
+    public static final String REQ_JOBTICKET_PRINT_RETRY =
+            "jobticket-print-retry";
 
     public static final String REQ_PAPERCUT_TEST = "papercut-test";
 
@@ -155,6 +170,9 @@ public class JsonApiDict {
     public static final String REQ_LETTERHEAD_SET = "letterhead-set";
 
     public static final String REQ_LOGIN = "login";
+
+    public static final String REQ_OAUTH_URL =
+            "oauth-url";
 
     public static final String REQ_LOGOUT = "logout";
 
@@ -215,6 +233,9 @@ public class JsonApiDict {
     public static final String REQ_PRINTER_OPT_DOWNLOAD =
             "printer-opt-download";
 
+    public static final String REQ_PRINTER_OPT_VALIDATE =
+            "printer-opt-validate";
+
     public static final String REQ_PRINTER_DETAIL = "printer-detail";
     public static final String REQ_PRINTER_GET = "printer-get";
     public static final String REQ_PRINTER_PRINT = "printer-print";
@@ -245,6 +266,7 @@ public class JsonApiDict {
     public static final String REQ_RESET_JMX_PASSWORD = "reset-jmx-pw";
     public static final String REQ_RESET_ADMIN_PASSWORD = "reset-admin-pw";
     public static final String REQ_RESET_USER_PASSWORD = "reset-user-pw";
+    public static final String REQ_ERASE_USER_PASSWORD = "erase-user-pw";
     public static final String REQ_RESET_USER_PIN = "reset-user-pin";
     public static final String REQ_SEND = "send";
     public static final String REQ_USER_DELETE = "user-delete";
@@ -723,6 +745,9 @@ public class JsonApiDict {
                         .of(WebAppTypeEnum.ADMIN, WebAppTypeEnum.JOBTICKETS)
                         .contains(webAppType);
                 break;
+            case PRINT_CREATOR:
+                allowed = webAppType == WebAppTypeEnum.USER;
+                break;
             case PRINT_DELEGATE:
                 allowed = webAppType == WebAppTypeEnum.USER;
                 break;
@@ -802,8 +827,19 @@ public class JsonApiDict {
         acl(REQ_JOBTICKET_DELETE, ReqJobTicketCancel.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
-        acl(REQ_JOBTICKET_PRINT, ReqJobTicketPrint.class, DbClaim.READ,
+        acl(REQ_JOBTICKET_SAVE, ReqJobTicketSave.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
+
+        acl(REQ_JOBTICKET_EXECUTE, ReqJobTicketExec.class, DbClaim.READ,
+                DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
+
+        acl(REQ_JOBTICKET_PRINT_CANCEL, ReqJobTicketPrintCancel.class,
+                DbClaim.READ, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
+
+        acl(REQ_JOBTICKET_PRINT_CLOSE, ReqJobTicketPrintClose.class,
+                DbClaim.READ, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         usr(REQ_JQPLOT, DbClaim.NONE, DbAccess.YES);
         non(REQ_LANGUAGE);
@@ -817,6 +853,8 @@ public class JsonApiDict {
 
         put(REQ_LOGIN, ReqLogin.class, AuthReq.NONE, DbClaim.READ,
                 DbAccess.YES);
+
+        non(REQ_OAUTH_URL, ReqOAuthUrl.class);
 
         put(REQ_LOGOUT, ReqLogout.class, AuthReq.NONE, DbClaim.NONE,
                 DbAccess.NO);
@@ -875,7 +913,12 @@ public class JsonApiDict {
         usr(REQ_PRINT_AUTH_CANCEL, DbClaim.NONE, DbAccess.NO);
         usr(REQ_PRINT_FAST_RENEW, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_PRINTER_DETAIL, DbClaim.NONE, DbAccess.YES);
-        adm(REQ_PRINTER_GET, DbClaim.NONE, DbAccess.YES);
+
+        usr(REQ_PRINTER_OPT_VALIDATE, ReqPrinterOptValidate.class, DbClaim.NONE,
+                DbAccess.NO);
+
+        adm(REQ_PRINTER_GET, ReqPrinterGet.class, DbClaim.NONE, DbAccess.YES);
+
         adm(REQ_PRINTER_OPT_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
         usr(REQ_PRINTER_PRINT, ReqPrinterPrint.class, DbClaim.READ,
                 DbAccess.USER_LOCK);
@@ -908,6 +951,10 @@ public class JsonApiDict {
         adm(REQ_RESET_JMX_PASSWORD, DbClaim.NONE, DbAccess.NO);
 
         usr(REQ_RESET_USER_PASSWORD, DbClaim.READ, DbAccess.USER_LOCK);
+
+        usr(REQ_ERASE_USER_PASSWORD, ReqUserPasswordErase.class, DbClaim.READ,
+                DbAccess.USER_LOCK);
+
         usr(REQ_RESET_USER_PIN, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_SEND, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_USER_LAZY_ECOPRINT, DbClaim.NONE, DbAccess.USER_LOCK);

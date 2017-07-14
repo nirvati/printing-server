@@ -1,8 +1,8 @@
-/*! SavaPage Common | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage Common | (c) 2011-2017 Datraverse B.V. | GNU Affero General Public License */
 
 /*
-* This file is part of the SavaPage project <http://savapage.org>.
-* Copyright (c) 2011-2016 Datraverse B.V.
+* This file is part of the SavaPage project <https://www.savapage.org>.
+* Copyright (c) 2011-2017 Datraverse B.V.
 * Authors: Rijk Ravestein.
 *
 * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 * GNU Affero General Public License for more details.
 *
 * You should have received a copy of the GNU Affero General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.
+* along with this program.  If not, see <https://www.gnu.org/licenses/>.
 *
 * For more information, please contact Datraverse B.V. at this
 * address: info@datraverse.com
@@ -54,6 +54,13 @@ String.prototype.vformat = function() {"use strict";
 };
 
 /**
+ * 
+ */
+String.prototype.endsWith = function(suffix) {
+    return this.indexOf(suffix, this.length - suffix.length) !== -1;
+};
+
+/**
  *
  */
 ( function(window, document, navigator, _ns) {"use strict";
@@ -62,12 +69,19 @@ String.prototype.vformat = function() {"use strict";
 		 *  WebApp URL parameters.
 		 */
 		_ns.URL_PARM = {
+			WEBAPP_TYPE : 'sp-app',
 			LOG_LEVEL : 'sp-log',
 			USER : 'sp-user',
 			LANGUAGE : 'sp-lang',
 			COUNTRY : 'sp-ctry',
-			LOGIN : 'sp-login'
+			LOGIN : 'sp-login',
+			LOGIN_LOCAL : 'sp-login-local',
+			LOGIN_OAUTH : 'sp-login-oauth',
+			SHOW : 'sp-show'
 		};
+
+		_ns.URL_PARM_SHOW_PDF = 'pdf';
+		_ns.URL_PARM_SHOW_PRINT = 'print';
 
 		/**
 		 *
@@ -82,7 +96,7 @@ String.prototype.vformat = function() {"use strict";
 
 		// URL parameter for HTML pages (/page).
 		_ns.WebAppTypeUrlParm = function(pfx) {
-			return (pfx || '?') + 'sp-app=' + _ns.WEBAPP_TYPE;
+			return (pfx || '?') + _ns.URL_PARM.WEBAPP_TYPE + '=' + _ns.WEBAPP_TYPE;
 		};
 
 		/**
@@ -101,6 +115,13 @@ String.prototype.vformat = function() {"use strict";
 		 *
 		 */
 		_ns.Utils = {};
+
+		// Execute foo async with max 5 parameters.
+		_ns.Utils.asyncFoo = function(foo, p1, p2, p3, p4, p5) {
+			window.setTimeout(function() {
+				foo(p1, p2, p3, p4, p5);
+			}, 10);
+		};
 
 		_ns.Utils.isMobileOrTablet = function() {
 			var check = false;
@@ -153,6 +174,17 @@ String.prototype.vformat = function() {"use strict";
 			var p = /^([a-zA-Z0-9_\.\-])+\@(([a-zA-Z0-9\-])+\.)+([a-zA-Z0-9]{2,4})+$/;
 			return p.test(val);
 		};
+
+		// Turns URI query string like hello=1&another=2 into object {hello: 1, another: 2}
+		_ns.Utils.parseUriQuery = function(qstr) {
+			var query = {}, a = (qstr[0] === '?' ? qstr.substr(1) : qstr).split('&'), i, b;
+			for ( i = 0; i < a.length; i++) {
+				b = a[i].split('=');
+				query[decodeURIComponent(b[0])] = decodeURIComponent(b[1] || '');
+			}
+			return query;
+		};
+
 		/**
 		 * Gets the value of parameter of URL of current document.
 		 *
@@ -169,6 +201,10 @@ String.prototype.vformat = function() {"use strict";
 				return null;
 			}
 			return results[1] || 0;
+		};
+
+		_ns.Utils.hasUrlParam = function(name) {
+			return document.location.search.indexOf(name) !== -1;
 		};
 
 		_ns.Utils.isFunction = function(value) {

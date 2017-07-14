@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 
@@ -32,6 +32,10 @@
 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 -->
 </wicket:remove>
+
+<div wicket:id="ext-supplier-icons">
+	<style wicket:id="ext-supplier-icon" />
+</div>
 
 <div class="ui-content" id="page-login-content">
 
@@ -132,12 +136,32 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 				</div>
 			</div>
 
+			<div id="sp-div-login-yubikey" style="display: none;">
+
+				<div id="sp-login-yubikey-otp-group" tabindex="0">
+					<h3 class="sp-txt-info" style="padding: 10px;">
+						<span class="sp-txt-wrap" id="sp-login-yubikey-focusout"><wicket:message
+								key="label-yubikey-start" /></span>
+						<!--  -->
+						<span class="sp-txt-wrap" id="sp-login-yubikey-focusin"><wicket:message
+								key="label-yubikey-press-button" /></span>
+					</h3>
+					<input type="hidden" id="sp-login-yubikey" value="" />
+				</div>
+				<div style="display: none;">
+					<button id="sp-btn-login-yubikey"
+						class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check">
+						hidden</button>
+				</div>
+			</div>
+
 			<div id="sp-div-login-card-local" style="display: none;">
 				<div id="sp-login-card-local-number-group" tabindex="0">
 					<h3 class="sp-txt-info" style="padding: 10px;">
 						<span class="sp-txt-wrap" id="sp-login-card-local-focusout"><wicket:message
-								key="label-card-swipe-start" /></span> <span class="sp-txt-wrap"
-							id="sp-login-card-local-focusin"><wicket:message
+								key="label-card-swipe-start" /></span>
+						<!--  -->
+						<span class="sp-txt-wrap" id="sp-login-card-local-focusin"><wicket:message
 								key="label-card-swipe" /></span>
 					</h3>
 					<input type="hidden" id="sp-login-card-local-number" value="" />
@@ -212,6 +236,17 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 						class="ui-btn ui-btn-inline ui-mini">
 						<span class="sp-txt-info"><wicket:message key="label-card" /></span>
 					</button>
+
+					<button id="sp-btn-login-mode-yubikey"
+						class="ui-btn ui-btn-inline ui-mini">
+						<span class="sp-txt-info">YubiKey</span>
+					</button>
+
+					<span wicket:id="oauth-buttons">
+						<button title="???" wicket:id="oauth-button"
+							class="sp-btn-login-mode-oauth ui-mini ui-btn ui-btn-inline ui-btn-icon-left" />
+					</span>
+
 				</div>
 
 			</div>

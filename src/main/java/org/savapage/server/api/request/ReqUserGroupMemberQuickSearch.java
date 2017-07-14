@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.savapage.core.dao.UserDao;
+import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.dto.QuickSearchUserGroupMemberFilterDto;
 import org.savapage.core.dto.QuickSearchUserGroupMemberItemDto;
@@ -41,6 +42,13 @@ import org.savapage.core.services.ServiceContext;
 public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
 
     /**
+     * The number of rows to retrieve in the Quick Search result set as multiple
+     * of requested rows. This factor is needed since some retrieved items don't
+     * qualify for the ACL role.
+     */
+    private static final int MAX_RESULTS_FACTOR = 2;
+
+    /**
      *
      * @author Rijk Ravestein
      *
@@ -48,6 +56,8 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
     private static class DtoRsp extends AbstractDto {
 
         private List<QuickSearchUserGroupMemberItemDto> items;
+
+        private String searchMsg;
 
         @SuppressWarnings("unused")
         public List<QuickSearchUserGroupMemberItemDto> getItems() {
@@ -58,6 +68,14 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
             this.items = items;
         }
 
+        @SuppressWarnings("unused")
+        public String getSearchMsg() {
+            return searchMsg;
+        }
+
+        public void setSearchMsg(String searchMsg) {
+            this.searchMsg = searchMsg;
+        }
     }
 
     @Override
@@ -81,45 +99,78 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
 
         final int nUsersMax = dto.getMaxResults();
 
+        int nUsersConsumed = 0;
         int nUsersSelected = 0;
         int iStartPosition = 0;
-        int userListSize = nUsersMax;
 
-        while (nUsersSelected < nUsersMax && userListSize == nUsersMax) {
+        // The number of rows to retrieve in the Quick Search result set.
+        final int maxListChunkResults = MAX_RESULTS_FACTOR * nUsersMax;
 
-            final List<User> userList = userDao.getListChunk(filter,
-                    iStartPosition, nUsersMax, UserDao.Field.USERID, true);
+        final List<User> userListChunkFirst =
+                userDao.getListChunk(filter, iStartPosition,
+                        maxListChunkResults, UserDao.Field.USERID, true);
 
-            userListSize = userList.size();
+        for (final User user : userListChunkFirst) {
 
-            for (final User user : userList) {
+            nUsersConsumed++;
 
-                if (dto.getAclRole() != null && !ACCESSCONTROL_SERVICE
-                        .isAuthorized(user, dto.getAclRole())) {
-                    continue;
-                }
+            final boolean selectUser;
 
-                final QuickSearchUserGroupMemberItemDto itemWlk =
-                        new QuickSearchUserGroupMemberItemDto();
-
-                itemWlk.setKey(user.getId());
-                itemWlk.setUserId(user.getUserId());
-                itemWlk.setFullName(user.getFullName());
-
-                items.add(itemWlk);
-
-                nUsersSelected++;
-
-                if (nUsersSelected == nUsersMax) {
-                    break;
-                }
+            if (dto.getAclRole() == null) {
+                // Not restricted by role.
+                selectUser = true;
+            } else if (dto.getAclRole() == ACLRoleEnum.PRINT_DELEGATOR
+                    && user.getUserId().equals(requestingUser)) {
+                // Requesting user can be its own print delegator.
+                selectUser = true;
+            } else {
+                selectUser = ACCESSCONTROL_SERVICE.isAuthorized(user,
+                        dto.getAclRole());
             }
-            iStartPosition += nUsersMax;
+
+            if (!selectUser) {
+                continue;
+            }
+
+            final QuickSearchUserGroupMemberItemDto itemWlk =
+                    new QuickSearchUserGroupMemberItemDto();
+
+            itemWlk.setKey(user.getId());
+            itemWlk.setUserId(user.getUserId());
+            itemWlk.setFullName(user.getFullName());
+
+            items.add(itemWlk);
+
+            nUsersSelected++;
+
+            if (nUsersSelected == nUsersMax) {
+                break;
+            }
         }
 
-        //
+        /*
+         * Response.
+         */
         final DtoRsp rsp = new DtoRsp();
         rsp.setItems(items);
+
+        // Assume there are next candidates.
+        String msg = ". . .";
+
+        if (nUsersConsumed == maxListChunkResults) {
+            // Is next chunk available?
+            iStartPosition += maxListChunkResults;
+            final List<User> userListChunkNext = userDao.getListChunk(filter,
+                    iStartPosition, 1, UserDao.Field.USERID, true);
+
+            if (userListChunkNext.isEmpty()) {
+                msg = null;
+            }
+        } else if (nUsersConsumed != nUsersMax) {
+            msg = null;
+        }
+
+        rsp.setSearchMsg(msg);
 
         setResponse(rsp);
         setApiResultOk();

@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -23,10 +23,12 @@ package org.savapage.server.pages;
 
 import java.math.BigDecimal;
 import java.text.DateFormat;
+import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
@@ -38,14 +40,19 @@ import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.DocLogDao;
-import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
 import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
+import org.savapage.core.dao.enums.PrintModeEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
+import org.savapage.core.i18n.PrintOutVerbEnum;
+import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
+import org.savapage.core.services.ProxyPrintService;
+import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.JobTicketSupplierData;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.CurrencyUtil;
-import org.savapage.server.WebApp;
 
 /**
  *
@@ -53,6 +60,9 @@ import org.savapage.server.WebApp;
  *
  */
 public class DocLogItemPanel extends Panel {
+
+    private static final ProxyPrintService PROXYPRINT_SERVICE =
+            ServiceContext.getServiceFactory().getProxyPrintService();
 
     private final NumberFormat fmNumber =
             NumberFormat.getInstance(getSession().getLocale());
@@ -97,75 +107,39 @@ public class DocLogItemPanel extends Panel {
     public void populate(final IModel<DocLogItem> model) {
 
         final DocLogItem obj = model.getObject();
+        final Locale locale = getLocale();
 
         String cssClass = null;
 
         final Map<String, String> mapVisible = new HashMap<>();
 
-        mapVisible.put("title", null);
-        mapVisible.put("log-comment", null);
-        mapVisible.put("printin-pie", null);
-        mapVisible.put("pdfout-pie", null);
-        mapVisible.put("printout-pie", null);
-        mapVisible.put("printoutMode", null);
-        mapVisible.put("signature", null);
-        mapVisible.put("destination", null);
-        mapVisible.put("letterhead", null);
-        mapVisible.put("author", null);
-        mapVisible.put("subject", null);
-        mapVisible.put("keywords", null);
-        mapVisible.put("drm", null);
-        mapVisible.put("userpw", null);
-        mapVisible.put("ownerpw", null);
-        mapVisible.put("duplex", null);
-        mapVisible.put("singlex", null);
-        mapVisible.put("color", null);
-        mapVisible.put("grayscale", null);
-        mapVisible.put("papersize", null);
-        mapVisible.put("cost-currency", null);
-        mapVisible.put("cost", null);
-        mapVisible.put("account-trx", null);
-        mapVisible.put("job-id", null);
-        mapVisible.put("job-state", null);
-        mapVisible.put("job-completed-date", null);
-        mapVisible.put("print-in-denied-reason-hyphen", null);
-        mapVisible.put("print-in-denied-reason", null);
-        mapVisible.put("collateCopies", null);
-        mapVisible.put("ecoPrint", null);
-        mapVisible.put("removeGraphics", null);
-        mapVisible.put("extSupplier", null);
+        for (final String attr : new String[] { "title", "log-comment",
+                "printin-pie", "pdfout-pie", "printout-pie", "printoutMode",
+                "signature", "destination", "letterhead", "author", "subject",
+                "keywords", "drm", "userpw", "ownerpw", "duplex", "simplex",
+                "color", "grayscale", "papersize", "media-source", "output-bin",
+                "jog-offset", "cost-currency", "cost", "account-trx", "job-id",
+                "job-state", "job-completed-date",
+                "print-in-denied-reason-hyphen", "print-in-denied-reason",
+                "collate", "ecoPrint", "removeGraphics", "punch", "staple",
+                "fold", "booklet", "jobticket-media", "jobticket-copy",
+                "jobticket-finishing-ext", "jobticket-custom-ext",
+                "landscape" }) {
+            mapVisible.put(attr, null);
+        }
 
-        MarkupHelper helper = new MarkupHelper(this);
+        final MarkupHelper helper = new MarkupHelper(this);
 
         //
-        final String extSupplierImgUrl;
-
         final boolean isExtSupplier = obj.getExtSupplier() != null;
-
         if (isExtSupplier) {
-            mapVisible.put("extSupplier", obj.getExtSupplier().getUiText());
-            extSupplierImgUrl =
-                    WebApp.getExtSupplierEnumImgUrl(obj.getExtSupplier());
+            final ExtSupplierStatusPanel panel =
+                    new ExtSupplierStatusPanel("extSupplierPanel");
+            panel.populate(obj.getExtSupplier(), obj.getExtSupplierStatus(),
+                    null);
+            add(panel);
         } else {
-            extSupplierImgUrl = null;
-        }
-
-        if (StringUtils.isBlank(extSupplierImgUrl)) {
-            helper.discloseLabel("extSupplierImg");
-        } else {
-            helper.encloseLabel("extSupplierImg", "", true)
-                    .add(new AttributeModifier("src", extSupplierImgUrl));
-        }
-
-        //
-        final ExternalSupplierStatusEnum extSupplierStatus =
-                obj.getExtSupplierStatus();
-
-        if (extSupplierStatus == null) {
-            helper.discloseLabel("extStatus");
-        } else {
-            addVisible(true, "extStatus", extSupplierStatus.uiText(getLocale()),
-                    MarkupHelper.getCssTxtClass(extSupplierStatus));
+            helper.discloseLabel("extSupplierPanel");
         }
 
         //
@@ -297,25 +271,124 @@ public class DocLogItemPanel extends Panel {
 
             } else {
 
-                mapVisible.put("printoutMode",
-                        obj.getPrintMode().uiText(getLocale()));
+                final String ticketNumber;
+                final String ticketOperator;
+                if (obj.getPrintMode() == PrintModeEnum.TICKET
+                        || obj.getPrintMode() == PrintModeEnum.TICKET_C
+                        || obj.getPrintMode() == PrintModeEnum.TICKET_E) {
+
+                    ticketNumber = obj.getExtId();
+
+                    // Just in case.
+                    if (obj.getExtData() == null) {
+                        ticketOperator = null;
+                    } else {
+
+                        final JobTicketSupplierData extData =
+                                JobTicketSupplierData
+                                        .createFromData(obj.getExtData());
+                        if (extData == null || extData.getOperator() == null) {
+                            ticketOperator = null;
+                        } else {
+                            ticketOperator = String.format("(%s)",
+                                    extData.getOperator());
+                        }
+                    }
+
+                } else {
+                    ticketNumber = null;
+                    ticketOperator = null;
+                }
+
+                mapVisible.put(
+                        "printoutMode", String
+                                .format("%s %s %s",
+                                        obj.getPrintMode().uiText(getLocale()),
+                                        StringUtils.defaultString(ticketNumber),
+                                        StringUtils
+                                                .defaultString(ticketOperator))
+                                .trim());
 
                 cssClass = MarkupHelper.CSS_PRINT_OUT_PRINTER;
 
                 if (obj.getDuplex()) {
-                    mapVisible.put("duplex", localized("duplex"));
+                    mapVisible.put("duplex",
+                            helper.localized(PrintOutNounEnum.DUPLEX));
                 } else {
-                    mapVisible.put("singlex", localized("singlex"));
+                    mapVisible.put("simplex",
+                            helper.localized(PrintOutNounEnum.SIMPLEX));
                 }
 
                 if (obj.getGrayscale()) {
-                    mapVisible.put("grayscale", localized("grayscale"));
+                    mapVisible.put("grayscale",
+                            helper.localized(PrintOutNounEnum.GRAYSCALE));
                 } else {
-                    mapVisible.put("color", localized("color"));
+                    mapVisible.put("color",
+                            helper.localized(PrintOutNounEnum.COLOR));
+                }
+
+                if (obj.isFinishingPunch()) {
+                    mapVisible.put("punch",
+                            helper.localized(PrintOutVerbEnum.PUNCH));
+                }
+                if (obj.isFinishingStaple()) {
+                    mapVisible.put("staple",
+                            helper.localized(PrintOutVerbEnum.STAPLE));
+                }
+                if (obj.isFinishingFold()) {
+                    mapVisible.put("fold",
+                            helper.localized(PrintOutVerbEnum.FOLD));
+                }
+                if (obj.isFinishingBooklet()) {
+                    mapVisible.put("booklet",
+                            helper.localized(PrintOutNounEnum.BOOKLET));
                 }
 
                 mapVisible.put("papersize", obj.getPaperSize().toUpperCase());
-                mapVisible.put("job-id", obj.getJobId().toString());
+
+                //
+                final String mediaSource = obj.getIppOptionMap().getOptionValue(
+                        IppDictJobTemplateAttr.ATTR_MEDIA_SOURCE);
+
+                String ippKeywordWlk;
+
+                if (mediaSource != null) {
+                    mapVisible.put("media-source",
+                            PROXYPRINT_SERVICE.localizePrinterOptValue(locale,
+                                    IppDictJobTemplateAttr.ATTR_MEDIA_SOURCE,
+                                    mediaSource));
+
+                    ippKeywordWlk = IppDictJobTemplateAttr.ATTR_OUTPUT_BIN;
+
+                    final String outputBin =
+                            obj.getIppOptionMap().getOptionValue(ippKeywordWlk);
+
+                    if (outputBin != null) {
+                        mapVisible.put("output-bin",
+                                PROXYPRINT_SERVICE.localizePrinterOptValue(
+                                        locale, ippKeywordWlk, outputBin));
+
+                        ippKeywordWlk =
+                                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_JOG_OFFSET;
+
+                        final String jogOfset = obj.getIppOptionMap()
+                                .getOptionValue(ippKeywordWlk);
+
+                        if (jogOfset != null) {
+                            mapVisible.put("jog-offset",
+                                    PROXYPRINT_SERVICE.localizePrinterOptValue(
+                                            locale, ippKeywordWlk, jogOfset));
+                        }
+
+                    }
+
+                }
+
+                //
+                if (obj.getJobId() != null
+                        && !obj.getJobId().equals(Integer.valueOf(0))) {
+                    mapVisible.put("job-id", obj.getJobId().toString());
+                }
 
                 if (this.showDocLogCost
                         && obj.getCost().compareTo(BigDecimal.ZERO) != 0) {
@@ -326,36 +399,11 @@ public class DocLogItemPanel extends Panel {
                     mapVisible.put("cost", localizedDecimal(obj.getCost()));
                 }
 
-                String sfx = null;
-
-                switch (obj.getJobState()) {
-                case IPP_JOB_ABORTED:
-                    sfx = "aborted";
-                    break;
-                case IPP_JOB_CANCELED:
-                    sfx = "canceled";
-                    break;
-                case IPP_JOB_COMPLETED:
-                    sfx = "completed";
-                    break;
-                case IPP_JOB_HELD:
-                    sfx = "held";
-                    break;
-                case IPP_JOB_PENDING:
-                    sfx = "pending";
-                    break;
-                case IPP_JOB_PROCESSING:
-                    sfx = "processing";
-                    break;
-                case IPP_JOB_STOPPED:
-                    sfx = "stopped";
-                    break;
-                }
-
                 cssJobState = MarkupHelper.getCssTxtClass(obj.getJobState());
 
-                if (sfx != null) {
-                    mapVisible.put("job-state", localized("job-state-" + sfx));
+                if (obj.getJobState() != null) {
+                    mapVisible.put("job-state",
+                            obj.getJobState().uiText(locale));
                     if (obj.getCompletedDate() != null) {
                         mapVisible.put("job-completed-date",
                                 localizedShortTime(obj.getCompletedDate()));
@@ -402,36 +450,42 @@ public class DocLogItemPanel extends Panel {
 
         //
         totals.append(localizedNumber(total));
-        key = (total == 1) ? "page" : "pages";
-        totals.append(" ").append(localized(key));
+        totals.append(" ")
+                .append(helper.localized(PrintOutNounEnum.PAGE, total > 1));
+
+        // n-up
+        if (obj.getNumberUp() != null && obj.getNumberUp().intValue() > 1) {
+            totals.append(", ").append(localized("n-up", obj.getNumberUp()));
+        }
 
         //
         if (copies > 1) {
-            totals.append(", ").append(copies).append(" ");
-            if (obj.getCollateCopies() != null) {
-                if (obj.getCollateCopies()) {
-                    key = "collated";
-                } else {
-                    key = "uncollated";
-                }
-                totals.append(localized(key)).append(" ");
-            }
 
-            totals.append(localized("copies"));
+            totals.append(", ").append(copies).append(" ")
+                    .append(helper.localized(PrintOutNounEnum.COPY, true));
         }
 
         //
         total = obj.getTotalSheets();
         if (total > 0) {
-            key = (total == 1) ? "sheet" : "sheets";
-            totals.append(" (").append(total).append(" ").append(localized(key))
+            totals.append(" (").append(total).append(" ")
+                    .append(helper.localized(PrintOutNounEnum.SHEET, total > 1))
                     .append(")");
         }
 
         //
-        totals.append(", ").append(obj.getHumanReadableByteCount());
+        if (obj.getHumanReadableByteCount() != null) {
+            totals.append(", ").append(obj.getHumanReadableByteCount());
+        }
 
         add(new Label("totals", totals.toString()));
+
+        //
+        if (copies > 1 && obj.getCollateCopies() != null
+                && obj.getCollateCopies()) {
+            mapVisible.put("collate",
+                    helper.localized(PrintOutVerbEnum.COLLATE));
+        }
 
         if (obj.getEcoPrint() != null && obj.getEcoPrint()) {
             mapVisible.put("ecoPrint", "EcoPrint");
@@ -439,6 +493,32 @@ public class DocLogItemPanel extends Panel {
 
         if (obj.getRemoveGraphics() != null && obj.getRemoveGraphics()) {
             mapVisible.put("removeGraphics", localized("graphics-removed"));
+        }
+
+        mapVisible.put("jobticket-media",
+                PROXYPRINT_SERVICE.getJobTicketOptionsUiText(locale,
+                        IppDictJobTemplateAttr.JOBTICKET_ATTR_MEDIA,
+                        obj.getIppOptionMap()));
+
+        mapVisible.put("jobticket-copy",
+                PROXYPRINT_SERVICE.getJobTicketOptionsUiText(locale,
+                        IppDictJobTemplateAttr.JOBTICKET_ATTR_COPY,
+                        obj.getIppOptionMap()));
+
+        mapVisible.put("jobticket-finishings-ext",
+                PROXYPRINT_SERVICE.getJobTicketOptionsUiText(locale,
+                        IppDictJobTemplateAttr.JOBTICKET_ATTR_FINISHINGS_EXT,
+                        obj.getIppOptionMap()));
+
+        mapVisible.put("jobticket-custom-ext",
+                PROXYPRINT_SERVICE.getJobTicketOptionsExtHtml(getLocale(),
+                        obj.getIppOptions()));
+
+        //
+        if (obj.getIppOptionMap() != null
+                && obj.getIppOptionMap().isLandscapeJob()) {
+            mapVisible.put("landscape",
+                    helper.localized(PrintOutNounEnum.LANDSCAPE));
         }
 
         /*
@@ -547,6 +627,21 @@ public class DocLogItemPanel extends Panel {
      */
     protected final String localized(final String key) {
         return getLocalizer().getString(key, this);
+    }
+
+    /**
+     * Localizes and format a string with placeholder arguments.
+     *
+     * @param key
+     *            The key from the XML resource file
+     * @param objects
+     *            The values to fill the placeholders
+     * @return The localized string.
+     */
+    protected final String localized(final String key,
+            final Object... objects) {
+        return MessageFormat.format(getLocalizer().getString(key, this),
+                objects);
     }
 
 }

@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -37,7 +37,9 @@ import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.job.SpJobScheduler;
 import org.savapage.core.jpa.PrinterGroup;
 import org.savapage.core.jpa.User;
+import org.savapage.core.services.SOfficeService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.SOfficeConfigProps;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.slf4j.Logger;
@@ -56,6 +58,12 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
      */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(ReqConfigPropsSet.class);
+
+    /**
+     * .
+     */
+    private static final SOfficeService SOFFICE_SERVICE =
+            ServiceContext.getServiceFactory().getSOfficeService();
 
     @Override
     protected void onRequest(final String requestingUser, final User lockedUser)
@@ -76,6 +84,8 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
         final Iterator<String> iter = list.getFieldNames();
 
         boolean isSmartSchoolUpdate = false;
+        boolean isSOfficeUpdate = false;
+        boolean isSOfficeTrigger = false;
 
         boolean isValid = true;
         int nJobsRescheduled = 0;
@@ -92,6 +102,10 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
             }
 
             final Key configKey = cm.getConfigKey(key);
+
+            if (configKey == null) {
+                throw new IllegalArgumentException(key);
+            }
 
             /*
              * If this value is Locale formatted, we MUST revert to locale
@@ -148,9 +162,13 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                     break;
                 case PRINT_IMAP_ENABLE:
                     preValue = cm.isConfigValue(configKey);
+                    isSOfficeTrigger = true;
                     break;
                 case PAPERCUT_ENABLE:
                     preValue = cm.isConfigValue(configKey);
+                    break;
+                case WEB_PRINT_ENABLE:
+                    isSOfficeTrigger = true;
                     break;
                 default:
                     break;
@@ -187,6 +205,10 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                 } else if (configKey == Key.SMARTSCHOOL_1_ENABLE
                         || configKey == Key.SMARTSCHOOL_2_ENABLE) {
                     isSmartSchoolUpdate = true;
+
+                } else if (configKey == Key.DOC_CONVERT_LIBRE_OFFICE_ENABLED
+                        || configKey == Key.SOFFICE_ENABLE) {
+                    isSOfficeUpdate = true;
                 }
 
             } else {
@@ -197,24 +219,64 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
         } // end-while
 
         if (nValid > 0) {
-            ConfigManager.instance().calcRunnable();
+            cm.calcRunnable();
         }
 
         if (isValid) {
 
             if (nJobsRescheduled > 0) {
                 msgKey = "msg-config-props-applied-rescheduled";
+
             } else if (isSmartSchoolUpdate
                     && !ConfigManager.isSmartSchoolPrintActiveAndEnabled()
                     && SmartschoolPrinter.isOnline()) {
+
                 if (SpJobScheduler.interruptSmartSchoolPoller()) {
                     msgKey = "msg-config-props-applied-smartschool-stopped";
                 }
+
+            } else if (isSOfficeTrigger) {
+                evaluateSOfficeService(cm, false);
+            } else if (isSOfficeUpdate) {
+                evaluateSOfficeService(cm, true);
             }
 
             setApiResult(ApiResultCodeEnum.OK, msgKey);
         }
 
+    }
+
+    /**
+     * Evaluates the application configuration and decides to (re)start or
+     * shutdown the {@link SOfficeService}.
+     *
+     * @param cm
+     *            The {@link ConfigManager}.
+     * @param restart
+     *            if {@code true} the service is restarted, if {@code false} it
+     *            is started when currently shutdown.
+     */
+    private static void evaluateSOfficeService(final ConfigManager cm,
+            final boolean restart) {
+
+        final boolean dependentServices = cm.isConfigValue(Key.WEB_PRINT_ENABLE)
+                || cm.isConfigValue(Key.PRINT_IMAP_ENABLE);
+
+        if (dependentServices
+                && cm.isConfigValue(Key.DOC_CONVERT_LIBRE_OFFICE_ENABLED)
+                && cm.isConfigValue(Key.SOFFICE_ENABLE)) {
+
+            final SOfficeConfigProps props = new SOfficeConfigProps();
+
+            if (restart) {
+                SOFFICE_SERVICE.restart(props);
+            } else {
+                SOFFICE_SERVICE.start(props);
+            }
+
+        } else {
+            SOFFICE_SERVICE.shutdown();
+        }
     }
 
     /**
@@ -229,8 +291,7 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
      */
     private boolean customConfigPropValidate(Key key, String value) {
 
-        if ((key == Key.PROXY_PRINT_NON_SECURE_PRINTER_GROUP
-                || key == Key.JOBTICKET_PROXY_PRINTER_GROUP)
+        if (key == Key.PROXY_PRINT_NON_SECURE_PRINTER_GROUP
                 && StringUtils.isNotBlank(value)) {
 
             final PrinterGroup jpaPrinterGroup = ServiceContext.getDaoContext()
@@ -243,8 +304,7 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
             }
         }
 
-        if (key == Key.JOBTICKET_PROXY_PRINTER
-                || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER
+        if (key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER
                 || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_DUPLEX
                 || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE
                 || key == Key.SMARTSCHOOL_1_SOAP_PRINT_PROXY_PRINTER_GRAYSCALE_DUPLEX

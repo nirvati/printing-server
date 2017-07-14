@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -33,6 +33,8 @@ import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.Request;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.http.WebRequest;
+import org.savapage.core.SpException;
+import org.savapage.core.auth.YubiKeyOTP;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.CometdClientMixin;
 import org.savapage.core.cometd.PubLevelEnum;
@@ -44,22 +46,27 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.UserDao;
+import org.savapage.core.dao.UserNumberDao;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.Entity;
 import org.savapage.core.jpa.User;
+import org.savapage.core.jpa.UserNumber;
+import org.savapage.core.msg.UserMsgIndicator;
 import org.savapage.core.rfid.RfidNumberFormat;
 import org.savapage.core.services.DeviceService.DeviceAttrLookup;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.UserAuth;
+import org.savapage.core.services.helpers.UserAuth.Mode;
 import org.savapage.core.users.IExternalUserAuthenticator;
 import org.savapage.core.users.IUserSource;
 import org.savapage.core.users.InternalUserAuthenticator;
 import org.savapage.core.users.conf.UserAliasList;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.Messages;
 import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.UserAgentHelper;
@@ -73,6 +80,8 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.yubico.client.v2.exceptions.YubicoValidationFailure;
+import com.yubico.client.v2.exceptions.YubicoVerificationException;
 
 /**
  *
@@ -86,6 +95,12 @@ public final class ReqLogin extends ApiRequestMixin {
      */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(ReqLogin.class);
+
+    /**
+     * <b>Static</b> lock object for synchronization of lazy user creation.
+     */
+    private static final Object LAZY_CREATE_USER_LOCK = new Object() {
+    };
 
     /**
      * .
@@ -294,64 +309,114 @@ public final class ReqLogin extends ApiRequestMixin {
             }
         }
 
-        //
         final boolean isAuthTokenLoginEnabled =
                 ApiRequestHelper.isAuthTokenLoginEnabled();
 
+        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
+
         /*
-         * If user authentication token (browser local storage) is disabled or
-         * user was authenticated by OneTimeAuthToken, we fall back to the user
-         * in the active session.
+         * If user was AOuth Sign-In is enabled
+         *
+         * TODO: check if OAuth is enabled.
          */
-        if ((!isAuthTokenLoginEnabled || session.isOneTimeAuthToken())
-                && session.getUser() != null) {
+        if (authMode == Mode.OAUTH) {
 
             /*
              * INVARIANT: User must exist in database.
              */
-            final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
 
             // We need the JPA attached User.
-            final User userDb = userDao
-                    .findActiveUserByUserId(session.getUser().getUserId());
+            final User userDb;
+
+            if (session.getUser() == null) {
+                /*
+                 * User logged out?
+                 */
+                userDb = null;
+            } else {
+                /*
+                 * User was authenticated by OAuth provider.
+                 */
+                userDb = userDao
+                        .findActiveUserByUserId(session.getUser().getUserId());
+            }
 
             if (userDb == null) {
+
                 onLoginFailed(null);
-            } else {
-                onUserLoginGranted(getUserData(), session, webAppType,
-                        session.getUser().getUserId(), userDb, null);
+
+            } else if (userDb != null) {
+
+                final UserAuthToken token;
+
+                if (ApiRequestHelper.isAuthTokenLoginEnabled()) {
+                    token = reqLoginLazyCreateAuthToken(userDb.getUserId(),
+                            webAppType);
+                } else {
+                    token = null;
+                }
+
+                onUserLoginGranted(getUserData(), session, webAppType, authMode,
+                        session.getUser().getUserId(), userDb, token);
+
                 setApiResultOk();
             }
 
         } else {
+            /*
+             * If user authentication token (browser local storage) is disabled
+             * or user was authenticated by OneTimeAuthToken, we fall back to
+             * the user in the active session.
+             */
+            if ((!isAuthTokenLoginEnabled || session.isOneTimeAuthToken())
+                    && session.getUser() != null) {
 
-            //
-            final boolean isCliAppAuthApplied;
+                /*
+                 * INVARIANT: User must exist in database.
+                 */
 
-            if (isAuthTokenLoginEnabled && authMode == UserAuth.Mode.NAME
-                    && StringUtils.isBlank(authPw)) {
-                isCliAppAuthApplied =
-                        this.reqLoginAuthTokenCliApp(getUserData(), authId,
-                                this.getRemoteAddr(), webAppType);
+                // We need the JPA attached User.
+                final User userDb = userDao
+                        .findActiveUserByUserId(session.getUser().getUserId());
+
+                if (userDb == null) {
+                    onLoginFailed(null);
+                } else {
+                    onUserLoginGranted(getUserData(), session, webAppType,
+                            authMode, session.getUser().getUserId(), userDb,
+                            null);
+                    setApiResultOk();
+                }
+
             } else {
-                isCliAppAuthApplied = false;
-            }
 
-            if (!isCliAppAuthApplied) {
+                final boolean isCliAppAuthApplied;
 
                 if (isAuthTokenLoginEnabled && authMode == UserAuth.Mode.NAME
-                        && StringUtils.isBlank(authPw)
-                        && StringUtils.isNotBlank(authToken)) {
-
-                    reqLoginAuthTokenWebApp(authId, authToken, webAppType);
-
+                        && StringUtils.isBlank(authPw)) {
+                    isCliAppAuthApplied =
+                            this.reqLoginAuthTokenCliApp(getUserData(), authId,
+                                    this.getRemoteAddr(), webAppType);
                 } else {
-                    reqLoginNew(authMode, authId, authPw, assocCardNumber,
-                            webAppType);
+                    isCliAppAuthApplied = false;
+                }
+
+                if (!isCliAppAuthApplied) {
+
+                    if (isAuthTokenLoginEnabled
+                            && authMode == UserAuth.Mode.NAME
+                            && StringUtils.isBlank(authPw)
+                            && StringUtils.isNotBlank(authToken)) {
+
+                        reqLoginAuthTokenWebApp(authId, authToken, webAppType);
+
+                    } else {
+                        reqLoginNew(authMode, authId, authPw, assocCardNumber,
+                                webAppType);
+                    }
                 }
             }
         }
-
         getUserData().put("sessionid", SpSession.get().getId());
 
         if (isApiResultOk()) {
@@ -417,10 +482,13 @@ public final class ReqLogin extends ApiRequestMixin {
         final UserAuth theUserAuth = new UserAuth(terminal, null,
                 webAppType == WebAppTypeEnum.ADMIN);
 
-        if (!theUserAuth.isAuthModeAllowed(authMode)) {
-            setApiResult(ApiResultCodeEnum.ERROR, "msg-auth-mode-not-available",
-                    authMode.toString());
-            return;
+        if (authMode != UserAuth.Mode.OAUTH
+                && authMode != UserAuth.Mode.YUBIKEY) { // TEST TEST
+            if (!theUserAuth.isAuthModeAllowed(authMode)) {
+                setApiResult(ApiResultCodeEnum.ERROR,
+                        "msg-auth-mode-not-available", authMode.toString());
+                return;
+            }
         }
 
         /*
@@ -459,9 +527,9 @@ public final class ReqLogin extends ApiRequestMixin {
         User userDb = null;
 
         /*
-         *
+         * RFID format.
          */
-        RfidNumberFormat rfidNumberFormat = null;
+        final RfidNumberFormat rfidNumberFormat;
 
         if (authMode == UserAuth.Mode.CARD_LOCAL || assocCardNumber != null) {
             if (terminal == null) {
@@ -471,6 +539,8 @@ public final class ReqLogin extends ApiRequestMixin {
                 rfidNumberFormat =
                         DEVICE_SERVICE.createRfidNumberFormat(terminal, lookup);
             }
+        } else {
+            rfidNumberFormat = null;
         }
 
         /*
@@ -484,7 +554,7 @@ public final class ReqLogin extends ApiRequestMixin {
              */
             if (webAppType != WebAppTypeEnum.ADMIN) {
                 onLoginFailed("msg-login-denied", webAppType.getUiText(),
-                        authId);
+                        UserAuth.getUiText(authMode), authId);
                 return;
             }
 
@@ -507,7 +577,32 @@ public final class ReqLogin extends ApiRequestMixin {
 
         } else {
 
-            if (authMode == UserAuth.Mode.NAME) {
+            if (authMode == UserAuth.Mode.YUBIKEY) {
+
+                if (authId == null || !YubiKeyOTP.isValidOTPFormat(authId)) {
+                    onLoginFailed(null);
+                    return;
+                }
+
+                final YubiKeyOTP otp = new YubiKeyOTP(authId);
+
+                try {
+                    userDb = reqLoginYubico(otp, webAppType);
+                } catch (YubicoVerificationException e) {
+                    onLoginFailed("msg-login-yubikey-connection-error",
+                            webAppType.getUiText(), otp.getPublicId(),
+                            e.getMessage());
+                } catch (YubicoValidationFailure e) {
+                    throw new SpException(e.getMessage());
+                }
+
+                if (userDb == null) {
+                    onLoginFailed(null);
+                    return;
+                }
+                uid = userDb.getUserId();
+
+            } else if (authMode == UserAuth.Mode.NAME) {
 
                 /*
                  * Get the "real" username from the alias.
@@ -577,7 +672,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (webAppType != WebAppTypeEnum.USER) {
                     onLoginFailed("msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
+                            webAppType.getUiText(),
+                            UserAuth.getUiText(authMode), authId);
                     return;
                 }
 
@@ -587,7 +683,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (allowInternalUsersOnly) {
                     onLoginFailed("msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
+                            webAppType.getUiText(),
+                            UserAuth.getUiText(authMode), authId);
                     return;
                 }
 
@@ -597,7 +694,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (!isLazyUserInsert) {
                     onLoginFailed("msg-login-user-not-present",
-                            webAppType.getUiText(), authId);
+                            webAppType.getUiText(),
+                            UserAuth.getUiText(authMode), authId);
                     return;
                 }
 
@@ -609,7 +707,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (webAppType == WebAppTypeEnum.ADMIN && !userDb.getAdmin()) {
                     onLoginFailed("msg-login-no-admin-rights",
-                            webAppType.getUiText(), userDb.getUserId());
+                            webAppType.getUiText(),
+                            UserAuth.getUiText(authMode), userDb.getUserId());
                     return;
                 }
 
@@ -618,7 +717,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (!userDb.getPerson()) {
                     onLoginFailed("msg-login-no-person", webAppType.getUiText(),
-                            userDb.getUserId());
+                            UserAuth.getUiText(authMode), userDb.getUserId());
                     return;
                 }
 
@@ -629,7 +728,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (USER_SERVICE.isUserFullyDisabled(userDb, onDate)) {
                     onLoginFailed("msg-login-disabled", webAppType.getUiText(),
-                            userDb.getUserId());
+                            UserAuth.getUiText(authMode), userDb.getUserId());
                     return;
                 }
 
@@ -640,7 +739,9 @@ public final class ReqLogin extends ApiRequestMixin {
                     if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
                             ACLRoleEnum.WEB_CASHIER)) {
                         onLoginFailed("msg-login-no-access-to-role",
-                                webAppType.getUiText(), userDb.getUserId(),
+                                webAppType.getUiText(),
+                                UserAuth.getUiText(authMode),
+                                userDb.getUserId(),
                                 ACLRoleEnum.WEB_CASHIER.uiText(getLocale()));
                         return;
                     }
@@ -648,7 +749,9 @@ public final class ReqLogin extends ApiRequestMixin {
                     if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
                             ACLRoleEnum.JOB_TICKET_OPERATOR)) {
                         onLoginFailed("msg-login-no-access-to-role",
-                                webAppType.getUiText(), userDb.getUserId(),
+                                webAppType.getUiText(),
+                                UserAuth.getUiText(authMode),
+                                userDb.getUserId(),
                                 ACLRoleEnum.JOB_TICKET_OPERATOR
                                         .uiText(getLocale()));
                         return;
@@ -665,7 +768,10 @@ public final class ReqLogin extends ApiRequestMixin {
             /*
              * Authenticate
              */
-            if (authMode == UserAuth.Mode.NAME) {
+            if (authMode == UserAuth.Mode.YUBIKEY
+                    || authMode == UserAuth.Mode.OAUTH) {
+                // no code intended
+            } else if (authMode == UserAuth.Mode.NAME) {
 
                 if (isInternalUser) {
 
@@ -705,7 +811,7 @@ public final class ReqLogin extends ApiRequestMixin {
                     }
 
                     /**
-                     * Lazy user insert
+                     * Lazy user insert.
                      */
                     if (userDb == null) {
 
@@ -722,16 +828,9 @@ public final class ReqLogin extends ApiRequestMixin {
                         }
 
                         if (lazyInsert) {
-                            userDb = userDao.findActiveUserByUserIdInsert(
-                                    userAuth, new Date(), Entity.ACTOR_SYSTEM);
-                            /*
-                             * IMPORTANT: ad-hoc commit + begin transaction
-                             */
-                            if (userDb != null) {
-                                ServiceContext.getDaoContext().commit();
-                                ServiceContext.getDaoContext()
-                                        .beginTransaction();
-                            }
+                            userDb = onLazyCreateUser(userDao, userAuth,
+                                    webAppType);
+                            onUserLazyCreated(webAppType, uid, userDb != null);
                         }
                     }
                 }
@@ -835,8 +934,17 @@ public final class ReqLogin extends ApiRequestMixin {
          * Deny access, when the user is still not found in the database.
          */
         if (userDb == null) {
-            onLoginFailed("msg-login-user-not-present", webAppType.getUiText(),
-                    uid);
+            if (authMode == UserAuth.Mode.OAUTH) {
+                /*
+                 * This happens when "sp-login-oauth" URL parameter is still
+                 * there, as backlash of a previous OAuth, and the Login page is
+                 * shown, and user is not authenticated by OAuth (yet).
+                 */
+                onLoginFailed(null);
+            } else {
+                onLoginFailed("msg-login-user-not-present",
+                        webAppType.getUiText(), authMode.toString(), "?");
+            }
             return;
         }
 
@@ -848,8 +956,8 @@ public final class ReqLogin extends ApiRequestMixin {
             authToken = null;
         }
 
-        onUserLoginGranted(getUserData(), session, webAppType, uid, userDb,
-                authToken);
+        onUserLoginGranted(getUserData(), session, webAppType, authMode, uid,
+                userDb, authToken);
 
         /*
          * Update session.
@@ -863,6 +971,50 @@ public final class ReqLogin extends ApiRequestMixin {
                     uid, webAppType.toString(),
                     SpSession.get().isAuthenticated()));
         }
+    }
+
+    /**
+     *
+     * @param otp
+     * @param webAppType
+     * @return The authenticated user or {@code null} when not found or not
+     *         authorized.
+     * @throws IOException
+     * @throws YubicoVerificationException
+     * @throws YubicoValidationFailure
+     */
+    private User reqLoginYubico(final YubiKeyOTP otp,
+            final WebAppTypeEnum webAppType) throws IOException,
+            YubicoVerificationException, YubicoValidationFailure {
+
+        final String publicId = otp.getPublicId();
+
+        final UserNumberDao userNumberDao =
+                ServiceContext.getDaoContext().getUserNumberDao();
+
+        // We need the JPA attached UserNumber and User.
+        final UserNumber userNumberDb =
+                userNumberDao.findByYubiKeyPubID(publicId);
+
+        final ConfigManager cm = ConfigManager.instance();
+
+        if (userNumberDb == null) {
+            return null;
+        }
+
+        final User userDb = userNumberDb.getUser();
+
+        if (webAppType == WebAppTypeEnum.ADMIN
+                && !userDb.getAdmin().booleanValue()) {
+            return null;
+        }
+
+        if (otp.isOk(cm.getConfigInteger(Key.AUTH_MODE_YUBIKEY_API_CLIENT_ID),
+                cm.getConfigValue(Key.AUTH_MODE_YUBIKEY_API_SECRET_KEY))) {
+            return userDb;
+        }
+
+        return null;
     }
 
     /**
@@ -919,7 +1071,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
             session.setUser(userDb);
 
-            onUserLoginGranted(getUserData(), session, webAppType, uid,
+            onUserLoginGranted(getUserData(), session, webAppType, null, uid,
                     session.getUser(), authTokenObj);
 
             setApiResultOk();
@@ -966,7 +1118,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
                 if (webAppType == WebAppTypeEnum.ADMIN) {
                     configKey =
-                            IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMOUT_MINS;
+                            IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMEOUT_MINS;
                 } else {
                     configKey =
                             IConfigProp.Key.WEB_LOGIN_USER_SESSION_TIMEOUT_MINS;
@@ -1066,7 +1218,7 @@ public final class ReqLogin extends ApiRequestMixin {
             final UserAuthToken authTokenWebApp =
                     reqLoginLazyCreateAuthToken(userId, webAppType);
 
-            onUserLoginGranted(userData, session, webAppType, userId,
+            onUserLoginGranted(userData, session, webAppType, null, userId,
                     session.getUser(), authTokenWebApp);
 
             setApiResultOk();
@@ -1142,6 +1294,9 @@ public final class ReqLogin extends ApiRequestMixin {
      *            The session.
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
+     * @param authMode
+     *            The {@link UserAuth.Mode}. {@code null} when authenticated by
+     *            (WebApp or Client) token.
      * @param uid
      *            The User ID.
      * @param userDb
@@ -1153,8 +1308,8 @@ public final class ReqLogin extends ApiRequestMixin {
      */
     private void onUserLoginGranted(final Map<String, Object> userData,
             final SpSession session, final WebAppTypeEnum webAppType,
-            final String uid, final User userDb, final UserAuthToken authToken)
-            throws IOException {
+            final UserAuth.Mode authMode, final String uid, final User userDb,
+            final UserAuthToken authToken) throws IOException {
 
         userData.put("id", uid);
         userData.put("key_id", userDb.getId());
@@ -1189,7 +1344,7 @@ public final class ReqLogin extends ApiRequestMixin {
         }
         userData.put("cometdToken", cometdToken);
 
-        WebApp.get().onAuthenticatedUser(webAppType, session.getId(),
+        WebApp.get().onAuthenticatedUser(webAppType, authMode, session.getId(),
                 getRemoteAddr(), uid);
 
         if (webAppType == WebAppTypeEnum.USER) {
@@ -1201,10 +1356,15 @@ public final class ReqLogin extends ApiRequestMixin {
             /*
              * Make sure that any User Web App long poll for this user is
              * interrupted.
+             *
+             * Note that user home directory might not exist (yet). If it does
+             * not exists, there is no point interrupting the long poll, since
+             * we know this poll cannot be pending. See Mantis #792.
              */
-            ApiRequestHelper.interruptPendingLongPolls(userDb.getUserId(),
-                    this.getRemoteAddr());
-
+            if (UserMsgIndicator.isSafePagesDirPresent(uid)) {
+                ApiRequestHelper.interruptPendingLongPolls(uid,
+                        this.getRemoteAddr());
+            }
             /*
              * Check for expired inbox jobs.
              */
@@ -1220,6 +1380,87 @@ public final class ReqLogin extends ApiRequestMixin {
             //
             INBOX_SERVICE.pruneOrphanJobs(ConfigManager.getUserHomeDir(uid),
                     userDb);
+        }
+    }
+
+    /**
+     * Lazy creates a user.
+     *
+     * @param userDao
+     *            The {@link UserDao}.
+     * @param userAuth
+     *            The authenticated user.
+     * @param webAppType
+     *            The type of web app.
+     * @return The lazy created user, or {@code null} when user was NOT created.
+     */
+    private User onLazyCreateUser(final UserDao userDao, final User userAuth,
+            final WebAppTypeEnum webAppType) {
+
+        /*
+         * Since the user does not exist in the database (yet) we cannot use SQL
+         * row locking to protect concurrent user creation: therefore we use the
+         * cruder synchronized block.
+         */
+        synchronized (LAZY_CREATE_USER_LOCK) {
+
+            final User userDb = userDao.findActiveUserByUserIdInsert(userAuth,
+                    new Date(), Entity.ACTOR_SYSTEM);
+
+            /*
+             * IMPORTANT: ad-hoc commit + begin transaction
+             */
+            if (userDb != null) {
+                ServiceContext.getDaoContext().commit();
+                ServiceContext.getDaoContext().beginTransaction();
+            }
+            return userDb;
+        }
+    }
+
+    /**
+     * Writes Logging and send notifications.
+     *
+     * @param webAppType
+     *            The type of web app.
+     * @param userid
+     *            The user id.
+     * @param success
+     *            {@code true} when user was created, {@code false} when not.
+     */
+    private void onUserLazyCreated(final WebAppTypeEnum webAppType,
+            final String userid, final boolean success) {
+
+        final String msgKey;
+
+        if (success) {
+            msgKey = "msg-login-user-lazy-create-success";
+
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info(Messages.getLogFileMessage(getClass(), msgKey,
+                        webAppType.getUiText(), userid));
+            }
+
+            final String msg = AppLogHelper.logInfo(getClass(), msgKey,
+                    webAppType.getUiText(), userid);
+
+            AdminPublisher.instance().publish(PubTopicEnum.USER,
+                    PubLevelEnum.CLEAR, msg);
+
+        } else {
+
+            msgKey = "msg-login-user-lazy-create-failed";
+
+            if (LOGGER.isErrorEnabled()) {
+                LOGGER.error(Messages.getLogFileMessage(getClass(), msgKey,
+                        webAppType.getUiText(), userid));
+            }
+
+            final String msg = AppLogHelper.logError(getClass(), msgKey,
+                    webAppType.getUiText(), userid);
+
+            AdminPublisher.instance().publish(PubTopicEnum.USER,
+                    PubLevelEnum.ERROR, msg);
         }
     }
 

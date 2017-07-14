@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ..|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein.......| 
+    |........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify ......|
+    | it under the terms of the GNU Affero General Public License as ........|
+    | published by the Free Software Foundation, either version 3 of ........|
+    | the License, or (at your option) any later version. ...................|
+    +========================================================================+ 
     -->
 </wicket:remove>
 
@@ -67,29 +67,26 @@
 			<ul data-role="listview" data-inset="true">
 
 				<li>
-					<h3>
-						<span wicket:id="app-license-name" /> is Libre Software
-					</h3>
 
 					<div class="sp-txt-wrap sp-txt-info">
-						Licensed under the
-						<a class="sp-plain-link"
+						<span wicket:id="app-license-name" /> is <a class="sp-plain-link"
+							href="https://opensource.org/" target="_blank">OSI Certified
+							Open Source Software</a>, licensed under the <a class="sp-plain-link"
 							href="https://www.gnu.org/licenses/agpl.html" target="_blank">GNU
-							Affero General Public License (AGPL)</a>
-						as published by the
-						<a class="sp-plain-link" href="http://fsf.org" target="_blank">Free
-							Software Foundation</a>
-						, either version&nbsp;3 of the License, or (at your option) any
-						later version.
+							Affero General Public License (AGPL)</a> as published by the <a
+							class="sp-plain-link" href="https://www.fsf.org" target="_blank">Free
+							Software Foundation</a> , either version&nbsp;3 of the License, or
+						(at your option) any later version.
 
 					</div>
+
 				</li>
 
 				<li>
 					<h3>Copyright</h3>
 					<div class="sp-txt-wrap sp-txt-info">
-						&copy; 2011-<span wicket:id="current-year"></span> by
-						<a class="sp-plain-link" href="" target="_blank"
+						&copy; 2011-<span wicket:id="current-year"></span> by <a
+							class="sp-plain-link" href="" target="_blank"
 							wicket:id="app-copyright-owner-url" />
 					</div>
 				</li>
@@ -97,12 +94,11 @@
 
 			<div class="sp-txt-wrap">
 				<a class="sp-plain-link ui-btn ui-corner-all ui-btn-inline ui-mini"
-					href="http://savapage.org" target="_blank"> www.savapage.org</a>
-				<a class="sp-plain-link ui-btn ui-corner-all ui-btn-inline ui-mini"
-					href="/docs/licenses/" target="_blank">
-					<wicket:message key="license-info-link" />
-				</a>
-				<a class="sp-plain-link ui-btn ui-corner-all ui-btn-inline ui-mini"
+					href="[]" target="_blank" wicket:id="savapage-url" /> <a
+					class="sp-plain-link ui-btn ui-corner-all ui-btn-inline ui-mini"
+					href="/docs/licenses/" target="_blank"> <wicket:message
+						key="license-info-link" />
+				</a> <a class="sp-plain-link ui-btn ui-corner-all ui-btn-inline ui-mini"
 					href="" target="_blank" wicket:id="savapage-source-code-url" />
 			</div>
 		</div>
@@ -115,7 +111,7 @@
 
 			<ul data-role="listview" data-inset="true">
 
-				<wicket:fragment wicket:id="membership-details" />
+				<wicket:panel wicket:id="membership-details" />
 
 				<li>
 					<h3>
@@ -157,8 +153,8 @@
 						<wicket:message key="online-info" />
 					</h3>
 					<div>
-						<a class="sp-plain-link" href="http://savapage.org/"
-							target="_blank" data-rel="external">http://savapage.org/</a>
+						<a class="sp-plain-link" href="https://wiki.savapage.org/"
+							target="_blank" data-rel="external">https://wiki.savapage.org/</a>
 					</div>
 				</li>
 				<li>
@@ -171,7 +167,7 @@
 					</div>
 				</li>
 				<li>
-					<wicket:fragment wicket:id="printerdriver-download-panel" />
+					<wicket:panel wicket:id="printerdriver-download-panel" />
 				</li>
 			</ul>
 
@@ -211,6 +207,26 @@
 					<tr>
 						<th>Max memory</th>
 						<td wicket:id="jre-max-memory" />
+					</tr>
+					<tr>
+						<th>java.io.tmpdir</th>
+						<td wicket:id="jre-java.io.tmpdir" />
+					</tr>
+					<tr>
+						<th>&nbsp;</th>
+						<td />
+					</tr>
+					<tr>
+						<th wicket:id="app.dir.tmp-key" />
+						<td wicket:id="app.dir.tmp" />
+					</tr>
+					<tr>
+						<th wicket:id="app.dir.safepages-key" />
+						<td wicket:id="app.dir.safepages" />
+					</tr>
+					<tr>
+						<th wicket:id="app.dir.letterheads-key" />
+						<td wicket:id="app.dir.letterheads" />
 					</tr>
 				</tbody>
 			</table>

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 
@@ -76,7 +76,7 @@
 				</h3>
 				<fieldset data-role="controlgroup" data-mini="true"
 					id="sp-user-edit-roles">
-					<wicket:fragment wicket:id="ACLRoleEnumCheckboxes" />
+					<wicket:panel wicket:id="ACLRoleEnumCheckboxes" />
 				</fieldset>
 			</div>
 
@@ -115,6 +115,12 @@
 				<wicket:message key="user-pin" />
 			</label>
 			<input type="password" id="user-pin" maxlength="6" pattern="[0-9]*"
+				value="" data-clear-btn="true" />
+
+			<label for="user-yubikey-public-id">
+				<wicket:message key="user-yubikey-public-id" />
+			</label>
+			<input type="text" id="user-yubikey-public-id" maxlength="12"
 				value="" data-clear-btn="true" />
 
 			<div id="user-uuid-collapsible" data-role="collapsible"
@@ -192,17 +198,27 @@
 					class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check">
 					<wicket:message key="button-ok" />
 				</button>
-
-				<button id="button-user-pw-dialog"
-					class="sp-internal-user-edit ui-btn ui-btn-inline ui-btn-icon-left ui-icon-edit">
-					<wicket:message key="button-password" />
-				</button>
-
 				<a href="#"
 					class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-back"
 					data-rel="back" data-direction="reverse"> <wicket:message
 						key="button-cancel" />
 				</a>
+			</div>
+		</li>
+	</ul>
+	<ul class="sp-internal-user-edit" data-role="listview"
+		data-inset="true">
+		<li data-role="list-divider">
+			<wicket:message key="button-password" />
+		</li>
+		<li>
+			<div>
+				<button id="button-user-pw-dialog" wicket:id="button-user-pw-reset"
+					class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-edit">
+				</button>
+				<button id="button-user-pw-erase" wicket:id="button-user-pw-erase"
+					class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-delete">
+				</button>
 			</div>
 		</li>
 	</ul>

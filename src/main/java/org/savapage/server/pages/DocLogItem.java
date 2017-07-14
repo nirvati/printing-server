@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -23,13 +23,16 @@ package org.savapage.server.pages;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.crypto.CryptoUser;
@@ -43,6 +46,7 @@ import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
 import org.savapage.core.ipp.IppJobStateEnum;
+import org.savapage.core.ipp.helpers.IppOptionMap;
 import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.DocIn;
 import org.savapage.core.jpa.DocLog;
@@ -53,6 +57,7 @@ import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.JsonHelper;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.server.WebApp;
 
@@ -65,6 +70,8 @@ public final class DocLogItem {
 
     private ExternalSupplierEnum extSupplier;
     private ExternalSupplierStatusEnum extSupplierStatus;
+    private String extId;
+    private String extData;
 
     private String userId;
     private String userName;
@@ -91,7 +98,17 @@ public final class DocLogItem {
     private String destination;
     private Boolean letterhead;
     private Boolean duplex;
+    private Integer numberUp;
     private Boolean grayscale;
+
+    private boolean finishingPunch;
+    private boolean finishingStaple;
+    private boolean finishingFold;
+    private boolean finishingBooklet;
+
+    private Map<String, String> ippOptions;
+
+    private IppOptionMap ippOptionMap;
 
     private Boolean collateCopies;
     private Boolean ecoPrint;
@@ -128,6 +145,22 @@ public final class DocLogItem {
     public void
             setExtSupplierStatus(ExternalSupplierStatusEnum extSupplierStatus) {
         this.extSupplierStatus = extSupplierStatus;
+    }
+
+    public String getExtId() {
+        return extId;
+    }
+
+    public void setExtId(String extId) {
+        this.extId = extId;
+    }
+
+    public String getExtData() {
+        return extData;
+    }
+
+    public void setExtData(String extData) {
+        this.extData = extData;
     }
 
     public List<AccountTrx> getTransactions() {
@@ -371,6 +404,8 @@ public final class DocLogItem {
                 log.setExtSupplier(DaoEnumHelper.getExtSupplier(docLog));
                 log.setExtSupplierStatus(
                         DaoEnumHelper.getExtSupplierStatus(docLog));
+                log.setExtId(docLog.getExternalId());
+                log.setExtData(docLog.getExternalData());
 
                 log.setUserId(docLog.getUser().getUserId());
                 log.setUserName(docLog.getUser().getFullName());
@@ -400,8 +435,12 @@ public final class DocLogItem {
                             log.getTransactions().get(0).getCurrencyCode());
                 }
 
-                log.setHumanReadableByteCount(NumberUtil.humanReadableByteCount(
-                        docLog.getNumberOfBytes(), true));
+                if (docLog.getNumberOfBytes() != null
+                        && docLog.getNumberOfBytes().longValue() > 0) {
+                    log.setHumanReadableByteCount(
+                            NumberUtil.humanReadableByteCount(
+                                    docLog.getNumberOfBytes(), true));
+                }
 
                 final DocIn docIn = docLog.getDocIn();
                 final DocOut docOut = docLog.getDocOut();
@@ -482,6 +521,32 @@ public final class DocLogItem {
                             log.setCompletedDate(
                                     new Date(printOut.getCupsCompletedTime()
                                             * DateUtil.DURATION_MSEC_SECOND));
+                        }
+
+                        if (NumberUtils.isDigits(printOut.getCupsNumberUp())) {
+                            log.setNumberUp(Integer
+                                    .valueOf(printOut.getCupsNumberUp()));
+                        }
+
+                        final Map<String, String> ippOptions =
+                                JsonHelper.createStringMapOrNull(
+                                        printOut.getIppOptions());
+
+                        if (ippOptions != null) {
+
+                            log.setIppOptions(ippOptions);
+
+                            final IppOptionMap optionMap =
+                                    new IppOptionMap(ippOptions);
+                            log.setIppOptionMap(optionMap);
+
+                            log.setFinishingBooklet(
+                                    optionMap.hasFinishingBooklet());
+                            log.setFinishingFold(optionMap.hasFinishingFold());
+                            log.setFinishingPunch(
+                                    optionMap.hasFinishingPunch());
+                            log.setFinishingStaple(
+                                    optionMap.hasFinishingStaple());
                         }
 
                     } else if (pdfOut != null) {
@@ -1021,7 +1086,6 @@ public final class DocLogItem {
             if (selDuplex != null) {
                 query.setParameter("duplex", selDuplex);
             }
-
         }
 
         @Override
@@ -1033,6 +1097,67 @@ public final class DocLogItem {
             }
         }
 
+    }
+
+    /**
+     * .
+     */
+    private static class QTicket extends QPrint {
+
+        @Override
+        protected String getExtraWhere(final DocLogPagerReq req) {
+
+            int nWhere = 0;
+
+            final StringBuilder where = new StringBuilder();
+
+            //
+            final String extraWhere = super.getExtraWhere(req);
+            if (extraWhere != null) {
+                where.append(extraWhere);
+                nWhere++;
+            }
+
+            //
+            if (nWhere > 0) {
+                where.append(" AND ");
+            }
+            nWhere++;
+
+            where.append("P.printMode IN (:printModes)");
+
+            //
+            if (req.getSelect().getTicketNumber() != null) {
+                if (nWhere > 0) {
+                    where.append(" AND ");
+                }
+                nWhere++;
+
+                where.append(
+                        "lower(D.externalId) like :containingExternalIdText");
+            }
+            //
+            return where.toString();
+        }
+
+        @Override
+        protected void setExtraParms(final Query query,
+                final DocLogPagerReq req) {
+
+            super.setExtraParms(query, req);
+
+            List<String> names = Arrays.asList(PrintModeEnum.TICKET.toString(),
+                    PrintModeEnum.TICKET_C.toString(),
+                    PrintModeEnum.TICKET_E.toString());
+
+            query.setParameter("printModes", names);
+
+            final String ticket = req.getSelect().getTicketNumber();
+            if (ticket != null) {
+                query.setParameter("containingExternalIdText",
+                        String.format("%%%s%%", ticket.toLowerCase()));
+            }
+        }
     }
 
     /**
@@ -1062,6 +1187,8 @@ public final class DocLogItem {
             return new QPdf();
         case PRINT:
             return new QPrint();
+        case TICKET:
+            return new QTicket();
         default:
             throw new SpException(
                     String.format("Unknown doctype [%s]", docType.toString()));
@@ -1108,12 +1235,68 @@ public final class DocLogItem {
         this.duplex = duplex;
     }
 
+    public Integer getNumberUp() {
+        return numberUp;
+    }
+
+    public void setNumberUp(Integer numberUp) {
+        this.numberUp = numberUp;
+    }
+
     public Boolean getGrayscale() {
         return grayscale;
     }
 
     public void setGrayscale(Boolean grayscale) {
         this.grayscale = grayscale;
+    }
+
+    public boolean isFinishingPunch() {
+        return finishingPunch;
+    }
+
+    public void setFinishingPunch(boolean finishingPunch) {
+        this.finishingPunch = finishingPunch;
+    }
+
+    public boolean isFinishingStaple() {
+        return finishingStaple;
+    }
+
+    public void setFinishingStaple(boolean finishingStaple) {
+        this.finishingStaple = finishingStaple;
+    }
+
+    public boolean isFinishingFold() {
+        return finishingFold;
+    }
+
+    public void setFinishingFold(boolean finishingFold) {
+        this.finishingFold = finishingFold;
+    }
+
+    public boolean isFinishingBooklet() {
+        return finishingBooklet;
+    }
+
+    public void setFinishingBooklet(boolean finishingBooklet) {
+        this.finishingBooklet = finishingBooklet;
+    }
+
+    public Map<String, String> getIppOptions() {
+        return ippOptions;
+    }
+
+    public void setIppOptions(Map<String, String> ippOptions) {
+        this.ippOptions = ippOptions;
+    }
+
+    public IppOptionMap getIppOptionMap() {
+        return ippOptionMap;
+    }
+
+    public void setIppOptionMap(IppOptionMap ippOptionMap) {
+        this.ippOptionMap = ippOptionMap;
     }
 
     public Boolean getCollateCopies() {

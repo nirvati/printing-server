@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ..|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein.......| 
+    |........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify ......|
+    | it under the terms of the GNU Affero General Public License as ........|
+    | published by the Free Software Foundation, either version 3 of ........|
+    | the License, or (at your option) any later version. ...................|
+    +========================================================================+ 
     -->
 </wicket:remove>
 
@@ -123,12 +123,28 @@
 						<td wicket:id="warning-count" />
 					</tr>
 
+					<wicket:enclosure child="ssl-expiry">
+						<tr>
+							<th>
+								<wicket:message key="ssl-expiry-prompt" />
+							</th>
+							<td wicket:id="ssl-expiry" class="sp-txt-wrap" />
+						</tr>
+					</wicket:enclosure>
+
 					<wicket:enclosure child="jvm-memory">
 						<tr>
 							<th>
 								<wicket:message key="jvm-memory-prompt" />
 							</th>
-							<td wicket:id="jvm-memory" class="sp-txt-wrap sp-txt-info" />
+							<td>
+								<span wicket:id="jvm-memory" class="sp-txt-wrap sp-txt-info" />
+							</td>
+							<td>
+								<div style="margin-top: -15px;">
+									<wicket:panel wicket:id="tooltip-jvm-memory" />
+								</div>
+							</td>
 						</tr>
 					</wicket:enclosure>
 					<wicket:enclosure child="threads-info">
@@ -160,7 +176,9 @@
 		</li>
 
 
-		<li data-role="list-divider"><wicket:message key="header-services" /></li>
+		<li data-role="list-divider">
+			<wicket:message key="header-services" />
+		</li>
 		<li>
 			<table data-role="table" data-mode="reflow"
 				class="ui-responsive table-stroke">
@@ -173,7 +191,7 @@
 				<tbody>
 
 					<tr>
-						<th style="vertical-align: middle;" wicket:id="prompt-proxy-print"/>
+						<th style="vertical-align: middle;" wicket:id="prompt-proxy-print" />
 						<td>
 							<input type="checkbox" wicket:id="flipswitch-proxyprint-online"
 								data-mini="true" data-role="flipswitch" data-on-text="On"
@@ -200,7 +218,7 @@
 
 					<wicket:enclosure child="mailprint-status">
 						<tr>
-							<th style="vertical-align: middle;" wicket:id="prompt-mail-print"/>
+							<th style="vertical-align: middle;" wicket:id="prompt-mail-print" />
 							<td>
 								<input type="checkbox" class="flipswitch-mailprint-online"
 									wicket:id="flipswitch-mailprint-online" data-mini="true"
@@ -212,7 +230,7 @@
 					</wicket:enclosure>
 
 					<tr>
-						<th style="vertical-align: middle;" wicket:id="prompt-web-print"/>
+						<th style="vertical-align: middle;" wicket:id="prompt-web-print" />
 						<td>
 							<input type="checkbox" id="flipswitch-webprint-online"
 								wicket:id="flipswitch-webprint-online" data-mini="true"
@@ -221,7 +239,8 @@
 					</tr>
 
 					<tr>
-						<th style="vertical-align: middle;" wicket:id="prompt-internet-print"/>
+						<th style="vertical-align: middle;"
+							wicket:id="prompt-internet-print" />
 						<td>
 							<input type="checkbox" id="flipswitch-internetprint-online"
 								wicket:id="flipswitch-internetprint-online" data-mini="true"
@@ -276,13 +295,13 @@
 		<li data-role="list-divider">
 			<wicket:message key="news" />
 		</li>
-		<wicket:fragment wicket:id="savapage-news" />
+		<wicket:panel wicket:id="savapage-news" />
 
-		<wicket:fragment wicket:id="stats-pages-total" />
+		<wicket:panel wicket:id="stats-pages-total" />
 
-		<wicket:fragment wicket:id="environmental-impact" />
+		<wicket:panel wicket:id="environmental-impact" />
 
-		<wicket:fragment wicket:id="stats-financial-totals" />
+		<wicket:panel wicket:id="stats-financial-totals" />
 
 	</ul>
 </wicket:panel>

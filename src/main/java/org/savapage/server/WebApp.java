@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
@@ -55,7 +56,9 @@ import org.savapage.core.jpa.tools.DatabaseTypeEnum;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.services.helpers.ThirdPartyEnum;
+import org.savapage.core.services.helpers.UserAuth;
 import org.savapage.core.util.AppLogHelper;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.payment.PaymentMethodEnum;
 import org.savapage.server.api.JsonApiServer;
@@ -74,6 +77,7 @@ import org.savapage.server.webapp.WebAppJobTickets;
 import org.savapage.server.webapp.WebAppPos;
 import org.savapage.server.webapp.WebAppTypeEnum;
 import org.savapage.server.webapp.WebAppUser;
+import org.savapage.server.webprint.DropZoneResourceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -130,6 +134,11 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * Used in this class to set mountPage().
      */
     private static final String MOUNT_PATH_API = "/api";
+
+    /**
+     * Mount path for WenPrint drop zone.
+     */
+    public static final String MOUNT_PATH_UPLOAD_WEBPRINT = "/upload/webprint";
 
     /**
      *
@@ -314,6 +323,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      *
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
+     * @param authMode
+     *            The {@link UserAuth.Mode}. {@code null} when authenticated by
+     *            (WebApp or Client) token.
      * @param sessionId
      *            The session ID as key.
      * @param ipAddr
@@ -322,8 +334,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      *            The authenticated user.
      */
     public synchronized void onAuthenticatedUser(
-            final WebAppTypeEnum webAppType, final String sessionId,
-            final String ipAddr, final String user) {
+            final WebAppTypeEnum webAppType, final UserAuth.Mode authMode,
+            final String sessionId, final String ipAddr, final String user) {
 
         /*
          * Removing the old session on same IP address
@@ -381,11 +393,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
          *
          */
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
-                localize("pub-user-login-success", webAppType.getUiText(), user,
-                        ipAddr));
-        /*
-         *
-         */
+                localize("pub-user-login-success", webAppType.getUiText(),
+                        UserAuth.getUiText(authMode), user, ipAddr));
+        //
         checkIpUserSessionCache("notifyAuthenticatedUser");
     }
 
@@ -559,6 +569,12 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             WicketWebjars.install(this);
 
             /*
+             *
+             */
+            mountResource(MOUNT_PATH_UPLOAD_WEBPRINT,
+                    new DropZoneResourceReference("webprint"));
+
+            /*
              * Mount a page class to a given path
              *
              * http://wicketinaction.com/2011/07/wicket-1-5-mounting-pages/
@@ -614,12 +630,50 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              * Web server.
              */
             final StringBuilder logMsg = new StringBuilder();
-            logMsg.append("Web Server started on port ")
-                    .append(WebServer.getServerPort());
-            logMsg.append(" and ").append(WebServer.getServerPortSsl())
-                    .append(" (SSL)");
+            logMsg.append("Web Server started on port ");
 
+            if (!WebServer.isSSLOnly()) {
+                logMsg.append(WebServer.getServerPort());
+
+                if (WebServer.isSSLRedirect()) {
+                    logMsg.append(" with redirect to ");
+                } else {
+                    logMsg.append(" and ");
+                }
+            }
+            logMsg.append(WebServer.getServerPortSsl()).append(" (SSL)");
             SpInfo.instance().log(logMsg.toString());
+
+            //
+            final WebServer.SslCertInfo sslCert = WebServer.getSslCertInfo();
+
+            if (sslCert == null) {
+                SpInfo.instance().log("SSL Certificate info NOT avaliable.");
+            } else {
+                final LocaleHelper helper = new LocaleHelper(Locale.ENGLISH);
+
+                logMsg.setLength(0);
+                logMsg.append("SSL Cert Issuer  [")
+                        .append(sslCert.getIssuerCN()).append("]");
+
+                if (sslCert.isSelfSigned()) {
+                    logMsg.append(" self-signed.");
+                }
+                SpInfo.instance().log(logMsg.toString());
+
+                logMsg.setLength(0);
+                logMsg.append("SSL Cert Created [").append(
+                        helper.getLongMediumDateTime(sslCert.getCreationDate()))
+                        .append("]");
+                SpInfo.instance().log(logMsg.toString());
+
+                logMsg.setLength(0);
+                logMsg.append("SSL Cert Expires [")
+                        .append(helper
+                                .getLongMediumDateTime(sslCert.getNotAfter()))
+                        .append("]");
+                SpInfo.instance().log(logMsg.toString());
+            }
 
             /*
              *
@@ -658,8 +712,12 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                     .getProperty(ConfigManager.SERVER_PROP_PRINTER_RAW_PORT,
                             ConfigManager.PRINTER_RAW_PORT_DEFAULT));
 
-            this.rawPrintServer = new RawPrintServer(iRawPrintPort);
-            this.rawPrintServer.start();
+            if (iRawPrintPort == 0) {
+                SpInfo.instance().log("IP Print Server disabled.");
+            } else {
+                this.rawPrintServer = new RawPrintServer(iRawPrintPort);
+                this.rawPrintServer.start();
+            }
 
         } catch (Exception e) {
 

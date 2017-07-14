@@ -1,7 +1,7 @@
-/*! SavaPage jQuery Mobile Admin Pages | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile Admin Pages | (c) 2011-2017 Datraverse B.V. | GNU Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
@@ -16,7 +16,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -293,6 +293,7 @@
 				$('#user-userid').val(_model.editUser.userName);
 				$('#user-card-number').val(_model.editUser.card);
 				$('#user-id-number').val(_model.editUser.id);
+				$('#user-yubikey-public-id').val(_model.editUser.yubiKeyPubId);
 				$('#user-pin').val(_model.editUser.pin);
 				$('#user-uuid').val(_model.editUser.uuid);
 
@@ -313,6 +314,8 @@
 				} else {
 					$('#user-userid').focus();
 				}
+
+				_view.visible($('#button-user-pw-erase'), _model.editUser.internal && _model.editUser.dbId && _model.editUser.internalPw);
 			}
 			//--------------------
 			, _v2m = function() {
@@ -340,7 +343,7 @@
 
 				if (!_model.editUser.dbId) {
 					_model.editUser.userName = $('#user-userid').val();
-					if (!_view.checkPwMatch($('#user-user-pw'), $('#user-user-pw-confirm'))) {
+					if (!_view.checkPwMatch($('#user-user-pw'), $('#user-user-pw-confirm'), true)) {
 						return false;
 					}
 					_model.editUser.password = $('#user-user-pw').val();
@@ -353,6 +356,7 @@
 				_model.editUser.disabled = $('#user-disabled').is(':checked');
 				_model.editUser.card = $('#user-card-number').val();
 				_model.editUser.id = $('#user-id-number').val();
+				_model.editUser.yubiKeyPubId = $('#user-yubikey-public-id').val();
 				_model.editUser.pin = $('#user-pin').val();
 				_model.editUser.uuid = $('#user-uuid').val();
 
@@ -384,6 +388,11 @@
 					_view.showPageAsync('#page-user-pw-reset', 'UserPasswordReset', function() {
 						$('#user-pw-reset-title').html(_model.editUser.userName);
 					});
+					return false;
+				});
+
+				$(this).on('click', '#button-user-pw-erase', null, function() {
+					_self.onEraseUserPw();
 					return false;
 				});
 
@@ -543,28 +552,83 @@
 			var _page = new _ns.Page(_i18n, _view, '#page-shared-account', 'admin.PageSharedAccount')
 			//
 			, _self = _ns.derive(_page)
+			//--------------------
+			, _isSharedAccount = function() {
+				return _model.editAccount.accountType === 'SHARED';
+			}
+			//--------------------
+			, _m2v = function() {
+				var userGroupAccess, isShared = _isSharedAccount();
+
+				$('#sp-shared-account-name').val(_model.editAccount.name);
+				$('#sp-shared-account-balance').val(_model.editAccount.balance);
+				$('#sp-shared-account-name-parent').val(_model.editAccount.parentName);
+				$('#sp-shared-account-notes').val(_model.editAccount.notes);
+
+				_view.visible($('.sp-shared-account-edit'), isShared);
+				_view.visible($('.sp-group-account-edit'), !isShared);
+
+				_view.visible($('.sp-shared-account_user-defined-section'), _model.editAccount.id !== null);
+				_view.checkCb('#sp-shared-account-deleted', _model.editAccount.deleted);
+
+				if (isShared) {
+					_view.checkCb('#sp-shared-account-disabled', _model.editAccount.disabled);
+				}
+
+				if (isShared && _model.editAccount.userGroupAccess) {
+					$.each(_model.editAccount.userGroupAccess, function(key, val) {
+						if (userGroupAccess) {
+							userGroupAccess += "\n";
+						} else {
+							userGroupAccess = "";
+						}
+						userGroupAccess += val.groupName;
+					});
+				}
+				$('#sp-shared-account-group-access').val(userGroupAccess);
+			}
+			//--------------------
+			, _v2m = function() {
+
+				var userGroupAccess = [], isShared = _isSharedAccount();
+
+				if (isShared) {
+					$.each($('#sp-shared-account-group-access').val().split("\n"), function(key, val) {
+						var groupName = val.trim();
+						if (groupName.length > 0) {
+							userGroupAccess.push({
+								groupName : groupName
+							});
+						}
+					});
+				}
+				_model.editAccount.userGroupAccess = userGroupAccess;
+				_model.editAccount.name = $('#sp-shared-account-name').val();
+				_model.editAccount.parentName = $('#sp-shared-account-name-parent').val();
+				_model.editAccount.balance = $('#sp-shared-account-balance').val();
+				_model.editAccount.notes = $('#sp-shared-account-notes').val();
+				_model.editAccount.deleted = $('#sp-shared-account-deleted').is(':checked');
+
+				if (isShared) {
+					_model.editAccount.disabled = $('#sp-shared-account-disabled').is(':checked');
+				}
+
+				return true;
+			}
 			//
 			;
 
 			$(_self.id()).on('pagecreate', function(event) {
 
-				$(this).on('click', '#button-save-shared-account', null, function() {
-					_self.onSaveSharedAccount();
+				$(this).on('click', '#sp-button-save-shared-account', null, function() {
+					if (_v2m()) {
+						_self.onSaveSharedAccount();
+					}
 					return false;
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
-
-				$('#shared-account-name').val(_model.editAccount.name);
-				$('#shared-account-balance').val(_model.editAccount.balance);
-				$('#shared-account-name-parent').val(_model.editAccount.parentName);
-				$('#shared-account-notes').val(_model.editAccount.notes);
-
-				_view.visible($('.sp-shared-account-edit'), _model.editAccount.accountType === 'SHARED');
-				_view.visible($('.sp-group-account-edit'), _model.editAccount.accountType !== 'SHARED');
-
-				_view.visible($('.shared-account_user-defined-section'), _model.editAccount.id !== null);
-				_view.checkCb('#shared-account-deleted', _model.editAccount.deleted);
+				_m2v();
 			});
 			return _self;
 		};
@@ -690,7 +754,7 @@
 			//
 			, _WEBAPP_USER_IDLE_SECS = 'webapp.user.max-idle-secs'
 			// boolean authentication attributes
-			, _AUTH_ATTR_BOOLS = ['.name', '.id', '.id.pin-required', '.id.is-masked', '.card-local', '.card-ip', '.card.pin-required', '.card.self-association']
+			, _AUTH_ATTR_BOOLS = ['.name', '.yubikey', '.id', '.id.pin-required', '.id.is-masked', '.card-local', '.card-ip', '.card.pin-required', '.card.self-association']
 			// string authentication attributes
 			, _AUTH_ATTR_STRINGS = []
 			//
@@ -707,6 +771,8 @@
 				//
 				, authCardIp = _view.isCbChecked($("#auth-mode\\.card-ip"))
 				//
+				, authYubikey = _view.isCbChecked($("#auth-mode\\.yubikey"))
+				//
 				, sel
 				//
 				, nMode = 0
@@ -717,6 +783,7 @@
 				$('#auth-mode-default-id').checkboxradio( authId ? 'enable' : 'disable');
 				$('#auth-mode-default-card-local').checkboxradio( authCardLocal ? 'enable' : 'disable');
 				$('#auth-mode-default-card-network').checkboxradio( authCardIp ? 'enable' : 'disable');
+				$('#auth-mode-default-yubikey').checkboxradio( authYubikey ? 'enable' : 'disable');
 
 				if (authUser) {
 					nMode++;
@@ -728,6 +795,10 @@
 					sel.show();
 				} else {
 					sel.hide();
+				}
+
+				if (authYubikey) {
+					nMode++;
 				}
 
 				if (authCardLocal) {
@@ -1203,6 +1274,9 @@
 				_view.checkCb('#printer-internal', _model.editPrinter.internal);
 				_view.checkCb('#printer-deleted', _model.editPrinter.deleted);
 
+				_view.checkCb('#printer-jobticket', _model.editPrinter.jobTicket);
+				$('#printer-jobticket-group').val(_model.editPrinter.jobTicketGroup);
+
 				$('#printer-newname').val('');
 				_view.checkCb('#printer-rename-replace', false);
 
@@ -1247,6 +1321,17 @@
 			 *
 			 */
 			$(_self.id()).on('pagecreate', function(event) {
+
+				$('#membercard-import-title').html(_i18n.format('membercard-import-title'));
+				$('#membercard-import-file-label').html(_i18n.format('membercard-import-file-label'));
+
+				// <input>
+				$('#button-membercard-import-reset').attr('value', _i18n.format('button-reset')).button('refresh');
+				$('#button-membercard-import-submit').attr('value', _i18n.format('button-upload')).button('refresh');
+
+				// <a>
+				$('#button-membercard-import-back').html(_i18n.format('button-back'));
+
 				$('#membercard-import-feedback').hide();
 				// initial hide
 				$('#button-membercard-import-submit').on('click', null, null, function() {
@@ -1254,15 +1339,15 @@
 					$('#membercard-import-feedback').show();
 					return true;
 				});
-				
+
 				$('#button-membercard-import-reset').on('click', null, null, function() {
 					$('#membercard-import-feedback').html('').hide();
 					return true;
-				});				
-				
+				});
+
 			}).on("pagebeforeshow", function(event, ui) {
 				_submitted = false;
-				
+
 			}).on('pagebeforehide', function(event, ui) {
 				/*
 				 * Clear and Hide content
@@ -1602,7 +1687,6 @@
 					}
 				});
 
-
 				/*
 				 * Smooth scrolling to primary content
 				 *
@@ -1638,7 +1722,6 @@
 					//}
 					return false;
 				});
-
 
 				$('#button-about-org').click(function() {
 					_view.showPageAsync('#page-info', 'AppAbout');
@@ -2258,13 +2341,13 @@
 				$(this).on('change', "input:checkbox[id='proxy-print.non-secure']", null, function(e) {
 					_panel.Options.onProxyPrintEnabled($(this).is(':checked'));
 				});
-								
+
 				$(this).on('change', "#group-user-auth-mode-local input:checkbox", null, function(e) {
 					_panel.Options.onAuthModeLocalEnabled();
 				});
 
-				$(this).on('click', '#apply-webprint', null, function() {
-					_self.onApplyWebPrint(_view.isCbChecked($('#web-print\\.enable')));
+				$(this).on('click', '#apply-webprint', null, function() {				
+					_self.onApplyWebPrint(_view.isCbChecked($('#web-print\\.enable')), _view.isCbChecked($('#web-print\\.dropzone-enable')));
 					return false;
 				});
 

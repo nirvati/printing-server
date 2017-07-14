@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 
@@ -26,26 +26,27 @@
 	<wicket:enclosure child="app-version">
 		<h3 wicket:id="app-version" />
 		<p class="sp-txt-wrap">
-			<span wicket:id="app-name" /> is Libre Software.
+			<span wicket:id="app-slogan" /> Services.
 		</p>
-		<wicket:fragment wicket:id="savapage-info" />
+		<wicket:panel wicket:id="savapage-info" />
 	</wicket:enclosure>
 
 	<wicket:enclosure child="savapage-info-after-inject">
 		<div style="font-size: small;">
 			<hr />
-			<p>Powered by SavaPage Libre Print Management v<span
-					wicket:id="app-version-number" />
+			<p>
+				Powered by <span wicket:id="app-product-name" /> <span
+					wicket:id="app-product-slogan" /> <span
+					wicket:id="app-product-version" />
 			</p>
-			<wicket:fragment wicket:id="savapage-info-after-inject" />
+			<wicket:panel wicket:id="savapage-info-after-inject" />
 		</div>
 	</wicket:enclosure>
 
 	<div>
 		<a href="#" class="ui-btn ui-btn-inline ui-icon-back ui-btn-icon-left"
-			id="button-appinfo-cancel" data-rel="back" data-direction="reverse">
-			<wicket:message key="button-back" />
-		</a>
+			id="button-appinfo-cancel" data-rel="back" data-direction="reverse"
+			wicket:id="button-back" />
 	</div>
 </div>
 

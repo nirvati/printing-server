@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -39,6 +39,7 @@ import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.savapage.core.SpException;
@@ -65,18 +66,21 @@ import org.savapage.core.services.AppLogService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.bitcoin.BitcoinGateway;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.savapage.server.WebApp;
+import org.savapage.server.WebServer;
 import org.savapage.server.cometd.UserEventService;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
 import org.savapage.server.pages.StatsEnvImpactPanel;
 import org.savapage.server.pages.StatsPageTotalPanel;
+import org.savapage.server.pages.TooltipPanel;
 
 /**
  *
@@ -89,6 +93,16 @@ public final class SystemStatusPanel extends Panel {
      * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
+
+    /**
+     *
+     */
+    private static final long DAYS_IN_MONTH = 30;
+
+    /**
+     *
+     */
+    private static final long DAYS_IN_YEAR = 365;
 
     /**
      * Duration after which news expires.
@@ -617,6 +631,36 @@ public final class SystemStatusPanel extends Panel {
         add(labelWarn);
 
         /*
+         * SSL Certificate
+         */
+        final WebServer.SslCertInfo sslCert = WebServer.getSslCertInfo();
+        String certText = null;
+        String certClass = null;
+
+        if (sslCert != null) {
+
+            final LocaleHelper localeHelper = new LocaleHelper(getLocale());
+
+            final long delta = sslCert.getNotAfter().getTime()
+                    - System.currentTimeMillis();
+
+            if (delta < DateUtil.DURATION_MSEC_DAY * DAYS_IN_YEAR) {
+                certText = localeHelper.getMediumDate(sslCert.getNotAfter());
+                if (delta < DateUtil.DURATION_MSEC_DAY * DAYS_IN_MONTH) {
+                    certClass = "sp-txt-warn";
+                } else {
+                    certClass = "sp-txt-info";
+                }
+            }
+        }
+
+        labelWrk =
+                helper.encloseLabel("ssl-expiry", certText, certText != null);
+        if (certClass != null) {
+            labelWrk.add(AttributeAppender.append("class", certClass));
+        }
+
+        /*
          * Show technical info?
          */
         final boolean showTechInfo = ConfigManager.instance()
@@ -649,6 +693,12 @@ public final class SystemStatusPanel extends Panel {
         }
 
         helper.encloseLabel("jvm-memory", memoryInfo, showTechInfo);
+
+        if (showTechInfo) {
+            final TooltipPanel tooltip = new TooltipPanel("tooltip-jvm-memory");
+            tooltip.populate(helper.localized("tooltip-jvm-memory"));
+            add(tooltip);
+        }
 
         /*
          * Threads info.
@@ -776,19 +826,27 @@ public final class SystemStatusPanel extends Panel {
 
                     private static final int RETRIEVE_NEWS_TIMEOUT_MSEC = 3000;
 
-                    private static final String URL_SAVAPAGE_NEWS =
-                            "http://www.savapage.org/"
-                                    //
-                                    + "news-embedded.php?embedded=y"
-                    //
-                                    + "&v_major=" + VersionInfo.VERSION_A_MAJOR
-                    //
-                                    + "&v_minor=" + VersionInfo.VERSION_B_MINOR
-                    //
-                                    + "&v_revision="
-                                    + VersionInfo.VERSION_C_REVISION
-                    //
-                                    + "&v_build=" + VersionInfo.VERSION_D_BUILD;
+                    /**
+                     * @return The HTTP request.
+                     */
+                    private HttpGet getNewsRequest() {
+
+                        final StringBuilder url = new StringBuilder();
+
+                        url.append(CommunityDictEnum.SAVAPAGE_WWW_DOT_ORG_URL
+                                .getWord());
+                        url.append("/news-embedded.php?embedded=y");
+                        url.append("&v_major=")
+                                .append(VersionInfo.VERSION_A_MAJOR);
+                        url.append("&v_minor=")
+                                .append(VersionInfo.VERSION_B_MINOR);
+                        url.append("&v_revision=")
+                                .append(VersionInfo.VERSION_C_REVISION);
+                        url.append("&v_build=")
+                                .append(VersionInfo.VERSION_D_BUILD);
+
+                        return new HttpGet(url.toString());
+                    }
 
                     @Override
                     public Object execute(final CircuitBreaker circuitBreaker) {
@@ -798,12 +856,10 @@ public final class SystemStatusPanel extends Panel {
                         HttpGet request = null;
 
                         try {
-                            final String url = URL_SAVAPAGE_NEWS;
-
                             final HttpClient client =
                                     HttpClientBuilder.create().build();
 
-                            request = new HttpGet(url);
+                            request = this.getNewsRequest();
 
                             request.setHeader(HttpHeaders.USER_AGENT,
                                     ConfigManager.getAppNameVersion());

@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -27,6 +27,7 @@ import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.server.helpers.HtmlButtonEnum;
 
 /**
  *
@@ -55,18 +56,26 @@ public final class AppAbout extends AbstractPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
+        final String appName =
+                CommunityDictEnum.SAVAPAGE.getWord(Locale.getDefault());
+
         if (inject.isInjectAvailable()) {
             helper.discloseLabel("app-version");
             add(new AppAboutPanel("savapage-info-after-inject"));
-            add(new Label("app-version-number", ConfigManager.getAppVersion()));
+            add(new Label("app-product-name", appName));
+            add(new Label("app-product-slogan",
+                    CommunityDictEnum.SAVAPAGE_SLOGAN.getWord()));
+            add(new Label("app-product-version", ConfigManager.getAppVersion()));
         } else {
             helper.discloseLabel("savapage-info-after-inject");
             helper.encloseLabel("app-version",
                     ConfigManager.getAppNameVersion(), true);
-            add(new Label("app-name",
-                    CommunityDictEnum.SAVAPAGE.getWord(Locale.getDefault())));
+            add(new Label("app-slogan",
+                    CommunityDictEnum.SAVAPAGE_SLOGAN.getWord()));
             add(new AppAboutPanel("savapage-info"));
         }
+
+        helper.addButton("button-back", HtmlButtonEnum.BACK);
 
     }
 

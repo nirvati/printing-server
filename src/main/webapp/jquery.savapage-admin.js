@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile Admin Web App | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile Admin Web App | (c) 2011-2017 Datraverse B.V. | GNU Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -142,10 +142,15 @@
 						_ns.monitorUserIdle(_model.maxIdleSeconds, _view.pages.admin.onLogout);
 					}
 
-				} else if (_view.activePage().attr('id') === 'page-login') {
-					_view.pages.login.notifyLoginFailed(authMode, data.result.txt);
 				} else {
-					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
+
+					_view.pages.login.notifyLogout();
+
+					if (_view.activePage().attr('id') === 'page-login') {
+						_view.pages.login.notifyLoginFailed(authMode, data.result.txt);
+					} else {
+						_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
+					}
 				}
 
 			};
@@ -194,7 +199,7 @@
 				_model.maxIdleSeconds = res.maxIdleSeconds;
 
 				// NOTE: authCardSelfAssoc is DISABLED
-				_view.pages.login.setAuthMode(res.authName, res.authId, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, null, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+				_view.pages.login.setAuthMode(res.authName, res.authId, res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, null, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
 
 				// Configures CometD (without starting it)
 				_cometd.configure(res.cometdMaxNetworkDelay);
@@ -538,10 +543,11 @@
 				return (res.result.code === '0');
 			};
 
-			_view.pages.admin.onApplyWebPrint = function(enabled) {
+			_view.pages.admin.onApplyWebPrint = function(enabled, dropzone) {
 				var props = {};
 				props['web-print.enable'] = enabled ? 'Y' : 'N';
 				if (enabled) {
+					props['web-print.dropzone-enable'] = dropzone ? 'Y' : 'N';
 					_fillConfigPropsText(props, ['web-print.max-file-mb', 'web-print.limit-ip-addresses']);
 				}
 				_saveConfigProps(props);
@@ -715,11 +721,11 @@
 				if (props['proxy-print.non-secure'] === 'Y') {
 					_fillConfigPropsText(props, ['proxy-print.non-secure-printer-group']);
 				}
-				
+
 				key = 'webapp.user.proxy-print.clear-inbox.scope';
 				props[key] = _view.getRadioValue(key);
-				
-				_fillConfigPropsText(props, ['proxy-print.fast-expiry-mins', 'proxy-print.hold-expiry-mins', 'proxy-print.direct-expiry-secs', 'webapp.user.proxy-print.max-copies', 'proxy-print.max-pages', 'jobticket.proxy-printer', 'jobticket.proxy-printer-group']);
+
+				_fillConfigPropsText(props, ['proxy-print.fast-expiry-mins', 'proxy-print.hold-expiry-mins', 'proxy-print.direct-expiry-secs', 'webapp.user.proxy-print.max-copies', 'proxy-print.max-pages']);
 
 				_saveConfigProps(props);
 			};
@@ -793,7 +799,18 @@
 
 			_view.pages.admin.onApplyUserAuthModeLocal = function() {
 				var props = {};
-				_fillConfigPropsYN(props, ['web-login.authtoken.enable', 'auth-mode.name', 'auth-mode.name.show', 'auth-mode.id', 'auth-mode.id.show', 'auth-mode.id.is-masked', 'auth-mode.id.pin-required', 'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association', 'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
+				_fillConfigPropsYN(props, ['web-login.authtoken.enable',
+				//
+				'auth-mode.name', 'auth-mode.name.show',
+				//
+				'auth-mode.id', 'auth-mode.id.show', 'auth-mode.id.is-masked', 'auth-mode.id.pin-required',
+				//
+				'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association',
+				//
+				'auth-mode.yubikey', 'auth-mode.yubikey.show',
+				//
+				'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
+
 				_fillConfigPropsRadio(props, ['auth-mode-default', 'card.number.format', 'card.number.first-byte']);
 				_saveConfigProps(props);
 			};
@@ -854,7 +871,7 @@
 
 			_view.pages.admin.onApplyConverters = function() {
 				var props = {};
-				_fillConfigPropsYN(props, ['doc.convert.libreoffice-enabled', 'doc.convert.xpstopdf-enabled']);
+				_fillConfigPropsYN(props, ['doc.convert.libreoffice-enabled', 'soffice.enable', 'doc.convert.xpstopdf-enabled']);
 				_saveConfigProps(props);
 			};
 
@@ -1033,6 +1050,35 @@
 				}
 			};
 
+			/**
+			 *
+			 */
+			_view.pages.user.onEraseUserPw = function() {
+
+				var res = _api.call({
+					request : 'erase-user-pw',
+					dto : JSON.stringify({
+						userDbId : _model.editUser.dbId
+					})
+				});
+				/*
+				 * Close dialog. Do NOT use $('#button-cancel-user').click();
+				 */
+				_view.changePage($('#page-admin'));
+
+				/*
+				 * Refresh, so any change is displayed
+				 */
+				if (res.result.code === '0') {
+					_view.pages.admin.refreshUsers();
+				}
+				// As last statement, so it displays.
+				_view.showApiMsg(res);
+			};
+
+			/**
+			 *
+			 */
 			_view.pages.admin.onEditConfigProp = function(name) {
 
 				var res = _api.call({
@@ -1133,12 +1179,6 @@
 			};
 
 			_view.pages.sharedAccount.onSaveSharedAccount = function() {
-
-				_model.editAccount.name = $('#shared-account-name').val();
-				_model.editAccount.parentName = $('#shared-account-name-parent').val();
-				_model.editAccount.balance = $('#shared-account-balance').val();
-				_model.editAccount.notes = $('#shared-account-notes').val();
-				_model.editAccount.deleted = $('#shared-account-deleted').is(':checked');
 
 				var res = _api.call({
 					request : 'shared-account-set',
@@ -1331,10 +1371,12 @@
 			_view.pages.admin.onEditPrinter = function(id) {
 				var res = _api.call({
 					request : 'printer-get',
-					id : id
+					dto : JSON.stringify({
+						id : id
+					})
 				});
 				if (res && res.result.code === '0') {
-					_model.editPrinter = res.j_printer;
+					_model.editPrinter = res.dto;
 					_view.pages.printer.loadShowAsync(function() {
 						$('#sp-printer-page-name').html(_model.editPrinter.printerName);
 					});
@@ -1352,6 +1394,8 @@
 				_model.editPrinter.disabled = $('#printer-disabled').is(':checked');
 				_model.editPrinter.internal = $('#printer-internal').is(':checked');
 				_model.editPrinter.deleted = $('#printer-deleted').is(':checked');
+				_model.editPrinter.jobTicket = $('#printer-jobticket').is(':checked');
+				_model.editPrinter.jobTicketGroup = $('#printer-jobticket-group').val();
 
 				// ProxyPrinterDto
 				var res = _api.call({
@@ -1609,10 +1653,6 @@
 				return _view.pages.admin.commonPwReset('reset-jmx-pw', $('#jmx-pw-new'), $('#jmx-pw-confirm'));
 			};
 
-			_view.pages.jobTickets.onClose = function() {
-				_view.pages.admin.show();
-			};
-
 			/**
 			 *
 			 */
@@ -1789,6 +1829,8 @@
 			//
 			, _view = new _ns.View(_i18n, _api)
 			//
+			, _nativeLogin
+			//
 			, _cometd, _ctrl;
 
 			_ns.commonWebAppInit();
@@ -1807,9 +1849,7 @@
 				queue : new _ns.PageQueue(_i18n, _view, _model),
 				printer : new _ns.PagePrinter(_i18n, _view, _model),
 				device : new _ns.PageDevice(_i18n, _view, _model),
-				voucherCreate : new _ns.PageAccountVoucherCreate(_i18n, _view, _model),
-				pointOfSale : new _ns.PagePointOfSale(_i18n, _view, _model, _api),
-				jobTickets : new _ns.PageJobTickets(_i18n, _view, _model, _api)
+				voucherCreate : new _ns.PageAccountVoucherCreate(_i18n, _view, _model)
 			};
 
 			_ns.PanelDashboard.model = _model;
@@ -1817,22 +1857,27 @@
 
 			_cometd = new _ns.Cometd();
 			_ctrl = new _ns.Controller(_i18n, _model, _view, _api, _cometd);
-			
+
+			_nativeLogin = function(user, authMode) {
+				if (_model.authToken.user && _model.authToken.token) {
+					_ctrl.login(_view.AUTH_MODE_NAME, _model.authToken.user, null, _model.authToken.token);
+				} else {
+					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
+				}
+			};
+
 			/**
 			 *
 			 */
 			this.init = function() {
 
+				var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER), authMode = _ns.Utils.getUrlParam(_ns.URL_PARM.LOGIN);
+
 				_ns.initWebApp('ADMIN');
 
 				_ctrl.init();
 
-				if (_model.authToken.user && _model.authToken.token) {
-					_ctrl.login(_view.AUTH_MODE_NAME, _model.authToken.user, null, _model.authToken.token);
-				} else {
-					// Initial load/show of Login dialog
-					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
-				}
+				_nativeLogin(user, authMode);
 			};
 
 			$(window).on('beforeunload', function() {

@@ -4,17 +4,17 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>savapage-server</artifactId>
     <groupId>org.savapage</groupId>
-    <version>0.9.11</version>
+    <version>0.9.12</version>
     <name>SavaPage Server</name>
     <packaging>war</packaging>
     <licenses>
         <license>
             <name>GNU Affero General Public License (AGPL)</name>
-            <url>http://www.gnu.org/licenses/agpl-3.0.txt</url>
+            <url>https://www.gnu.org/licenses/agpl-3.0.txt</url>
         </license>
     </licenses>
     <properties>
-        <wicket.version>7.2.0</wicket.version>
+        <wicket.version>7.7.0</wicket.version>
         <jetty.version>9.2.14.v20151106</jetty.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -71,12 +71,12 @@
         <dependency>
             <groupId>org.savapage</groupId>
             <artifactId>savapage-core</artifactId>
-            <version>0.9.11</version>
+            <version>0.9.12</version>
         </dependency>
         <dependency>
             <groupId>org.savapage</groupId>
             <artifactId>savapage-ext</artifactId>
-            <version>0.9.11</version>
+            <version>0.9.12</version>
         </dependency>
         <dependency>
             <groupId>org.cometd.java</groupId>
@@ -212,13 +212,13 @@
             </plugin>
         </plugins>
     </build>
-    <description>SavaPage is an Enterprise Printing Solution with a Web App for Print Preview, Editing, PDF Creation and Proxy Printing.</description>
+    <description>SavaPage is a Free Software Solution that uses Open Standards and Commodity Hardware for Secure Pull-Printing, Pay-Per-Print, Delegated Print, Job Ticketing, Auditing and PDF Creation.</description>
     <organization>
         <name>Datraverse B.V.</name>
-        <url>http://www.datraverse.com/en</url>
+        <url>https://www.datraverse.com</url>
     </organization>
-    <url>http://savapage.org</url>
+    <url>https://www.savapage.org</url>
     <issueManagement>
-        <url>https://secure.datraverse.nl/issues/</url>
+        <url>https://issues.savapage.org</url>
     </issueManagement>
 </project>

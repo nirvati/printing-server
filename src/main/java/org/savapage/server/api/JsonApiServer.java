@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -40,6 +40,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import javax.mail.MessagingException;
+import javax.persistence.PessimisticLockException;
 import javax.print.attribute.standard.MediaSizeName;
 
 import org.apache.commons.lang3.EnumUtils;
@@ -60,6 +61,7 @@ import org.apache.wicket.util.resource.StringBufferResourceStream;
 import org.apache.wicket.util.time.Duration;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.hibernate.exception.LockAcquisitionException;
 import org.savapage.core.LetterheadNotFoundException;
 import org.savapage.core.PerformanceLogger;
 import org.savapage.core.PostScriptDrmException;
@@ -97,7 +99,6 @@ import org.savapage.core.dto.PosDepositDto;
 import org.savapage.core.dto.PosDepositReceiptDto;
 import org.savapage.core.dto.PrimaryKeyDto;
 import org.savapage.core.dto.ProxyPrinterCostDto;
-import org.savapage.core.dto.ProxyPrinterDto;
 import org.savapage.core.dto.ProxyPrinterMediaSourcesDto;
 import org.savapage.core.dto.UserCreditTransferDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
@@ -132,7 +133,6 @@ import org.savapage.core.print.gcp.GcpRegisterPrinterRsp;
 import org.savapage.core.print.imap.ImapListener;
 import org.savapage.core.print.imap.ImapPrinter;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
-import org.savapage.core.print.proxy.ProxyPrintInboxReq;
 import org.savapage.core.reports.JrPosDepositReceipt;
 import org.savapage.core.reports.JrVoucherPageDesign;
 import org.savapage.core.reports.impl.AccountTrxListReport;
@@ -154,6 +154,7 @@ import org.savapage.core.services.helpers.email.EmailMsgParms;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.papercut.DelegatedPrintPeriodDto;
@@ -169,13 +170,17 @@ import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.request.ApiRequestHandler;
 import org.savapage.server.api.request.ApiRequestHelper;
+import org.savapage.server.api.request.ApiRequestMixin;
 import org.savapage.server.api.request.ApiResultCodeEnum;
 import org.savapage.server.cometd.AbstractEventService;
 import org.savapage.server.dto.MoneyTransferDto;
 import org.savapage.server.ext.ServerPluginManager;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.StatsPageTotalPanel;
 import org.savapage.server.webapp.WebAppTypeEnum;
+import org.savapage.server.webprint.DropZoneFileResource;
+import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -267,6 +272,21 @@ public final class JsonApiServer extends AbstractPage {
     private static final JsonApiDict API_DICTIONARY = new JsonApiDict();
 
     /**
+     * Applies the requested locale to the session locale. When the request does
+     * not match an available language the {@link Locale#US} is applied..
+     */
+    private void applyLocaleToSession() {
+
+        final String currentLanguage = getSession().getLocale().getLanguage();
+        for (final Locale locale : LocaleHelper.getAvailableLanguages()) {
+            if (locale.getLanguage().equals(currentLanguage)) {
+                return;
+            }
+        }
+        getSession().setLocale(Locale.US);
+    }
+
+    /**
      *
      * @param parameters
      *            The {@link PageParameters}.
@@ -327,6 +347,8 @@ public final class JsonApiServer extends AbstractPage {
         /*
          *
          */
+        applyLocaleToSession();
+
         ServiceContext.open();
 
         ServiceContext.setLocale(getSession().getLocale());
@@ -493,7 +515,7 @@ public final class JsonApiServer extends AbstractPage {
 
             try {
                 jsonArray = new ObjectMapper()
-                        .writeValueAsString(handleException(t));
+                        .writeValueAsString(handleException(requestId, t));
             } catch (Exception e1) {
                 LOGGER.error(e1.getMessage());
             }
@@ -518,7 +540,7 @@ public final class JsonApiServer extends AbstractPage {
             } catch (Exception ex) {
                 try {
                     jsonArray = new ObjectMapper()
-                            .writeValueAsString(handleException(ex));
+                            .writeValueAsString(handleException(requestId, ex));
                 } catch (Exception e1) {
                     LOGGER.error(e1.getMessage());
                 }
@@ -640,11 +662,9 @@ public final class JsonApiServer extends AbstractPage {
                 tempExportFile.delete();
             }
 
-            requestHandler =
-                    new TextRequestHandler("text/html", "UTF-8",
-                            "<h2 style='color: red;'>"
-                                    + e.getClass().getSimpleName() + "</h2><p>"
-                                    + e.getMessage() + "</p>");
+            requestHandler = new TextRequestHandler("text/html", "UTF-8",
+                    "<h2 style='color: red;'>" + e.getClass().getSimpleName()
+                            + "</h2><p>" + e.getMessage() + "</p>");
         }
 
         if (requestHandler != null) {
@@ -688,7 +708,7 @@ public final class JsonApiServer extends AbstractPage {
         if (!requestingUserAdmin
                 && !receipt.getUserId().equals(requestingUser)) {
             throw new SpException("User [" + requestingUser
-                    + "] is not autherized to access receipt of user ["
+                    + "] is not authorized to access receipt of user ["
                     + receipt.getUserId() + "].");
         }
 
@@ -755,7 +775,7 @@ public final class JsonApiServer extends AbstractPage {
 
             emailParms.setToAddress(toAddress);
             emailParms.setSubject(subject);
-            emailParms.setBodyFromTemplate(subject, body);
+            emailParms.setBodyInStationary(subject, body, getLocale(), true);
             emailParms.setFileAttach(tempPdfFile);
             emailParms.setFileName(getUserFriendlyFilename(receipt));
 
@@ -766,7 +786,6 @@ public final class JsonApiServer extends AbstractPage {
                 tempPdfFile.delete();
             }
         }
-
     }
 
     /**
@@ -1411,11 +1430,6 @@ public final class JsonApiServer extends AbstractPage {
             return reqPrinterDetail(requestingUser,
                     getParmValue(parameters, isGetAction, "printer"));
 
-        case JsonApiDict.REQ_PRINTER_GET:
-
-            return reqPrinterGet(requestingUser,
-                    getParmValue(parameters, isGetAction, "id"));
-
         case JsonApiDict.REQ_PRINT_AUTH_CANCEL:
             return reqPrintAuthCancel(
                     Long.parseLong(
@@ -1868,18 +1882,7 @@ public final class JsonApiServer extends AbstractPage {
     private static Map<String, Object> createApiResult(
             final Map<String, Object> out, final ApiResultCodeEnum code,
             final String msg, final String txt) {
-
-        Map<String, Object> result = new HashMap<String, Object>();
-        out.put("result", result);
-
-        result.put("code", code.getValue());
-        if (msg != null) {
-            result.put("msg", msg);
-        }
-        if (txt != null) {
-            result.put("txt", txt);
-        }
-        return out;
+        return ApiRequestMixin.createApiResult(out, code, msg, txt);
     }
 
     /**
@@ -1916,40 +1919,6 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> setApiResult(final Map<String, Object> out,
             final ApiResultCodeEnum code, final String key) {
         return createApiResult(out, code, key, localize(key));
-    }
-
-    /**
-     * Sets the JSON {@code result} and {@code requestStatus} of a Proxy Print
-     * Request on parameter {@code out}.
-     *
-     * @param out
-     *            The Map to put the {@code result} on.
-     * @param printReq
-     *            The Proxy Print Request.
-     * @return the {@code out} parameter.
-     */
-    public static Map<String, Object> setApiResultMsg(
-            final Map<String, Object> out, ProxyPrintInboxReq printReq) {
-
-        final ApiResultCodeEnum code;
-        switch (printReq.getStatus()) {
-        case ERROR_PRINTER_NOT_FOUND:
-            code = ApiResultCodeEnum.ERROR;
-            break;
-        case PRINTED:
-            code = ApiResultCodeEnum.OK;
-            break;
-        case WAITING_FOR_RELEASE:
-            code = ApiResultCodeEnum.OK;
-            break;
-        default:
-            code = ApiResultCodeEnum.WARN;
-        }
-
-        out.put("requestStatus", printReq.getStatus().toString());
-
-        return createApiResult(out, code, printReq.getUserMsgKey(),
-                printReq.getUserMsg());
     }
 
     /**
@@ -2000,7 +1969,8 @@ public final class JsonApiServer extends AbstractPage {
      * @param e
      * @return
      */
-    private Map<String, Object> handleException(final Exception exception) {
+    private Map<String, Object> handleException(final String requestId,
+            final Exception exception) {
 
         String msg = null;
         String msgKey = null;
@@ -2019,7 +1989,13 @@ public final class JsonApiServer extends AbstractPage {
                     + exception.getMessage();
 
             if (!isShutdown) {
-                LOGGER.error(exception.getMessage(), exception);
+                if (exception instanceof LockAcquisitionException
+                        || exception instanceof PessimisticLockException) {
+                    LOGGER.error(exception.getMessage());
+                } else {
+                    LOGGER.error(String.format("[%s] %s", requestId,
+                            exception.getMessage()), exception);
+                }
             }
 
         } else {
@@ -2070,7 +2046,7 @@ public final class JsonApiServer extends AbstractPage {
         final IConfigProp.Key configKey;
 
         if (session.getWebAppType() == WebAppTypeEnum.ADMIN) {
-            configKey = IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMOUT_MINS;
+            configKey = IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMEOUT_MINS;
         } else {
             configKey = IConfigProp.Key.WEB_LOGIN_USER_SESSION_TIMEOUT_MINS;
         }
@@ -2283,7 +2259,8 @@ public final class JsonApiServer extends AbstractPage {
 
                 emailParms.setToAddress(mailto);
                 emailParms.setSubject(subject);
-                emailParms.setBodyFromTemplate(fileName, body);
+                emailParms.setBodyInStationary(fileName, body, getLocale(),
+                        true);
                 emailParms.setFileAttach(fileAttach);
                 emailParms.setFileName(fileName);
 
@@ -2420,11 +2397,6 @@ public final class JsonApiServer extends AbstractPage {
             final String printerName) {
 
         final Map<String, Object> data = new HashMap<String, Object>();
-
-        if (!PROXY_PRINT_SERVICE.isConnectedToCups()) {
-            return setApiResult(data, ApiResultCodeEnum.ERROR,
-                    "msg-printer-connection-broken");
-        }
 
         final JsonPrinterDetail jsonPrinter =
                 PROXY_PRINT_SERVICE.getPrinterDetailUserCopy(
@@ -2643,7 +2615,7 @@ public final class JsonApiServer extends AbstractPage {
 
             emailParms.setToAddress(mailto);
             emailParms.setSubject(subject);
-            emailParms.setBodyFromTemplate(subject, body);
+            emailParms.setBodyInStationary(subject, body, getLocale(), true);
 
             EMAIL_SERVICE.sendEmail(emailParms);
 
@@ -3018,7 +2990,8 @@ public final class JsonApiServer extends AbstractPage {
                     "msg-password-reset-not-allowed", iuser);
         }
 
-        final String encryptedPw = encryptUserPassword(iuser, password);
+        final String encryptedPw =
+                USER_SERVICE.encryptUserPassword(iuser, password);
 
         USER_SERVICE.setUserAttrValue(jpaUser, UserAttrEnum.INTERNAL_PASSWORD,
                 encryptedPw);
@@ -3144,35 +3117,6 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("j_device", userObj);
 
         return setApiResultOK(userData);
-    }
-
-    /**
-     *
-     * @param user
-     * @param urlPath
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqPrinterGet(final String userId,
-            final String id) throws IOException {
-
-        final PrinterDao printerDao =
-                ServiceContext.getDaoContext().getPrinterDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final Printer printer = printerDao.findById(Long.valueOf(id));
-
-        if (printer == null) {
-            setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-printer-not-found", id);
-        } else {
-            final ProxyPrinterDto dto =
-                    PROXY_PRINT_SERVICE.getProxyPrinterDto(printer);
-            userData.put("j_printer", dto.asMap());
-            setApiResultOK(userData);
-        }
-        return userData;
     }
 
     /**
@@ -3389,13 +3333,6 @@ public final class JsonApiServer extends AbstractPage {
                 CircuitBreakerEnum.CUPS_LOCAL_IPP_CONNECTION);
 
         /*
-         * Try again when circuit is not closed.
-         */
-        if (!circuit.isCircuitClosed()) {
-            circuit.closeCircuit();
-        }
-
-        /*
          * Re-initialize the CUPS printer cache.
          */
         try {
@@ -3432,18 +3369,6 @@ public final class JsonApiServer extends AbstractPage {
             setApiResultOK(userData);
         }
         return userData;
-    }
-
-    /**
-     * Encrypts the user password.
-     *
-     * @param userid
-     * @param password
-     * @return
-     */
-    private String encryptUserPassword(final String userid,
-            final String password) {
-        return CryptoUser.getHashedUserPassword(userid, password);
     }
 
     /**
@@ -3654,8 +3579,10 @@ public final class JsonApiServer extends AbstractPage {
                         dto.getUserEmail());
 
                 mailDepositReceipt(data.getAccountTrxDbId(), dto.getUserEmail(),
-                        requestingUser, false);
-
+                        requestingUser,
+                        getSessionWebAppType().equals(WebAppTypeEnum.POS)
+                                || getSessionWebAppType()
+                                        .equals(WebAppTypeEnum.ADMIN));
                 break;
 
             case NONE:
@@ -4446,6 +4373,8 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("img_base64", false);
 
         //
+        final ConfigManager cm = ConfigManager.instance();
+
         final UserAuth userAuth = new UserAuth(
                 ApiRequestHelper.getHostTerminal(this.getRemoteAddr()),
                 authModeReq,
@@ -4455,6 +4384,7 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("authId", userAuth.isVisibleAuthId());
         userData.put("authCardLocal", userAuth.isVisibleAuthCardLocal());
         userData.put("authCardIp", userAuth.isVisibleAuthCardIp());
+        userData.put("authYubiKey", userAuth.isVisibleAuthYubikey());
 
         userData.put("authModeDefault",
                 UserAuth.mode(userAuth.getAuthModeDefault()));
@@ -4468,10 +4398,11 @@ public final class JsonApiServer extends AbstractPage {
             userData.put("maxIdleSeconds", maxIdleSeconds);
         }
 
-        final ConfigManager cm = ConfigManager.instance();
-
         userData.put("cardLocalMaxMsecs",
                 cm.getConfigInt(Key.WEBAPP_CARD_LOCAL_KEYSTROKES_MAX_MSECS));
+
+        userData.put("yubikeyMaxMsecs",
+                cm.getConfigInt(Key.WEBAPP_YUBIKEY_KEYSTROKES_MAX_MSECS));
 
         userData.put("cardAssocMaxSecs",
                 cm.getConfigInt(Key.WEBAPP_CARD_ASSOC_DIALOG_MAX_SECS));
@@ -4495,6 +4426,31 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("showNavButtonTxt", cm.getConfigEnum(OnOffEnum.class,
                 Key.WEBAPP_USER_MAIN_NAV_BUTTON_TEXT));
 
+        //
+        userData.put("proxyPrintClearPrinter",
+                cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_PRINTER));
+
+        // Web Print
+        final boolean isWebPrintEnabled =
+                WebPrintHelper.isWebPrintEnabled(this.getRemoteAddr());
+
+        userData.put("webPrintEnabled", isWebPrintEnabled);
+
+        if (isWebPrintEnabled) {
+            userData.put("webPrintDropZoneEnabled",
+                    WebPrintHelper.isWebPrintDropZoneEnabled());
+            userData.put("webPrintMaxBytes",
+                    WebPrintHelper.getMaxUploadSize().bytes());
+            userData.put("webPrintUploadUrl",
+                    WebApp.MOUNT_PATH_UPLOAD_WEBPRINT);
+            userData.put("webPrintUploadFileParm",
+                    DropZoneFileResource.UPLOAD_PARAM_NAME_FILE);
+            userData.put("webPrintUploadFontParm",
+                    DropZoneFileResource.UPLOAD_PARAM_NAME_FONT);
+            userData.put("webPrintFileExt",
+                    WebPrintHelper.getSupportedFileExtensions(true));
+        }
+        //
         return userData;
     }
 
@@ -4538,27 +4494,36 @@ public final class JsonApiServer extends AbstractPage {
          */
         final Locale.Builder localeBuilder = new Locale.Builder();
 
-        localeBuilder.setLanguage(language);
-
-        if (StringUtils.isNotBlank(country)) {
-
-            localeBuilder.setRegion(country);
-
-        } else {
-            /*
-             * We adopt the country/region code from the Browser, if the
-             * language setting of the Browser is the same as the SELECTED
-             * language in the SavaPage Web App.
-             */
-            final Locale localeReq = getRequestCycle().getRequest().getLocale();
-
-            if (localeReq.getLanguage().equalsIgnoreCase(language)) {
-                localeBuilder.setRegion(localeReq.getCountry());
-            }
-        }
+        Locale locale;
 
         //
-        final Locale locale = localeBuilder.build();
+        try {
+            localeBuilder.setLanguage(language);
+
+            if (StringUtils.isNotBlank(country)) {
+
+                localeBuilder.setRegion(country);
+
+            } else {
+                /*
+                 * We adopt the country/region code from the Browser, if the
+                 * language setting of the Browser is the same as the SELECTED
+                 * language in the SavaPage Web App.
+                 */
+                final Locale localeReq =
+                        getRequestCycle().getRequest().getLocale();
+
+                if (localeReq.getLanguage().equalsIgnoreCase(language)) {
+                    localeBuilder.setRegion(localeReq.getCountry());
+                }
+            }
+
+            locale = localeBuilder.build();
+
+        } catch (Exception e) {
+            locale = Locale.US;
+        }
+
         SpSession.get().setLocale(locale);
 
         /*
@@ -4573,6 +4538,12 @@ public final class JsonApiServer extends AbstractPage {
             i18n.put(key, rcBundle.getString(key));
         }
 
+        // i18n for FileUpload (WebPrint).
+        i18n.put("button-back", HtmlButtonEnum.BACK.uiText(locale));
+        i18n.put("button-upload", HtmlButtonEnum.UPLOAD.uiText(locale));
+        i18n.put("button-reset", HtmlButtonEnum.RESET.uiText(locale));
+
+        //
         userData.put("i18n", i18n);
         userData.put("language", locale.getLanguage());
         userData.put("country", locale.getCountry());

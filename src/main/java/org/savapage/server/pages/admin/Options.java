@@ -1,5 +1,5 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
  * Copyright (c) 2011-2016 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -41,8 +41,8 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
-import org.savapage.core.doc.OfficeToPdf;
 import org.savapage.core.doc.XpsToPdf;
+import org.savapage.core.doc.soffice.SOfficeHelper;
 import org.savapage.core.ipp.IppSyntaxException;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jmx.JmxRemoteProperties;
@@ -207,9 +207,16 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.Key.AUTH_MODE_ID);
         labelledCheckbox("user-auth-mode-card-local",
                 IConfigProp.Key.AUTH_MODE_CARD_LOCAL);
+        labelledCheckbox("user-auth-mode-yubikey",
+                IConfigProp.Key.AUTH_MODE_YUBIKEY);
+
         //
         labelledCheckbox("user-auth-mode-name-pw-dialog",
                 IConfigProp.Key.AUTH_MODE_NAME_SHOW);
+        //
+        labelledCheckbox("user-auth-mode-yubikey-dialog",
+                IConfigProp.Key.AUTH_MODE_YUBIKEY_SHOW);
+
         //
         labelledCheckbox("user-auth-mode-id-number-pin",
                 IConfigProp.Key.AUTH_MODE_ID_PIN_REQUIRED);
@@ -257,11 +264,18 @@ public final class Options extends AbstractAdminPage {
         labelledRadio("user-auth-mode-default", "-user",
                 IConfigProp.Key.AUTH_MODE_DEFAULT,
                 IConfigProp.AUTH_MODE_V_NAME);
+
         labelledRadio("user-auth-mode-default", "-number",
                 IConfigProp.Key.AUTH_MODE_DEFAULT, IConfigProp.AUTH_MODE_V_ID);
+
         labelledRadio("user-auth-mode-default", "-card",
                 IConfigProp.Key.AUTH_MODE_DEFAULT,
                 IConfigProp.AUTH_MODE_V_CARD_LOCAL);
+
+        labelledRadio("user-auth-mode-default", "-yubikey",
+                IConfigProp.Key.AUTH_MODE_DEFAULT,
+                IConfigProp.AUTH_MODE_V_YUBIKEY);
+
         /*
          *
          */
@@ -592,6 +606,8 @@ public final class Options extends AbstractAdminPage {
          * Web Print
          */
         labelledCheckbox("webprint-enable", IConfigProp.Key.WEB_PRINT_ENABLE);
+        labelledCheckbox("webprint-enable-dropzone",
+                IConfigProp.Key.WEB_PRINT_DROPZONE_ENABLE);
         labelledInput("webprint-max-file-mb",
                 IConfigProp.Key.WEB_PRINT_MAX_FILE_MB);
         labelledInput("webprint-ip-allowed",
@@ -814,13 +830,6 @@ public final class Options extends AbstractAdminPage {
         labelledCheckbox("proxyprint-delegate-papercut-enable",
                 IConfigProp.Key.PROXY_PRINT_DELEGATE_PAPERCUT_ENABLE);
 
-        // Job Ticket
-        tagInput("proxyprint-jobticket-printer",
-                IConfigProp.Key.JOBTICKET_PROXY_PRINTER);
-
-        tagInput("proxyprint-jobticket-printer-group",
-                IConfigProp.Key.JOBTICKET_PROXY_PRINTER_GROUP);
-
         /*
          * xpstopdf
          */
@@ -844,20 +853,24 @@ public final class Options extends AbstractAdminPage {
         labelledCheckbox("libreoffice-enable",
                 IConfigProp.Key.DOC_CONVERT_LIBRE_OFFICE_ENABLED);
 
-        String version = OfficeToPdf.getLibreOfficeVersion();
+        String version = SOfficeHelper.getLibreOfficeVersion();
         installed = StringUtils.isNotBlank(version);
         colorInstalled = installed ? MarkupHelper.CSS_TXT_VALID
                 : MarkupHelper.CSS_TXT_WARN;
         keyInstalled = installed ? "installed" : "not-installed";
 
         if (!installed) {
-            version = OfficeToPdf.name();
+            version = SOfficeHelper.name();
         }
 
         labelWrk = new Label("version-libreoffice",
                 version + " (" + localized(keyInstalled) + ")");
         labelWrk.add(new AttributeModifier("class", colorInstalled));
         add(labelWrk);
+
+        //
+        labelledCheckbox("libreoffice-soffice-enable",
+                IConfigProp.Key.SOFFICE_ENABLE);
 
         /*
          *

@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -34,17 +34,21 @@ import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.savapage.core.config.ConfigManager;
-import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
+import org.savapage.core.ipp.IppSyntaxException;
+import org.savapage.core.ipp.client.IppConnectException;
+import org.savapage.core.jpa.Device;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.util.InetUtils;
 import org.savapage.server.SpSession;
+import org.savapage.server.api.request.ApiRequestHelper;
 import org.savapage.server.pages.CommunityStatusFooterPanel;
 import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.webprint.WebPrintHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -54,6 +58,11 @@ import org.savapage.server.pages.MarkupHelper;
 public class Main extends AbstractUserPage {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+    *
+    */
+    private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
 
     private static final String CSS_CLASS_MAIN_ACTIONS = "main_actions";
 
@@ -69,7 +78,7 @@ public class Main extends AbstractUserPage {
      *
      */
     private static enum NavButtonEnum {
-        ABOUT, BROWSE, UPLOAD, PDF, LETTERHEAD, SORT
+        ABOUT, BROWSE, UPLOAD, PDF, LETTERHEAD, SORT, PRINT, TICKET
     }
 
     /**
@@ -156,11 +165,8 @@ public class Main extends AbstractUserPage {
         buttonCandidates.add(NavButtonEnum.BROWSE);
         buttonCandidates.add(NavButtonEnum.ABOUT);
 
-        final boolean isUpload = (ConfigManager.isWebPrintEnabled()
-                && InetUtils.isIp4AddrInCidrRanges(
-                        ConfigManager.instance().getConfigValue(
-                                Key.WEB_PRINT_LIMIT_IP_ADDRESSES),
-                        getClientIpAddr()));
+        final boolean isUpload =
+                WebPrintHelper.isWebPrintEnabled(getClientIpAddr());
 
         if (isUpload) {
             buttonCandidates.add(NavButtonEnum.UPLOAD);
@@ -175,7 +181,8 @@ public class Main extends AbstractUserPage {
         addVisible(isPrintDelegate, "button-print-delegation", "-");
 
         //
-        add(new CommunityStatusFooterPanel("community-status-footer-panel"));
+        add(new CommunityStatusFooterPanel("community-status-footer-panel",
+                false));
 
         //
         final Set<NavButtonEnum> buttonPrivileged = getNavButtonPriv(user);
@@ -194,6 +201,15 @@ public class Main extends AbstractUserPage {
         this.add(MarkupHelper.createEncloseLabel("main-arr-action-pdf",
                 localized("button-pdf"),
                 buttonPrivileged.contains(NavButtonEnum.PDF)));
+
+        this.add(MarkupHelper.createEncloseLabel("main-arr-action-print",
+                localized("button-print"),
+                buttonPrivileged.contains(NavButtonEnum.PRINT)));
+
+        this.add(MarkupHelper.createEncloseLabel("main-arr-action-ticket",
+                localized("button-ticket"),
+                !buttonPrivileged.contains(NavButtonEnum.PRINT)
+                        && buttonPrivileged.contains(NavButtonEnum.TICKET)));
 
         //
         final String userId;
@@ -236,7 +252,7 @@ public class Main extends AbstractUserPage {
      *            The user.
      * @return The privileged navigation buttons.
      */
-    private static Set<NavButtonEnum>
+    private Set<NavButtonEnum>
             getNavButtonPriv(final org.savapage.core.jpa.User user) {
 
         final Set<NavButtonEnum> set = new HashSet<>();
@@ -253,6 +269,36 @@ public class Main extends AbstractUserPage {
                 || ACLPermissionEnum.DOWNLOAD.isPresent(inboxPriv.intValue())
                 || ACLPermissionEnum.SEND.isPresent(inboxPriv.intValue())) {
             set.add(navButtonWlk);
+        }
+
+        //
+
+        if (ACCESS_CONTROL_SERVICE.isAuthorized(user,
+                ACLRoleEnum.PRINT_CREATOR)) {
+
+            final Device terminal =
+                    ApiRequestHelper.getHostTerminal(this.getClientIpAddr());
+
+            try {
+
+                final NavButtonEnum navButtonPrint;
+
+                if (ServiceContext.getServiceFactory().getProxyPrintService()
+                        .areJobTicketPrintersOnly(terminal, user.getUserId())) {
+                    navButtonPrint = NavButtonEnum.TICKET;
+                } else {
+                    navButtonPrint = NavButtonEnum.PRINT;
+                }
+
+                set.add(navButtonPrint);
+
+            } catch (IppConnectException | IppSyntaxException e) {
+                LOGGER.error(e.getMessage());
+            }
+
+        } else if (ACCESS_CONTROL_SERVICE.isAuthorized(user,
+                ACLRoleEnum.JOB_TICKET_CREATOR)) {
+            set.add(NavButtonEnum.TICKET);
         }
 
         //
@@ -354,11 +400,18 @@ public class Main extends AbstractUserPage {
             items.add(itemWlk);
         }
 
-        // ------------
-        // Print
-        // ------------
-        items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS, "ui-icon-main-print",
-                "button-main-print", localized("button-print")));
+        // --------------------------
+        // Print or Ticket (or none)
+        // --------------------------
+        if (buttonPrivileged.contains(NavButtonEnum.PRINT)) {
+            items.add(
+                    new NavBarItem(CSS_CLASS_MAIN_ACTIONS, "ui-icon-main-print",
+                            "button-main-print", localized("button-print")));
+        } else if (buttonPrivileged.contains(NavButtonEnum.TICKET)) {
+            items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+                    "ui-icon-main-jobticket", "button-main-print",
+                    localized("button-ticket")));
+        }
 
         // ------------
         // Letterhead

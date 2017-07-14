@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -45,6 +45,7 @@ import org.cometd.bayeux.server.BayeuxServer;
 import org.cometd.bayeux.server.ServerMessage;
 import org.cometd.bayeux.server.ServerSession;
 import org.savapage.core.PerformanceLogger;
+import org.savapage.core.ShutdownException;
 import org.savapage.core.SpException;
 import org.savapage.core.UserNotFoundException;
 import org.savapage.core.cometd.AdminPublisher;
@@ -86,6 +87,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class UserEventService extends AbstractEventService {
 
+    /**
+     * .
+     */
     private static final boolean ADMIN_PUB_USER_EVENT = true;
 
     /**
@@ -215,8 +219,8 @@ public final class UserEventService extends AbstractEventService {
      * @throws IOException
      */
     private Map<String, Object> checkUserMsgIndicator(
-            final Date msgPrevMonitorTime, final String user,
-            final Locale locale) throws IOException {
+            final String clientIpAddress, final Date msgPrevMonitorTime,
+            final String user, final Locale locale) throws IOException {
 
         Map<String, Object> eventData = null;
 
@@ -234,7 +238,10 @@ public final class UserEventService extends AbstractEventService {
                     eventData = createAccountMsg(user, locale);
                     break;
 
+                case JOBTICKET_CHANGED:
                 case JOBTICKET_DENIED:
+                case JOBTICKET_SETTLED_COPY:
+                case JOBTICKET_SETTLED_PRINT:
                     eventData = createJobTicketMsg(user,
                             msgIndicator.getMessage(), locale);
                     break;
@@ -255,6 +262,13 @@ public final class UserEventService extends AbstractEventService {
                      * Do NOT eventData = createUserMessageNullEvent(); because
                      * this will result in an endless loop.
                      */
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(String.format(
+                                "STOP_POLL_REQ at start of poll for "
+                                        + "user [%s] at [%s] ignored",
+                                user, clientIpAddress));
+                    }
+
                     break;
 
                 default:
@@ -276,32 +290,27 @@ public final class UserEventService extends AbstractEventService {
      *            Client.
      * @param userEvent
      */
-    private static void publishAdminEvent(final String user,
+    private void publishAdminEvent(final String user,
             final String clientIpAddress, final boolean isWebAppClient,
             final UserEventEnum userEvent) {
 
-        final StringBuilder pubMsg = new StringBuilder(128);
-
-        pubMsg.append("User \"").append(user).append("\" received ");
-
+        final String eventName;
         if (userEvent == UserEventEnum.NULL) {
-            pubMsg.append("timeout");
+            eventName = "timeout";
         } else {
-            pubMsg.append("\"").append(userEvent.getUiText()).append("\"");
+            eventName = userEvent.getUiText();
         }
 
-        pubMsg.append(" event in ");
-
+        final String eventSource;
         if (isWebAppClient) {
-            pubMsg.append("WebApp ");
+            eventSource = "Web App";
         } else {
-            pubMsg.append("Client ");
+            eventSource = "Client";
         }
-
-        pubMsg.append(clientIpAddress);
 
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
-                pubMsg.toString());
+                this.localize("user-event", user, eventName, eventSource,
+                        clientIpAddress));
     }
 
     /**
@@ -444,7 +453,7 @@ public final class UserEventService extends AbstractEventService {
 
         if (LOGGER.isTraceEnabled()) {
 
-            LOGGER.trace("START job monitoring for user [" + user + "] IP ["
+            LOGGER.trace("START job monitoring for user [" + user + "] at ["
                     + clientIpAddress + "] pageOffset [" + pageOffset
                     + "] uniqueUrlValue [" + uniqueUrlValue + "] base64 ["
                     + base64 + "] locale [" + locale + "] msgPrevTime ["
@@ -497,8 +506,8 @@ public final class UserEventService extends AbstractEventService {
              * Any MESSAGES to be notified since the previous check date?
              */
             if (eventData == null && msgPrevMonitorTime != null) {
-                eventData =
-                        checkUserMsgIndicator(msgPrevMonitorTime, user, locale);
+                eventData = checkUserMsgIndicator(clientIpAddress,
+                        msgPrevMonitorTime, user, locale);
             }
 
             /*
@@ -586,7 +595,9 @@ public final class UserEventService extends AbstractEventService {
         }
 
         if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("STOP job monitoring for user [" + user + "]");
+            LOGGER.trace(
+                    String.format("STOP job monitoring for user [%s] at [%s]",
+                            user, clientIpAddress));
         }
     }
 
@@ -619,13 +630,14 @@ public final class UserEventService extends AbstractEventService {
      *         map with information about the change.
      * @throws IOException
      * @throws UserNotFoundException
+     * @throws ShutdownException
      */
     private Map<String, Object> watchUserFileEvents(
             final String clientIpAddress, final Date dateStart,
             final String user, final Locale locale, final Long pageOffset,
             final String uniqueUrlValue, final boolean base64,
             final boolean isWebAppClient)
-            throws IOException, UserNotFoundException {
+            throws IOException, UserNotFoundException, ShutdownException {
 
         final WatchService watchService =
                 FileSystems.getDefault().newWatchService();
@@ -648,6 +660,10 @@ public final class UserEventService extends AbstractEventService {
             int i = 0;
 
             while (true) {
+
+                if (ConfigManager.isShutdownInProgress()) {
+                    throw new ShutdownException();
+                }
 
                 i++;
 
@@ -801,7 +817,10 @@ public final class UserEventService extends AbstractEventService {
                             returnData = createAccountMsg(user, locale);
                             break;
 
+                        case JOBTICKET_CHANGED:
                         case JOBTICKET_DENIED:
+                        case JOBTICKET_SETTLED_COPY:
+                        case JOBTICKET_SETTLED_PRINT:
                             returnData = createJobTicketMsg(user, msg, locale);
                             break;
 
@@ -910,11 +929,13 @@ public final class UserEventService extends AbstractEventService {
             } // end-for
 
         } catch (InterruptedException e) {
-            // ignore
+
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace("File Watch: InterruptedException ["
                         + e.getMessage() + "]");
             }
+            throw new ShutdownException();
+
         } finally {
             // Closing is CRUCIAL to prevent the "Too Many Open Files" Error
             watchService.close();
@@ -1158,32 +1179,42 @@ public final class UserEventService extends AbstractEventService {
     }
 
     /**
+     * Creates a Job Ticket User message.
      *
      * @return
      */
     private Map<String, Object> createJobTicketMsg(final String userId,
             UserMsgIndicator.Msg msgInd, final Locale locale) {
 
-        final Map<String, Object> eventData = new HashMap<String, Object>();
-
-        final JsonUserMsg msg = new JsonUserMsg();
-        msg.setLevel(JsonUserMsg.LEVEL_INFO);
-
         final String text;
+
         switch (msgInd) {
+        case JOBTICKET_CHANGED:
+            text = this.localize(locale, "jobticket-changed");
+            break;
         case JOBTICKET_DENIED:
             text = this.localize(locale, "jobticket-denied");
+            break;
+        case JOBTICKET_SETTLED_COPY:
+            text = this.localize(locale, "jobticket-copy-completed");
+            break;
+        case JOBTICKET_SETTLED_PRINT:
+            text = this.localize(locale, "jobticket-print-completed");
             break;
         default:
             text = "???";
             break;
         }
 
+        final JsonUserMsg msg = new JsonUserMsg();
+        msg.setLevel(JsonUserMsg.LEVEL_INFO);
         msg.setText(text);
 
         final JsonUserMsgNotification json = new JsonUserMsgNotification();
         json.addUserMsg(msg);
         json.setMsgTime(System.currentTimeMillis());
+
+        final Map<String, Object> eventData = new HashMap<String, Object>();
 
         eventData.put(KEY_DATA, json);
         eventData.put(KEY_EVENT, UserEventEnum.JOBTICKET);

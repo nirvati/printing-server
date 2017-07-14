@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile User Web App | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile User Web App | (c) 2011-2017 Datraverse B.V. | GNU Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -56,10 +56,7 @@
 			$(imgDomElement).removeAttr("height");
 			_ns.thumbnails2Load--;
 			if (_ns.thumbnails2Load === 0) {
-				/*
-				 * All thumbnails are loaded, so resume CometD.
-				 */
-				_ns.cometd.start(_ns.model.user.cometdToken);
+				// All thumbnails are loaded, so resume.
 				_ns.userEvent.resume();
 			}
 		};
@@ -379,7 +376,7 @@
 					 * Get things started: invite to do a poll.
 					 */
 					if (_ns.logger.isDebugEnabled()) {
-						_ns.logger.debug('UserEvent: first poll invitation');
+						_ns.logger.debug('UserEvent: addListener + onPollInvitation');
 					}
 
 					this.onPollInvitation();
@@ -391,6 +388,9 @@
 			 */
 			this.removeListener = function() {
 				if (_subscription) {
+					if (_ns.logger.isDebugEnabled()) {
+						_ns.logger.debug('UserEvent: removeListener');
+					}
 					_cometd.removeListener(_subscription);
 					_subscription = null;
 				}
@@ -574,29 +574,13 @@
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
-
 				_this.onShow();
-
 			}).on("pageshow", function(event, ui) {
-				/*
-				 * Mantis #320: while the dialog is in view, CometD is stopped,
-				 * so images get loaded in iOS Safari.
-				 */
 				_ns.userEvent.pause();
-				_ns.cometd.stop();
-				//
-
 			}).on('pagebeforehide', function(event, ui) {
-
 				_this.onHide();
-
 			}).on("pagehide", function(event, ui) {
-				/*
-				 * Mantis #320: start CometD again.
-				 */
-				_ns.cometd.start(_ns.model.user.cometdToken);
 				_ns.userEvent.resume();
-				//
 			});
 		}
 
@@ -997,12 +981,7 @@
 					_this.adjustSlider();
 				}
 
-				/*
-				 * Mantis #320: while the browser is in view, CometD is stopped,
-				 * so images get loaded in iOS Safari
-				 */
 				_ns.userEvent.pause();
-				_ns.cometd.stop();
 
 			}).on("pageshow", function(event, ui) {
 
@@ -1010,10 +989,6 @@
 				_this.adjustImages();
 
 			}).on("pagehide", function(event, ui) {
-				/*
-				 * Mantis #320: start CometD again.
-				 */
-				_ns.cometd.start(_ns.model.user.cometdToken);
 				_ns.userEvent.resume();
 			});
 		}
@@ -1199,7 +1174,7 @@
 		function PagePdfProp(_i18n, _view, _model) {
 			var _this = this
 			//
-			, _setVisibility, _m2V, _v2M, _allowAll, _validate;
+			, _setVisibility, _m2V, _v2M, _allowAll, _validate, _onJobListChange;
 
 			/*
 			 *
@@ -1340,6 +1315,27 @@
 			/*
 			 *
 			 */
+			_onJobListChange = function() {
+				var sel = $('#pdf-job-list :selected'), selTitle = $('#pdf-title');
+
+				if (_model.pdfJobIndex === '-1') {
+					_model.myInboxTitle = selTitle.val();
+				}
+
+				_model.pdfJobIndex = sel.val();
+
+				if (sel.val() === '-1') {
+					selTitle.val(_model.myInboxTitle);
+				} else {
+					selTitle.val(sel.text());
+				}
+				_model.myPrintTitle = selTitle.val();
+
+			};
+
+			/*
+			 *
+			 */
 			$('#page-pdf-properties').on('pagecreate', function(event) {
 
 				$("#pdf-encryption").on("change", null, null, function(event, ui) {
@@ -1384,27 +1380,14 @@
 				});
 
 				$('#pdf-job-list').change(function(event) {
-
-					var sel = $('#pdf-job-list :selected'), selTitle = $('#pdf-title');
-
-					if (_model.pdfJobIndex === '-1') {
-						_model.myInboxTitle = selTitle.val();
-					}
-
-					_model.pdfJobIndex = sel.val();
-
-					if (sel.val() === '-1') {
-						selTitle.val(_model.myInboxTitle);
-					} else {
-						selTitle.val(sel.text());
-					}
-					_model.myPrintTitle = selTitle.val();
+					_onJobListChange();
 					return false;
 				});
 
 			}).on("pagebeforeshow", function(event, ui) {
 				_m2V();
 				_this.onShow();
+				_onJobListChange();
 			}).on('pagebeforehide', function(event, ui) {
 				if (_validate()) {
 					_v2M();
@@ -1517,6 +1500,7 @@
 						type : 'pie',
 						sliceColors : [_view.colorPrinter, _view.colorSheet]
 					});
+					_view.visible($('#button-outbox-extend'), $('#outbox-job-list .sp-outbox-item-type-hold').length > 0);
 				}
 				return false;
 			}
@@ -1632,7 +1616,7 @@
 		 * Constructor
 		 */
 		function PageUserInternetPrinter(_i18n, _view, _model) {
-			var _page = new _ns.Page(_i18n, _view, '#page-user-internet-printer', 'UserInternetPrinter'), _self = _ns.derive(_page);
+			var _page = new _ns.Page(_i18n, _view, '#page-user-internet-printer', 'InternetPrinter'), _self = _ns.derive(_page);
 			return _self;
 		}
 
@@ -1640,7 +1624,6 @@
 		 *
 		 */
 		function PageDashboard(_i18n, _view, _model) {
-			//var _this = this;
 
 			$('#page-dashboard').on('pagecreate', function(event) {
 
@@ -1664,14 +1647,12 @@
 
 				if ($('#button-user-internet-printer-dialog')) {
 					$(this).on('click', '#button-user-internet-printer-dialog', null, function() {
-						// The UUID page is a fixed part of WebAppUserPage.html
-						// (we only refresh the content)
 						var pageId = '#page-user-internet-printer'
 						//
-						, html = _view.getUserPageHtml('UserInternetPrinter')
+						, html = _view.getUserPageHtml('InternetPrinterAddIn')
 						//
 						;
-						_view.changePage(pageId);
+						_view.showUserPage(pageId, 'InternetPrinter');
 						if (html) {
 							$('#page-user-internet-printer-content').html(html);
 							$(pageId).enhanceWithin();
@@ -1761,26 +1742,176 @@
 			 */
 			var _page = new _ns.Page(_i18n, _view, '#page-file-upload')
 			//
+			, _DROPZONE, _DROPZONE_HTML
+			//
 			, _self = _ns.derive(_page)
+			//
+			, _isPdfVisible = function() {
+				return $('#button-main-pdf-properties').length > 0;
+			}
+			//
+			, _isPrintVisible = function() {
+				return $('#button-main-print').length > 0;
+			}
+			//
+			, _showUploadButton = function(enable) {
+				_view.visible($('#sp-button-file-upload-submit').parent(), enable);
+			}
+			//
+			, _showResetButton = function(enable) {
+				_view.visible($('#sp-button-file-upload-reset').parent(), enable);
+			}
+			//
+			, _setUploadFeedbackDefault = function(dropzone) {
+				var feedback = $('#sp-webprint-upload-feedback');
+				feedback.removeClass('sp-txt-warn').removeClass('sp-txt-valid').addClass('sp-txt-info');
+				if (dropzone) {
+					feedback.html(_DROPZONE_HTML);
+				} else {
+					feedback.html('').hide();
+				}
+			}
+			//
+			, _setButtonVisibility = function(sel, visible, hasInboxDocs) {
+				_view.visible(sel, visible);
+				if (visible) {
+					_view.enable(sel, hasInboxDocs);
+				}
+			}
+			//
+			, _setVisibility = function() {
+				var hasInboxDocs = _model.hasInboxDocs();
+				_setButtonVisibility($('#sp-file-upload-print-button'), _isPrintVisible(), hasInboxDocs);
+				_setButtonVisibility($('#sp-file-upload-pdf-button'), _isPdfVisible(), hasInboxDocs);
+			}
+			//
+			, _onUploadStart = function() {
+				$('#sp-button-file-upload-reset').click();
+				$('#sp-webprint-upload-feedback').html('&nbsp;').show();
+			}
+			//
+			, _onUploadDone = function() {
+				_view.pages.main.onRefreshPages();
+				_setVisibility();
+				_showUploadButton(false);
+				_showResetButton(true);
+			}
+			//
+			, _onUploadMsgWarn = function(warn, files, filesStatus) {
+				$('#sp-webprint-upload-feedback').html(_ns.DropZone.getHtmlWarning(_i18n, warn, files, filesStatus)).show();
+				_showUploadButton(false);
+				_showResetButton(true);
+				$('#sp-webprint-upload-file').val('');
+			}
+			//
+			, _onUploadMsgInfo = function(files) {
+				var i, html = '';
+				for ( i = 0; i < files.length; i++) {
+					html += '&bull; ' + files[i].name + ' (' + _ns.DropZone.humanFileSize(files[i].size) + ')<br>';
+				}
+				html += '&bull; ' + _i18n.format('msg-file-upload-completed', null);
+				$('#sp-webprint-upload-feedback').addClass('sp-txt-valid').html(html);
+				_showResetButton(true);
+			}
 			//
 			;
 
-			/**
-			 *
-			 */
 			$(_self.id()).on('pagecreate', function(event) {
 
-				// initial hide
-				$('#file-upload-feedback').hide();
+				var zone, html, selAddIn = $('#file-upload-addin');
 
-				$('#button-file-upload-submit').on('click', null, null, function() {
-					$('#file-upload-feedback').show();
-					$('#button-file-upload-reset').click();
+				if (selAddIn.children().length === 0) {
+					html = _view.getUserPageHtml('FileUploadAddIn');
+					$('#file-upload-title').html(_i18n.format('file-upload-title'));
+					$('#file-upload-txt-font-family').html(_i18n.format('file-upload-txt-font-family'));
+					//
+					selAddIn.html(html).listview('refresh');
+
+					$('#sp-button-file-upload-reset').attr('value', _i18n.format('button-reset')).button('refresh');
+					$('#sp-button-file-upload-submit').attr('value', _i18n.format('button-upload')).button('refresh');
+				}
+
+				_DROPZONE = _model.webPrintDropZoneEnabled && _ns.DropZone.isSupported();
+				_DROPZONE_HTML = _i18n.format('file-upload-dropzone-prompt-dialog');
+
+				_showUploadButton(false);
+				_showResetButton(false);
+
+				_setUploadFeedbackDefault(_DROPZONE);
+
+				if (_DROPZONE) {
+					zone = $('#sp-webprint-upload-feedback');
+					zone.addClass('sp-dropzone-small');
+
+					_ns.DropZone.setCallbacks(zone, 'sp-dropzone-hover-small'
+					//
+					, _model.webPrintUploadUrl, _model.webPrintUploadFileParm
+					//
+					, null, null
+					//
+					, _model.webPrintMaxBytes, _model.webPrintFileExt, _i18n
+					//
+					, function() {// before send
+						_onUploadStart();
+					}, function() {// after send
+						_onUploadDone();
+					}, function(warn, infoArray, filesStatus) {
+						_onUploadMsgWarn(warn, infoArray, filesStatus);
+					}, function(files) {
+						_onUploadMsgInfo(files);
+					});
+				}
+
+				$('#sp-webprint-upload-form').submit(function(e) {
+					var files = document.getElementById('sp-webprint-upload-file').files;
+
+					e.preventDefault();
+
+					_ns.DropZone.sendFiles(files,
+					//
+					_model.webPrintUploadUrl, _model.webPrintUploadFileParm
+					//
+					, _model.webPrintUploadFontParm, $('#file-upload-fontfamily').val()
+					//
+					, _model.webPrintMaxBytes, _model.webPrintFileExt, _i18n
+					//
+					, function() {// before send
+						_onUploadStart();
+					}, function() {// after send
+						_onUploadDone();
+					}, function(warn) {
+						_onUploadMsgWarn(warn);
+					}, function(files) {
+						_onUploadMsgInfo(files);
+					});
+
+					return false;
+				});
+
+				$(this).on('change', '#sp-webprint-upload-file', function() {
+					var show = $(this).val();
+					_showUploadButton(show);
+					_showResetButton(show);
+					_setUploadFeedbackDefault(_DROPZONE);
+				});
+
+				$('#sp-button-file-upload-reset').click(function() {
+					_setUploadFeedbackDefault(_DROPZONE);
+					_showUploadButton(false);
+					_showResetButton(false);
 					return true;
 				});
 
-				$('#button-file-upload-reset').on('click', null, null, function() {
-					$('#file-upload-feedback').html('').hide();
+				$('#sp-file-upload-print-button').click(function() {
+					_view.pages.main.onShowPrintDialog();
+					return true;
+				});
+				$('#sp-file-upload-pdf-button').click(function() {
+					_view.pages.main.onShowPdfDialog();
+					return true;
+				});
+				$('#sp-file-upload-inbox-button').click(function() {
+					_view.changePage($('#page-main'));
 					return true;
 				});
 
@@ -1788,18 +1919,21 @@
 
 				_ns.deferAppWakeUp(true);
 
+				_setVisibility();
+
 			}).on('pagebeforehide', function(event, ui) {
 				/*
-				* Clear and Hide content
-				*/
-				//$('#file-upload-feedback').html('').hide();
-				$('#button-file-upload-reset').click();
+				 * Clear and Hide content
+				 */
+				$('#sp-button-file-upload-reset').click();
 
 				/*
-				 * IMPORTANT: _ns.deferAppWakeUp(false) is performed in
-				 * main.onShow()
-				 */
+				* IMPORTANT: _ns.deferAppWakeUp(false) is performed in
+				* main.onShow()
+				*/
 
+				// Mantis #717
+				_ns.checkAppWakeUpAutoRestore();
 			});
 			return _self;
 		}
@@ -1838,11 +1972,12 @@
 			//
 			, _IMG_WIDTH = function() {
 				return _model.MY_THUMBNAIL_WIDTH;
-			}
+			},
 			//
 			/**
 			 * Set job expiration marker in thumbnail subscript.
-			 */, _setThumbnailExpiry = function() {
+			 */
+			_setThumbnailExpiry = function() {
 				var subscripts = $('.sp-thumbnail-subscript'), i = 0;
 				$.each(_model.myJobPages, function(key, page) {
 					if (page.expiryTime > 0 && page.expiryTime - _model.prevMsgTime < page.expiryTimeSignal) {
@@ -1940,6 +2075,27 @@
 
 			};
 
+			// Initialize with URL parameter.
+			this.initialView = _ns.Utils.getUrlParam(_ns.URL_PARM.SHOW);
+
+			// One-time initial view.
+			this.setInitialView = function() {
+				if (_this.initialView) {
+					if (_model.myJobPages.length > 0) {
+						if (_this.initialView === _ns.URL_PARM_SHOW_PDF) {
+							_ns.Utils.asyncFoo(function() {
+								$('#button-main-pdf-properties').click();
+							});
+						} else if (_this.initialView === _ns.URL_PARM_SHOW_PRINT) {
+							_ns.Utils.asyncFoo(function() {
+								$('#button-main-print').click();
+							});
+						}
+					}
+					_this.initialView = null;
+				}
+			};
+
 			/**
 			 *
 			 */
@@ -1994,6 +2150,11 @@
 						item += '<span class="sp-thumbnail-page"/>';
 						item += '<span class="sp-thumbnail-tot-pages"/>';
 						item += '<span class="sp-thumbnail-tot-chunk"/>';
+
+						if (_model.myJobs[page.job].rotate !== "0") {
+							item += " &#x21b7;";
+						}
+
 						item += '</a></div>';
 
 						divCur = $(item);
@@ -2079,6 +2240,9 @@
 
 				//
 				_tnUrl2Img();
+
+				//
+				_this.setInitialView();
 			};
 
 			/*
@@ -2474,6 +2638,25 @@
 				// Use the ratio of ISO A4 + extra padding
 				, maxHeight = widthImg * (297 / 210) + 8 * _IMG_PADDING + 2 * _IMG_BORDER;
 
+				//
+				if (_model.webPrintEnabled && _model.webPrintDropZoneEnabled && _ns.DropZone.isSupported()) {
+					_ns.DropZone.setCallbacks($('#page-main-thumbnail-viewport'), 'sp-dropzone-hover'
+					//
+					, _model.webPrintUploadUrl, _model.webPrintUploadFileParm
+					//
+					, null, null
+					//
+					, _model.webPrintMaxBytes, _model.webPrintFileExt, _i18n
+					//
+					, function() {
+						_ns.userEvent.pause();
+					}, function() {
+						_ns.userEvent.resume();
+					}, function(warn, files, filesStatus) {
+						_view.msgDialogBox(_ns.DropZone.getHtmlWarning(_i18n, warn, files, filesStatus), 'sp-msg-popup-warn');
+					});
+				}
+
 				$('#page-main-thumbnail-viewport').css({
 					'height' : +maxHeight + 'px'
 				});
@@ -2488,7 +2671,7 @@
 					$(".sp-nav-button-txt").hide();
 					$.each($(".sp-nav-button-txt"), function(key, obj) {
 						$(this).hide();
-						$(this).closest("li").attr("title", "\n " + $(this).text() + " \n");
+						$(this).closest("li").attr("title", $(this).text());
 					});
 				}
 
@@ -2515,32 +2698,27 @@
 				});
 
 				$('#button-mini-upload').click(function() {
+					var pageId = '#page-file-upload';
 					/*
 					 * This page is a fixed part of WebAppUserPage.html
 					 */
-					_view.changePage('#page-file-upload');
+					_view.changePage(pageId);
+
 					return false;
 				});
 
 				$('#button-mini-outbox').click(function() {
-					/*
-					 * This page is a fixed part of WebAppUserPage.html
-					 */
-					_view.changePage('#page-outbox');
+					_view.showUserPage('#page-outbox', 'Outbox');
 					return false;
-
 				});
 
 				$('#button-mini-user').click(function() {
 
 					var html, xydata, piedata, pageId = '#page-dashboard';
 
-					/*
-					 * This page is a fixed part of WebAppUserPage.html
-					 */
-					_view.changePage(pageId);
+					_view.showUserPage(pageId, 'UserDashboard');
 
-					html = _view.getUserPageHtml('UserDashboard');
+					html = _view.getUserPageHtml('UserDashboardAddIn');
 
 					if (html) {
 
@@ -2567,10 +2745,8 @@
 						if (_model.dashboardPiechart) {
 							/*
 							 * IMPORTANT: Release all resources occupied by the
-							 * jqPlot.
-							 * NOT releasing introduces a HUGE memory leak, each
-							 * time
-							 * the plot is refreshed.
+							 * jqPlot. NOT releasing introduces a HUGE memory leak,
+							 * each time the plot is refreshed.
 							 */
 							_model.dashboardPiechart.destroy();
 						}
@@ -2860,11 +3036,9 @@
 		 */
 		function PagePrintSettings(_i18n, _view, _model) {
 
-			var PRINT_OPT_PFX = 'print-opt-'
+			var _this = this
 			//
-			, PRINT_OPT_DIV_SFX = '-div'
-			//
-			, CUSTOM_HTML5_DATA_ATTR = 'data-savapage'
+			, PRINT_OPT_PFX = 'print-opt-', PRINT_OPT_DIV_SFX = '-div', CUSTOM_HTML5_DATA_ATTR = 'data-savapage'
 			//
 			, _getPrinterOptionId = function(ippKeyword) {
 
@@ -2894,7 +3068,11 @@
 				//
 				, singleMediaSourceMedia, singleJobMedia
 				//
-				, isScaling, isSingleMediaMatch;
+				, isScaling, isSingleMediaMatch
+				//
+				, hasInboxDocs = _model.hasInboxDocs()
+				//
+				;
 
 				if (ippOption === 'media-source') {
 
@@ -2937,10 +3115,13 @@
 
 				isScaling = !(isSingleMediaMatch || isAuto || (!isAuto && _model.printSelectedMedia === singleJobMedia));
 
-				_view.visible($('.sp-print-job-scaling'), isScaling);
-				_view.visible($('.sp-print-job-media-info'), isScaling);
+				_view.visible($('.sp-print-job-scaling'), isScaling && hasInboxDocs);
+				_view.visible($('.sp-print-job-media-info'), isScaling && hasInboxDocs);
 
-				_model.setJobsMatchMedia(_view);
+				_view.visible($('.sp-print-job-info'), hasInboxDocs);
+				if (hasInboxDocs) {
+					_model.setJobsMatchMedia(_view);
+				}
 
 			}
 			//
@@ -2958,26 +3139,62 @@
 				});
 
 				_onChangeMediaSource(selMediaSource);
+
+				// resolve visibility
+				_onChangeMediaSource($("select[data-savapage='media-type']"));
+			}
+			//
+			// Choices from view to model.
+			//
+			, _v2Options = function(printerOptions) {
+
+				var i = 0;
+
+				$.each(_model.myPrinterOpt, function(key, value) {
+					printerOptions[key] = $('#' + PRINT_OPT_PFX + i).val();
+					i += 1;
+				});
 			}
 			//
 			// Choices from view to model.
 			//
 			, _v2m = function() {
-
-				var i = 0;
-
-				$.each(_model.myPrinterOpt, function(key, value) {
-					_model.myPrinterOpt[key] = $('#' + PRINT_OPT_PFX + i).val();
-					i += 1;
-				});
-
+				_v2Options(_model.myPrinterOpt);
 				_model.printPageScaling = _view.getRadioValue('print-page-scaling-enum');
+			}
+			//
+			, _m2vPrintScaling = function() {
+				var name = 'print-page-scaling-enum', radio = 'input[name="' + name + '"]'
+				//
+				, sel = $(radio + '[value="' + _model.PRINT_SCALING_ENUM.NONE + '"]')
+				//
+				;
+				_view.enableCheckboxRadio(sel, _model.myPrinter.printScalingExt);
 
+				if (!_model.myPrinter.printScalingExt) {
+					_view.checkRadioValue(name, _model.PRINT_SCALING_ENUM.FIT);
+				}
+				_model.printPageScaling = _view.getRadioValue(name);
 			}
 			//
 			;
 
+			// A way to set visibility of media and scaling, also in other parts of the application.
+			this.m2v = function() {
+				_m2v();
+			};
+
 			$('#page-printer-settings').on('pagecreate', function(event) {
+
+				$('#button-print-settings-next').click(function() {
+					var printerOptions = {};
+					_v2Options(printerOptions);
+					if (_this.onPrinterOptValidate(printerOptions)) {
+						_v2m();
+						return true;
+					}
+					return false;
+				});
 
 				$('#button-print-settings-default').click(function() {
 					_model.setPrinterDefaults();
@@ -3005,9 +3222,7 @@
 
 			}).on("pagebeforeshow", function(event, ui) {
 
-				var i = 0, selExpr, html, selMediaSource
-				//
-				;
+				var i = 0, selExpr, html, selMediaSource;
 
 				_model.myFirstPageShowPrintSettings = false;
 
@@ -3020,13 +3235,13 @@
 
 				_model.hasPrinterManualMedia = false;
 
-				html = '';
+				html = '<ul data-role="listview">';
 
 				i = 0;
 
 				$.each(_model.myPrinter.groups, function(key, group) {
 
-					var isMediaSourceMatch = _model.isMediaSourceMatch();
+					var isMediaSourceMatch = _model.isMediaSourceMatch(), j = 0;
 
 					$.each(group.options, function(key, option) {
 
@@ -3040,11 +3255,15 @@
 						//
 						;
 
+						if (j === 0) {
+							html += '<li>';
+						}
+
 						selExpr = PRINT_OPT_PFX + i;
 
 						html += '<div id="' + selExpr + PRINT_OPT_DIV_SFX + '">';
-						html += '<label for="' + selExpr + '">' + option.uiText + '</label>';
-						html += '<select ' + CUSTOM_HTML5_DATA_ATTR + '="' + keyword + '" id="' + selExpr + '" data-native-menu="false">';
+						html += '<label class="sp-txt-wrap" for="' + selExpr + '">' + option.uiText + '</label>';
+						html += '<select ' + CUSTOM_HTML5_DATA_ATTR + '="' + keyword + '" id="' + selExpr + '" data-mini="true" data-native-menu="false">';
 
 						$.each(option.choices, function(key, val) {
 							var skip = false;
@@ -3084,13 +3303,24 @@
 						html += '</div>';
 
 						i += 1;
+						j += 1;
 					});
 
+					if (j > 0) {
+						html += '</li>';
+					}
+
 				});
+
+				html += '</ul>';
 
 				$('#printer-options').html(html);
 
 				$(this).enhanceWithin();
+
+				// resolve visibility
+				_m2vPrintScaling();
+				_onChangeMediaSource($("select[data-savapage='media-type']"));
 
 				selMediaSource = $("select[data-savapage='media-source']");
 				_onChangeMediaSource(selMediaSource);
@@ -3107,8 +3337,6 @@
 					i += 1;
 				});
 
-			}).on('pagebeforehide', function(event, ui) {
-				_v2m();
 			});
 		}
 
@@ -3118,6 +3346,8 @@
 		function PagePrint(_i18n, _view, _model, _api) {
 
 			var _this = this
+			//
+			, _TICKETTYPE_PRINT = 'PRINT', _TICKETTYPE_COPY = 'COPY'
 			//
 			, _quickPrinterCache = []
 			//
@@ -3271,6 +3501,7 @@
 				}
 
 				_view.visible($('.sp-jobticket'), _model.myPrinter.jobTicket);
+				_view.visible($('.sp-proxyprint'), !_model.myPrinter.jobTicket);
 			}
 			//
 			, _isDelegatedPrint = function() {
@@ -3278,25 +3509,57 @@
 				return sel && !_view.isCbDisabled(sel) && _view.isCbChecked(sel);
 			}
 			//
+			, _getJobTicketType = function(isJobTicket) {
+				return isJobTicket ? _view.getRadioValue('sp-print-jobticket-type') || _TICKETTYPE_PRINT : _TICKETTYPE_PRINT;
+			}
+			//
 			, _onPrint = function(isClose) {
-				var clearScope = null;
+
+				var clearScope = null, isJobticket = _model.myPrinter.jobTicket
+				//
+				, separateDocs = null, selWlk;
+
 				if (_view.isCbChecked($("#delete-pages-after-print"))) {
 					clearScope = _view.getRadioValue('delete-pages-after-print-scope');
 				}
-				_this.onPrint(clearScope, isClose, _view.isCbChecked($("#print-remove-graphics")), _view.isCbChecked($("#print-ecoprint")), _view.isCbChecked($("#print-collate")), _isDelegatedPrint());
+
+				if (isJobticket) {
+					separateDocs = _view.isCbChecked($("#print-documents-separate-ticket"));
+				} else {
+					selWlk = $("#print-documents-separate-print");
+					separateDocs = selWlk.length > 0 ? _view.isCbChecked(selWlk) : null;
+				}
+
+				_this.onPrint(clearScope, isClose, _view.isCbChecked($("#print-remove-graphics"))
+				//
+				, _view.isCbChecked($("#print-ecoprint")), _view.isCbChecked($("#print-collate"))
+				//
+				, _isDelegatedPrint(), separateDocs
+				//
+				, isJobticket, _getJobTicketType(_model.myPrinter.jobTicket));
+			}
+			//
+			, _onJobTicketType = function(ticketType) {
+				_view.visible($('.sp-jobticket-print'), ticketType === _TICKETTYPE_PRINT);
 			}
 			//
 			, _setVisibility = function() {
 
 				var selCollate = $(".print-collate"), copies, delegatedPrint = _isDelegatedPrint()
 				//
-				, jobTicket = _model.myPrinter && _model.myPrinter.jobTicket;
+				, jobTicket = _model.myPrinter && _model.myPrinter.jobTicket
+				//
+				, allDocs = _model.canSelectAllDocuments()
+				//
+				, jobTicketType, hasInboxDocs = _model.hasInboxDocs()
+				//
+				;
 
 				if (delegatedPrint) {
 					copies = _model.printDelegationCopies;
 					$('#delegated-print-copies').val(copies);
 				} else if (jobTicket) {
-					$.noop();
+					copies = parseInt($('#number-print-copies').val(), 10);
 				} else {
 					copies = parseInt($('#slider-print-copies').val(), 10);
 				}
@@ -3304,6 +3567,7 @@
 				_view.visible($('#slider-print-copies-div'), !delegatedPrint && !jobTicket);
 				_view.visible($('#number-print-copies-div'), !delegatedPrint && jobTicket);
 				_view.visible($('#delegated-print-copies-div'), delegatedPrint);
+				_view.visible($('#sp-print-shared-account-div'), !delegatedPrint);
 
 				if (!delegatedPrint && copies > 1) {
 
@@ -3325,6 +3589,50 @@
 				}
 
 				_view.visible($('.delete-pages-after-print-scope-enabled'), _view.isCbChecked($('#delete-pages-after-print')));
+
+				if (_model.myPrinter) {
+					_view.visible($('.sp-proxyprint'), !jobTicket);
+					_view.visible($('.sp-jobticket'), jobTicket);
+				}
+
+				_view.visible($('#print-documents-separate-print-div'), !jobTicket && allDocs);
+				_view.visible($('#print-documents-separate-ticket-div'), jobTicket && allDocs);
+
+				if (jobTicket) {
+					// (1) first enable.
+					_view.enable($('#sp-print-jobticket-type-print'), hasInboxDocs);
+					if (hasInboxDocs) {
+						jobTicketType = _getJobTicketType(jobTicket);
+					} else {
+						jobTicketType = _TICKETTYPE_COPY;
+					}
+					// (2) then check to see enabled/disabled state.
+					_view.checkRadioValue('sp-print-jobticket-type', jobTicketType);
+					_onJobTicketType(jobTicketType);
+				}
+				_view.visible($('.sp-print-job-info'), hasInboxDocs);
+			}
+			//
+			, _onJobListChange = function() {
+				var sel = $('#print-job-list :selected'), selTitle = $('#print-title');
+
+				if (_model.printJobIndex === '-1') {
+					_model.myInboxTitle = selTitle.val();
+				}
+
+				_model.printJobIndex = sel.val();
+
+				if (sel.val() === '-1') {
+					selTitle.val(_model.myInboxTitle);
+				} else {
+					selTitle.val(sel.text());
+				}
+				_model.myPrintTitle = selTitle.val();
+			}
+			//
+			, _resetPrinterSearch = function() {
+				$("#sp-print-qs-printer").val('');
+				_onQuickPrinterSearch($("#sp-print-qs-printer-filter"), '');
 			}
 			//
 			;
@@ -3341,10 +3649,14 @@
 				$('#sp-jobticket-date').val('');
 				$('#sp-jobticket-hrs').val('');
 				$('#sp-jobticket-min').val('');
+				$('#print-title').val('');
 
 				if (selCbClear[0] && !$('#delete-pages-after-print')[0].disabled) {
 					_view.checkCb("#delete-pages-after-print", false);
 				}
+
+				_view.checkRadioValue('sp-print-jobticket-type', _TICKETTYPE_PRINT);
+				_view.setSelectedValue($('#sp-print-shared-account-list'), "0");
 			};
 
 			$('#page-print').on('pagecreate', function(event) {
@@ -3374,6 +3686,10 @@
 					_setVisibility();
 				});
 
+				$('#number-print-copies').change(function() {
+					_setVisibility();
+				});
+
 				$('#delete-pages-after-print').change(function() {
 					_setVisibility();
 				});
@@ -3387,12 +3703,25 @@
 					return false;
 				});
 
-				$('#button-print').click(function(e) {
-					_onPrint(false);
+				$('input[name="sp-print-jobticket-type"]').click(function() {
+					_onJobTicketType($(this).attr('value'));
+				});
+
+				$('#button-printer-back').click(function(e) {
+					if (_model.PROXY_PRINT_CLEAR_PRINTER) {
+						_view.pages.print.onClearPrinter();
+					}
+					_model.myShowUserStatsGet = true;
+					_view.changePage($('#page-main'));
 					return false;
 				});
 
 				$('#button-print-and-close').click(function(e) {
+					_onPrint(true);
+					return false;
+				});
+
+				$('#button-send-jobticket').click(function(e) {
 					_onPrint(true);
 					return false;
 				});
@@ -3413,32 +3742,31 @@
 				});
 
 				$('#print-job-list').change(function(event) {
-
-					var sel = $('#print-job-list :selected'), selTitle = $('#print-title');
-
-					if (_model.printJobIndex === '-1') {
-						_model.myInboxTitle = selTitle.val();
-					}
-
-					_model.printJobIndex = sel.val();
-
-					if (sel.val() === '-1') {
-						selTitle.val(_model.myInboxTitle);
-					} else {
-						selTitle.val(sel.text());
-					}
-					_model.myPrintTitle = selTitle.val();
+					_onJobListChange();
 					return false;
 				});
 
 				_view.mobipick($("#sp-jobticket-date"));
 
 			}).on("pagebeforeshow", function(event, ui) {
+
+				if (_model.isPrintDialogFromMain) {
+					_model.isPrintDialogFromMain = false;
+					if (_model.PROXY_PRINT_CLEAR_PRINTER) {
+						_resetPrinterSearch();
+					}
+				}
+
 				_setVisibility();
 				_this.onShow();
+				_onJobListChange();
+
+				_view.pages.printSettings.m2v();
+
 				if (_fastPrintAvailable) {
 					_this.onFastProxyPrintRenew(false);
 				}
+
 			}).on('pagebeforehide', function(event, ui) {
 				_this.onHide();
 			});
@@ -3452,7 +3780,7 @@
 			var
 			//_super = new Base()
 			//, _self = derive(_super)
-			_this = this
+			_this = this, _model = this
 			//
 			, _LOC_AUTH_NAME = 'sp.auth.user.name'
 			//
@@ -3510,6 +3838,15 @@
 				return ranges;
 			};
 
+			//
+			this.webPrintEnabled = false;
+			this.webPrintDropZoneEnabled = false;
+			this.webPrintMaxBytes = 0;
+			this.webPrintFileExt = [];
+			this.webPrintUploadUrl = null;
+			this.webPrintUploadFileParm = null;
+			this.webPrintUploadFontParm = null;
+
 			/**
 			 * Creates a string with page range format from the cut pages.
 			 *
@@ -3533,6 +3870,12 @@
 				CLASH : 2
 			};
 
+			//
+			this.PRINT_SCALING_ENUM = {
+				NONE : 'NONE',
+				FIT : 'FIT'
+			};
+
 			/*
 			 * Value: this.MediaMatchEnum.
 			 */
@@ -3542,7 +3885,7 @@
 			/*
 			 * PageScalingEnum
 			 */
-			this.printPageScaling = 'CROP';
+			this.printPageScaling = this.PRINT_SCALING_ENUM.NONE;
 
 			/**
 			 *
@@ -3572,6 +3915,9 @@
 			this.myFirstPageShowLetterhead = true;
 
 			this.preservePrintJobSettings = false;
+
+			this.isPrintDialogFromMain = true;
+			this.PROXY_PRINT_CLEAR_PRINTER = false;
 
 			this.myInboxTitle = null;
 			this.myPrintTitle = null;
@@ -3627,6 +3973,13 @@
 			this.user = new _ns.User();
 
 			this.propPdf = this.propPdfDefault;
+
+			/**
+			 *
+			 */
+			this.hasInboxDocs = function() {
+				return this.myJobs.length > 0;
+			};
 
 			/**
 			 * Creates job media map: ippMedia -> count, mediaUi
@@ -3773,12 +4126,10 @@
 
 						if (media && mediaWlk !== media) {
 							this.jobsMatchMedia = this.MediaMatchEnum.CLASH;
-							if (this.printPageScaling === 'CROP') {
-								html += 'sp-ipp-media-info-crop';
-							} else if (this.printPageScaling === 'EXPAND') {
-								html += 'sp-ipp-media-info-expand';
+							if (this.printPageScaling === this.PRINT_SCALING_ENUM.NONE) {
+								html += 'sp-ipp-media-info-none';
 							} else {
-								html += 'sp-ipp-media-info-shrink';
+								html += 'sp-ipp-media-info-fit';
 							}
 						} else {
 							html += 'sp-ipp-media-info-match';
@@ -3834,12 +4185,10 @@
 
 							this.jobsMatchMediaSources = this.MediaMatchEnum.CLASH;
 
-							if (this.printPageScaling === 'CROP') {
-								html += 'sp-ipp-media-info-crop';
-							} else if (this.printPageScaling === 'EXPAND') {
-								html += 'sp-ipp-media-info-expand';
+							if (this.printPageScaling === _this.PRINT_SCALING_ENUM.NONE) {
+								html += 'sp-ipp-media-info-none';
 							} else {
-								html += 'sp-ipp-media-info-shrink';
+								html += 'sp-ipp-media-info-fit';
 							}
 
 						} else {
@@ -3893,6 +4242,10 @@
 
 			this.isLetterhead = function() {
 				return (this.letterheadDefault !== null);
+			};
+
+			this.canSelectAllDocuments = function() {
+				return this.myJobsVanilla && _ns.Utils.countProp(this.mySelectPages) === 0;
 			};
 
 			this.initAuth = function() {
@@ -4253,14 +4606,7 @@
 				_model.letterheads = null;
 				_model.propPdfDefault.desc.author = _model.user.fullname;
 
-				/*
-				 * _api.call({ request : 'exit-event-monitor' });
-				 * THIS IS NOT NEEDED, because server-side login took care of
-				 * this.
-				 */
-				/*
-				 *
-				 */
+				//
 				res = _api.call({
 					'request' : 'pdf-get-properties'
 				});
@@ -4284,19 +4630,62 @@
 				}
 			};
 
+			/**
+			 * Restores CometD UserEvent connection automatically.
+			 * Mantis #717.
+			 */
+			this.onWakeUpAutoRestore = function(deferAppWakeUp) {
+
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('onWakeUpAutoRestore');
+				}
+
+				_ns.stopAppWatchdog();
+
+				/*
+				 * By pausing we tell the server to interrupt the long-poll: as a
+				 * result of this call the connection to the server might be lost
+				 * or the session is expired).
+				 */
+				_ns.userEvent.pause();
+
+				//
+				_userEvent.removeListener();
+				_proxyprintEvent.removeListener();
+
+				/*
+				 * Are we still logged in (may be connection to server is lost or
+				 * session is expired)?
+				 */
+				if (!_model.user.loggedIn) {
+					return false;
+				}
+
+				// Start with defer setting.
+				_ns.startAppWatchdog(deferAppWakeUp);
+
+				_userEvent.setLongPollLost();
+
+				// IMPORTANT: perform next steps async !!
+				window.setTimeout(function() {
+					_userEvent.addListener();
+					_proxyprintEvent.addListener();
+					_userEvent.resume();
+				}, 10);
+
+			};
+
+			/**
+			 * Restores CometD UserEvent connection after user acknowledges
+			 * "Welcome Back" message.
+			 */
 			this.onWakeUp = function(deltaMsec) {
 
 				var buttonGoOn = $('#sp-popup-wakeup-refresh');
 
-				/*
-				* When paused there is NO pending long-poll: we fall back to the
-				* normal "resume" behavior.
-				*/
-
-				// Not for now (because of #320)
-				//if (_userEvent.isPaused()) {
-				//    return;
-				//}
+				if (_ns.logger.isDebugEnabled()) {
+					_ns.logger.debug('onWakeUp');
+				}
 
 				/*
 				 * At this point we want user interaction: so, stop the timer!
@@ -4304,9 +4693,9 @@
 				_ns.stopAppWatchdog();
 
 				/*
-				 * By pausing we tell the server to interrupt the long-poll: as
-				 * a result of this call connection to server might be lost or
-				 * session expired).
+				 * By pausing we tell the server to interrupt the long-poll: as a
+				 * result of this call the connection to the server might be lost
+				 * or the session is expired).
 				 */
 				_ns.userEvent.pause();
 
@@ -4315,8 +4704,6 @@
 				 */
 				_userEvent.removeListener();
 				_proxyprintEvent.removeListener();
-
-				_ns.cometd.stop();
 
 				/*
 				 * Are we still logged in (may be connection to server is lost or
@@ -4335,9 +4722,9 @@
 				}
 
 				/*
-				 * We use a popup since we NEED user action to continue.
+				 * IMPORTANT: we use a popup since we NEED user action to continue.
 				 * Reason: some devices give some CPU cycles every 10-20 seconds
-				 * to the Web App when it is in the background...
+				 * to the Web App when it is in the background.
 				 */
 				$('#sp-popup-wakeup').popup('open', {
 					positionTo : 'window'
@@ -4347,14 +4734,15 @@
 
 				buttonGoOn.click(function(e) {
 
-					_ns.startAppWatchdog();
+					_ns.startAppWatchdog(false);
 
 					$('#sp-popup-wakeup').popup('close');
 
 					_userEvent.setLongPollLost();
 
-					// Mantis #320
-					_ns.cometd.start(_ns.model.user.cometdToken);
+					_userEvent.addListener();
+					_proxyprintEvent.addListener();
+
 					_userEvent.resume();
 
 					return false;
@@ -4386,11 +4774,20 @@
 					_view.message('connection to server is lost');
 					return;
 				}
-				_ns.configAppWatchdog(_this.onWakeUp, res.watchdogHeartbeatSecs, res.watchdogTimeoutSecs);
+				_ns.configAppWatchdog(_this.onWakeUp, res.watchdogHeartbeatSecs, res.watchdogTimeoutSecs, _this.onWakeUpAutoRestore);
 
 				_model.prevMsgTime = res.systime;
 
-				_view.pages.login.setAuthMode(res.authName, res.authId, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, res.authCardSelfAssoc, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+				_view.pages.login.setAuthMode(res.authName, res.authId, res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, res.authCardSelfAssoc, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+
+				// WebPrint
+				_model.webPrintEnabled = res.webPrintEnabled;
+				_model.webPrintDropZoneEnabled = res.webPrintDropZoneEnabled;
+				_model.webPrintMaxBytes = res.webPrintMaxBytes;
+				_model.webPrintFileExt = res.webPrintFileExt;
+				_model.webPrintUploadUrl = res.webPrintUploadUrl;
+				_model.webPrintUploadFileParm = res.webPrintUploadFileParm;
+				_model.webPrintUploadFontParm = res.webPrintUploadFontParm;
 
 				// Configures CometD without starting it.
 				_cometdMaxNetworkDelay = res.cometdMaxNetworkDelay;
@@ -4405,6 +4802,9 @@
 
 				_model.MY_THUMBNAIL_WIDTH = res['thumbnail-width'];
 				_model.propPdfDefault = res['pdf-prop-default'];
+
+				//
+				_model.PROXY_PRINT_CLEAR_PRINTER = res.proxyPrintClearPrinter;
 
 				_view.imgBase64 = res.img_base64;
 
@@ -4505,7 +4905,7 @@
 							_ns.monitorUserIdle(_model.maxIdleSeconds, _view.pages.main.onLogout);
 						}
 
-						_ns.startAppWatchdog();
+						_ns.startAppWatchdog(false);
 
 					} else {
 
@@ -4662,15 +5062,25 @@
 			 * @param sel
 			 *            The selector, e.g. '#print-job-list'
 			 */
-			this.setJobScopeMenu = function(sel) {
-				var options = '<option value="-1">' + _i18n.format('scope-all-documents', null) + '</option>';
-				if (_model.myJobsVanilla && _util.countProp(_model.mySelectPages) === 0) {
+			this.setJobScopeMenu = function(sel, isPrintDialog) {
+				var keyAll = '-1', keySelect = keyAll, options = '';
+
+				if (_model.canSelectAllDocuments() && _model.myJobs.length === 1) {
+					keySelect = '0';
+				} else {
+					options = '<option value="' + keyAll + '">' + _i18n.format('scope-all-documents', null) + '</option>';
+				}
+
+				if (_model.canSelectAllDocuments()) {
 					$.each(_model.myJobs, function(key, value) {
 						options += '<option value="' + key + '">' + value.title + '</option>';
 					});
 				}
+
 				$(sel).empty().append(options);
-				$(sel).val('-1').selectmenu('refresh');
+				$(sel).val(keySelect).selectmenu('refresh');
+
+				return keySelect;
 			};
 
 			/**
@@ -4744,7 +5154,6 @@
 
 					if (_ns.thumbnails2Load > 0) {
 						_ns.userEvent.pause();
-						_ns.cometd.stop();
 					} else {
 						_ns.userEvent.onPollInvitation();
 					}
@@ -4803,7 +5212,6 @@
 					$(jqId).html(html).enhanceWithin();
 
 					// Hide the top divider with the title
-					// $(jqId + ' .ui-li-divider').hide();
 					$(jqId + ' > ul > .ui-li-divider').hide();
 
 					/*
@@ -4878,7 +5286,11 @@
 			_cometd.onConnectionBroken = function() {
 				_changeIcon("delete", 'Connection is broken.');
 				if (_model.user.loggedIn) {
-					_this.onWakeUp();
+					if (_ns.isAppWakeUpDeferred()) {
+						_this.onWakeUpAutoRestore(true);
+					} else {
+						_this.onWakeUp();
+					}
 				}
 			};
 			_cometd.onConnectionClosed = function() {
@@ -4909,7 +5321,6 @@
 			};
 			_deviceEvent.onEventError = function(msg) {
 				_view.message(msg);
-				_cometd.stop();
 			};
 			_deviceEvent.onPollInvitation = function() {
 				_deviceEvent.poll(_model.language, _model.country);
@@ -4935,7 +5346,10 @@
 				$('#sp-popup-print-auth').popup('close');
 
 				if (_model.closePrintDlg) {
-					//Do NOT use $('#button-printer-back').click();
+					if (_model.PROXY_PRINT_CLEAR_PRINTER) {
+						_view.pages.print.onClearPrinter();
+					}
+					// Do NOT use $('#button-printer-back').click();
 					_view.changePage($('#page-main'));
 				}
 
@@ -4973,7 +5387,6 @@
 
 			_userEvent.onEventError = function(msg) {
 				_view.message(msg);
-				_cometd.stop();
 			};
 
 			_userEvent.onException = function(msg) {
@@ -5155,7 +5568,7 @@
 			};
 
 			/**
-			 * Callbacks: pageDashboard
+			 * Callbacks: money transfer
 			 */
 			_view.pages.moneyTransfer.onMoneyTransfer = function(gatewayId, method, main, cents) {
 				// MoneyTransferDto.java
@@ -5213,9 +5626,9 @@
 			_view.pages.pdfprop.onShow = function() {
 
 				_this.setLetterheadMenu('#pdf-letterhead-list');
-				_this.setJobScopeMenu('#pdf-job-list');
 
-				_model.pdfJobIndex = -1;
+				_model.pdfJobIndex = _this.setJobScopeMenu('#pdf-job-list', false);
+
 				$('#pdf-title').val(_model.myInboxTitle);
 
 				_view.checkCb('#pdf-remove-graphics', _model.removeGraphics);
@@ -5271,6 +5684,10 @@
 				if (_model.ecoprint && !_userLazyEcoPrint(_model.pdfJobIndex, pageRanges)) {
 					return false;
 				}
+
+				// Mantis #725
+				_ns.deferAppWakeUp(true);
+
 				//
 				window.location.assign(_api.getUrl4Pdf(pageRanges, _model.removeGraphics, _model.ecoprint, _model.pdfGrayscale, _model.pdfJobIndex));
 				_model.myShowUserStatsGet = true;
@@ -5317,11 +5734,36 @@
 			};
 
 			/**
+			 * For now, validate Job Tickets only.
+			 */
+			_view.pages.printSettings.onPrinterOptValidate = function(printerOptions) {
+				var res, valid = true;
+				if (_model.myPrinter.jobTicket) {
+					res = _api.call({
+						request : 'printer-opt-validate',
+						dto : JSON.stringify({
+							printer : _model.myPrinter.name,
+							options : printerOptions
+						})
+					});
+					valid = res.result.code === '0';
+					if (!valid) {
+						_view.showApiMsg(res);
+					}
+				}
+				return valid;
+			};
+
+			/**
 			 * Callbacks: page print
 			 */
-			_view.pages.print.onPrint = function(clearScope, isClose, removeGraphics, ecoprint, collate, isDelegation) {
+			_view.pages.print.onPrint = function(clearScope, isClose, removeGraphics, ecoprint
+			//
+			, collate, isDelegation, separateDocs, isJobticket, jobTicketType) {
 
-				var res, sel, cost, visible, date, present, jobTicketDate, isJobticket = _model.myPrinter.jobTicket
+				var res, sel, cost, visible, date, jobTicketDate, accountId
+				//
+				, isJobTicketDateTime = $('#sp-jobticket-date').length > 0
 				//
 				, copies = isDelegation ? "1" : ( isJobticket ? $('#number-print-copies').val() : $('#slider-print-copies').val());
 
@@ -5329,11 +5771,23 @@
 					return;
 				}
 
+				if (!_model.isMediaSourceMatch() && _model.myPrinterOpt['media-source'] === 'auto') {
+					_view.msgDialogBox(_i18n.format('msg-select-media-source'), 'sp-msg-popup-warn');
+					return;
+				}
+
 				if (_model.myPrinter.jobTicket) {
-					sel = $('#sp-jobticket-date');
-					date = _view.mobipickGetDate(sel);
-					present = (sel.val().length > 0);
-					jobTicketDate = ( present ? date.getTime() : null);
+					if (isJobTicketDateTime) {
+						sel = $('#sp-jobticket-date');
+						date = _view.mobipickGetDate(sel);
+						jobTicketDate = sel.val().length > 0 ? date.getTime() : null;
+					} else {
+						jobTicketDate = null;
+					}
+				}
+
+				if (!isDelegation) {
+					accountId = $('#sp-print-shared-account-list').val();
 				}
 
 				_model.myPrintTitle = $('#print-title').val();
@@ -5342,6 +5796,7 @@
 					request : 'printer-print',
 					dto : JSON.stringify({
 						user : _model.user.id,
+						accountId : accountId,
 						printer : _model.myPrinter.name,
 						readerName : _model.myPrinterReaderName,
 						jobName : _model.myPrintTitle,
@@ -5353,12 +5808,14 @@
 						removeGraphics : removeGraphics,
 						ecoprint : ecoprint,
 						clearScope : clearScope,
+						separateDocs : separateDocs,
 						options : _model.myPrinterOpt,
 						delegation : isDelegation ? _model.printDelegation : null,
 						jobTicket : isJobticket,
+						jobTicketType : jobTicketType,
 						jobTicketDate : jobTicketDate,
-						jobTicketHrs : isJobticket ? $('#sp-jobticket-hrs').val() : null,
-						jobTicketMin : isJobticket ? $('#sp-jobticket-min').val() : null,
+						jobTicketHrs : isJobticket && isJobTicketDateTime ? $('#sp-jobticket-hrs').val() : null,
+						jobTicketMin : isJobticket && isJobTicketDateTime ? $('#sp-jobticket-min').val() : null,
 						jobTicketRemark : isJobticket ? $('#sp-jobticket-remark').val() : null
 					})
 				});
@@ -5414,17 +5871,33 @@
 				}
 
 				if (res.result.code === '0') {
+
 					_view.pages.print.clearInput();
+
+					if (res.clearDelegate) {
+						_view.pages.printDelegation.clear();
+					}
+
 					if (isClose) {
 						$('#button-printer-back').click();
 					}
 					if (clearScope !== null) {
 						_view.pages.main.onRefreshPages();
 					}
+
 					_model.user.stats = res.stats;
 					_model.myShowUserStats = true;
 				}
-				_view.showApiMsg(res);
+
+				if (isJobticket && res.result.code === '0') {
+					//Perform next step when this event is done.
+					window.setTimeout(function() {
+						_view.msgDialogBox(res.result.txt, 'sp-msg-popup-info');
+					}, 100);
+
+				} else {
+					_view.showApiMsg(res);
+				}
 
 			};
 
@@ -5493,7 +5966,7 @@
 			_view.pages.print.onClearPrinter = function() {
 				_model.myPrinter = undefined;
 				_model.isPrintManualFeed = false;
-				_model.printPageScaling = 'CROP';
+				_model.printPageScaling = _model.PRINT_SCALING_ENUM.NONE;
 				_model.setJobsMatchMediaSources(_view);
 				_model.setJobsMatchMedia(_view);
 				_model.myPrinterOpt = [];
@@ -5525,9 +5998,8 @@
 				_view.checkCb('#print-ecoprint', _model.ecoprint);
 
 				_this.setLetterheadMenu('#print-letterhead-list');
-				_this.setJobScopeMenu('#print-job-list');
 
-				_model.printJobIndex = -1;
+				_model.printJobIndex = _this.setJobScopeMenu('#print-job-list', true);
 				$('#print-title').val(_model.myInboxTitle);
 
 				// Refreshes display of possible changed inbox media.
@@ -5780,6 +6252,8 @@
 					})
 				});
 
+				_view.pages.login.notifyLogout();
+
 				if (res.result.code !== '0') {
 					/*
 					 * NOTE: when we are disconnected the onDisconnected()
@@ -5973,6 +6447,7 @@
 			 */
 			_view.pages.main.onShowPrintDialog = function() {
 				if (_checkVanillaJobs()) {
+					_model.isPrintDialogFromMain = true;
 					_view.showUserPageAsync('#page-print', 'Print');
 				}
 			};
@@ -6031,6 +6506,8 @@
 			//
 			, _cometd, _userEvent, _deviceEvent, _proxyprintEvent, _ctrl
 			//
+			, _nativeLogin
+			//
 			;
 
 			_ns.commonWebAppInit();
@@ -6053,7 +6530,7 @@
 				main : new PageMain(_i18n, _view, _model),
 				print : new PagePrint(_i18n, _view, _model, _api),
 				printDelegation : new _ns.PagePrintDelegation(_i18n, _view, _model, _api),
-				print_settings : new PagePrintSettings(_i18n, _view, _model),
+				printSettings : new PagePrintSettings(_i18n, _view, _model),
 				fileUpload : new PageFileUpload(_i18n, _view, _model),
 				userPinReset : new PageUserPinReset(_i18n, _view, _model),
 				userInternetPrinter : new PageUserInternetPrinter(_i18n, _view, _model),
@@ -6069,28 +6546,41 @@
 			_ns.model = _model;
 			//
 
+			_ns.view = _view;
+
+			//
 			_deviceEvent = new DeviceEvent(_cometd);
 			_proxyprintEvent = new ProxyPrintEvent(_cometd);
 
 			_ctrl = new Controller(_i18n, _model, _view, _api, _cometd, _userEvent, _deviceEvent, _proxyprintEvent);
 
-			this.init = function() {
-
-				var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER);
-
-				_ns.initWebApp('USER');
-
-				_ctrl.init();
-
+			_nativeLogin = function(user, authMode) {
 				if (user) {
 					_ctrl.login(_view.AUTH_MODE_NAME, user, null, _model.authToken.token);
 				} else if (_model.authToken.user && _model.authToken.token) {
 					_ctrl.login(_view.AUTH_MODE_NAME, _model.authToken.user, null, _model.authToken.token);
 				} else {
 					_ctrl.initLoginUserInput();
-					// Initial load/show of Login dialog
 					_view.pages.login.loadShow(_ns.WEBAPP_TYPE);
 				}
+			};
+
+			this.init = function() {
+
+				var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER), authMode = _ns.Utils.getUrlParam(_ns.URL_PARM.LOGIN)
+				// Note: getUrlParam() does not work properly for LOGIN_OAUTH
+				, isLoginOAuth = _ns.Utils.hasUrlParam(_ns.URL_PARM.LOGIN_OAUTH);
+
+				_ns.initWebApp('USER');
+
+				_ctrl.init();
+
+				if (isLoginOAuth) {
+					_ctrl.login(_view.AUTH_MODE_OAUTH);
+				} else {
+					_nativeLogin(user, authMode);
+				}
+
 			};
 
 			$(window).on('beforeunload', function() {

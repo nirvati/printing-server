@@ -1,8 +1,8 @@
-/*! SavaPage jQuery Mobile Common | (c) 2011-2016 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage jQuery Mobile Common | (c) 2011-2017 Datraverse B.V. | GNU Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -37,7 +37,8 @@
 		//
 		, _watchdogTimer, _onWatchdogHeartbeat, _lastAppHeartbeat
 		//
-		, _deferAppWakeUp, _onAppWakeUp
+		, _deferAppWakeUp, _onAppWakeUp, _onAppWakeUpAutoRestore
+
 		//
 		, _doAppHeartbeat = function() {
 			_lastAppHeartbeat = new Date().getTime();
@@ -56,6 +57,14 @@
 			 * We remove the attribute here. Mantis #701.
 			 */
 			$('.sp-initial-hidden').attr('style', '');
+
+			/*
+			 * Disable the default browser action for file drops on the document.
+			 * Specific drop zones must be explicitly activated.
+			 */
+			$(document).bind('drop dragover', function(e) {
+				e.preventDefault();
+			});
 		};
 
 		/*
@@ -95,15 +104,33 @@
 			}
 		};
 
-		_ns.configAppWatchdog = function(onAppWakeUp, watchdogHeartbeatSecs, watchdogTimeoutSecs) {
+		/**
+		 * Mantis #717
+		 */
+		_ns.checkAppWakeUpAutoRestore = function() {
+			if (_onAppWakeUpAutoRestore) {
+				var now = new Date().getTime(), delta = (now - _lastAppHeartbeat);
+				_lastAppHeartbeat = now;
+				if (delta > (_watchdogTimeoutSecs * 1000)) {
+					_onAppWakeUpAutoRestore(_deferAppWakeUp);
+				}
+			}
+		};
+
+		_ns.configAppWatchdog = function(onAppWakeUp, watchdogHeartbeatSecs, watchdogTimeoutSecs, onAppWakeUpAutoRestore) {
 			_onAppWakeUp = onAppWakeUp;
 			_watchdogHeartbeatSecs = watchdogHeartbeatSecs;
 			_watchdogTimeoutSecs = watchdogTimeoutSecs;
+			_onAppWakeUpAutoRestore = onAppWakeUpAutoRestore;
 		};
 
-		_ns.startAppWatchdog = function() {
+		_ns.isAppWakeUpDeferred = function() {
+			return _deferAppWakeUp;
+		};
 
-			_ns.deferAppWakeUp(false);
+		_ns.startAppWatchdog = function(defer) {
+
+			_ns.deferAppWakeUp(defer);
 
 			_doAppHeartbeat();
 
@@ -842,6 +869,11 @@
 				$("#sp-doclog-account-title").html("");
 			},
 
+			applyDefaultForTicket : function(my) {
+				my.applyDefaults(my);
+				my.input.select.doc_type = 'TICKET';
+			},
+
 			/*
 			 * Generic: can be reused
 			 */
@@ -859,7 +891,7 @@
 				//
 				my.input.select.account_id = null;
 
-				// ALL, IN, OUT, PDF, PRINT
+				// ALL, IN, OUT, PDF, PRINT, TICKET
 				my.input.select.doc_type = "ALL";
 
 				my.input.select.date_from = null;
@@ -874,7 +906,7 @@
 				my.input.select.letterhead = undefined;
 
 				my.input.select.printer_id = null;
-				my.input.select.job_state = null;
+				my.input.select.job_state = "0";
 				// Boolean
 				my.input.select.duplex = undefined;
 
@@ -885,6 +917,8 @@
 				my.input.select.ownerpw = '';
 				// Boolean
 				my.input.select.encrypted = undefined;
+
+				my.input.select.ticket_number = '';
 
 				my.input.sort.field = 'date';
 				my.input.sort.ascending = false;
@@ -912,17 +946,30 @@
 				$('.sp-doclog-cat-pdf').hide();
 				$('.sp-doclog-cat-queue').hide();
 				$('.sp-doclog-cat-printer').hide();
+				$('.sp-doclog-cat-ticket').hide();
 
 				if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-in')) {
 					$('.sp-doclog-cat-queue').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-out')) {
 					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-out-detail').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-pdf')) {
 					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-out-detail').show();
 					$('.sp-doclog-cat-pdf').show();
 				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-print')) {
 					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-out-detail').show();
 					$('.sp-doclog-cat-printer').show();
+					$('.sp-doclog-cat-printer-list').show();
+					$('.sp-doclog-cat-printer-print-layout').show();
+				} else if (_view.isRadioIdSelected('sp-doclog-select-type', 'sp-doclog-select-type-ticket')) {
+					$('.sp-doclog-cat-ticket').show();
+					$('.sp-doclog-cat-out').show();
+					$('.sp-doclog-cat-out-detail').hide();
+					$('.sp-doclog-cat-printer').show();
+					$('.sp-doclog-cat-printer-list').hide();
+					$('.sp-doclog-cat-printer-print-layout').hide();
 				}
 			},
 
@@ -932,6 +979,7 @@
 				, _view = _ns.PanelCommon.view;
 
 				$('#sp-doclog-document-name').val(my.input.select.doc_name);
+				$('#sp-doclog-ticket-number').val(my.input.select.ticket_number);
 
 				// For future use.
 				//$('#sp-doc-out-signature').val(my.input.select.signature);
@@ -950,12 +998,13 @@
 				//---------------------------------
 				if (my.input.select.printer_id) {
 					$('#sp-print-out-printer').val(my.input.select.printer_id).selectmenu('refresh');
-					$('#sp-print-out-state').val(my.input.select.job_state).selectmenu('refresh');
 					my.input.select.doc_type = "PRINT";
 				} else if (my.input.select.queue_id) {
 					$('#sp-print-in-queue').val(my.input.select.queue_id).selectmenu('refresh');
 					my.input.select.doc_type = "IN";
 				}
+
+				$('#sp-print-out-state').val(my.input.select.job_state).selectmenu('refresh');
 
 				//--
 				_view.checkRadioValue('sp-doclog-select-type', my.input.select.doc_type);
@@ -1072,6 +1121,11 @@
 				val = _view.getRadioValue('sp-pdf-out-encrypt');
 				my.input.select.encrypted = (val === "" ? undefined : (val === "1"));
 
+				//
+				sel = $('#sp-doclog-ticket-number');
+				present = (sel.val().length > 0);
+				my.input.select.ticket_number = ( present ? sel.val() : null);
+
 			},
 
 			// JSON input
@@ -1085,7 +1139,8 @@
 					doc_type : "ALL",
 					user_id : null,
 					printer_id : null,
-					queue_id : null
+					queue_id : null,
+					ticket_number : null
 				},
 				sort : {
 					field : 'date', // date | name | queue | printer
@@ -1379,13 +1434,15 @@
 			//
 			, _onLanguage, _onLogin, _onShow
 			//
-			, _authName, _authId, _authCardLocal, _authCardIp
+			, _authName, _authId, _authCardLocal, _authCardIp, _authYubiKey
 			//
 			, _authCardPinReq, _authCardSelfAssoc
 			//
 			, _ID_MODE_NAME = '#sp-div-login-name'
 			//
 			, _ID_MODE_ID = '#sp-div-login-number'
+			//
+			, _ID_MODE_YUBIKEY = '#sp-div-login-yubikey'
 			//
 			, _ID_MODE_CARD_LOCAL = '#sp-div-login-card-local'
 			//
@@ -1397,6 +1454,8 @@
 			//
 			, _ID_BTN_MODE_ID = '#sp-btn-login-mode-id'
 			//
+			, _ID_BTN_MODE_YUBIKEY = '#sp-btn-login-mode-yubikey'
+			//
 			, _ID_BTN_MODE_CARD_LOCAL = '#sp-btn-login-mode-card-local'
 			//
 			, _ID_BTN_MODE_CARD_IP = '#sp-btn-login-mode-card-ip'
@@ -1404,6 +1463,8 @@
 			, _ID_BTN_LOGIN_NAME = '#sp-btn-login-name'
 			//
 			, _ID_BTN_LOGIN_ID = '#sp-btn-login-number'
+			//
+			, _ID_BTN_LOGIN_YUBIKEY = '#sp-btn-login-yubikey'
 			//
 			, _ID_BTN_LOGIN_CARD_LOCAL = '#sp-btn-login-card-local'
 			//
@@ -1413,15 +1474,22 @@
 			//
 			, _authModeDefault, _onAuthModeSelect, _modeSelected
 			//
-			, _startTimeCardNumber = null
+			, _authKeyLoggerStartTime = null
+			//
 			// The max number of milliseconds allowed for entering the
 			// local card number.
 			, _MAX_CARD_NUMBER_MSECS = 500
-			// The collected local card number from individual keystrokes,
+			//
+			// The max number of milliseconds allowed for entering the
+			// YubiKey OTP.
+			, _MAX_YUBIKEY_MSECS = 1500
+			//
+			// The YubiKey OTP,                                                    or collected local card number from individual keystrokes,
 			// or the cached Card Number to associate with a user.
-			, _collectedCardNumber
+			, _authKeyLoggerCollected
 			//
 			, _timeoutCardAssoc, _countdownCardAssoc
+			//
 			// Max number of seconds the assoc card dialog is visible.
 			, _MAX_CARD_ASSOC_SECS = 30
 			//
@@ -1448,9 +1516,13 @@
 			};
 
 			_self.loadShow = function(webAppType) {
-				_self.loadShowAsync(null, {
+				var data = {
 					webAppType : webAppType
-				});
+				};
+				if (_ns.Utils.hasUrlParam(_ns.URL_PARM.LOGIN_LOCAL)) {
+					data[_ns.URL_PARM.LOGIN_LOCAL] = "1";
+				}
+				_self.loadShowAsync(null, data);
 			};
 
 			_self.onLogin = function(foo) {
@@ -1463,7 +1535,8 @@
 				_onLanguage = foo;
 			};
 
-			//_self.onCardAssocCancel
+			_self.notifyLogout = function() {
+			};
 
 			/**
 			 * Sets the authentication mode and adapts the visibility of the
@@ -1472,15 +1545,18 @@
 			 * Example: pages.login.setAuthMode(true, true, true,
 			 * _view.AUTH_MODE_NAME);
 			 */
-			_self.setAuthMode = function(authName, authId, authCardLocal, authCardIp, modeDefault, authCardPinReq, authCardSelfAssoc, cardLocalMaxMsecs, cardAssocMaxSecs) {
+			_self.setAuthMode = function(authName, authId, authYubiKey, authCardLocal, authCardIp, modeDefault, authCardPinReq, authCardSelfAssoc, yubikeyMaxMsecs, cardLocalMaxMsecs, cardAssocMaxSecs) {
 				_authName = authName;
 				_authId = authId;
+				_authYubiKey = authYubiKey;
 				_authCardLocal = authCardLocal;
 				_authCardIp = authCardIp;
 				_authModeDefault = modeDefault;
 				_authCardPinReq = authCardPinReq;
 				_authCardSelfAssoc = authCardSelfAssoc;
+
 				_MAX_CARD_NUMBER_MSECS = cardLocalMaxMsecs;
+				_MAX_YUBIKEY_MSECS = yubikeyMaxMsecs;
 				_MAX_CARD_ASSOC_SECS = cardAssocMaxSecs;
 			};
 
@@ -1496,8 +1572,8 @@
 			 *
 			 */
 			_self.notifyCardAssoc = function(cardNumber) {
-				_startTimeCardNumber = new Date().getTime();
-				_collectedCardNumber = cardNumber;
+				_authKeyLoggerStartTime = new Date().getTime();
+				_authKeyLoggerCollected = cardNumber;
 				_onAuthModeSelect(_view.AUTH_MODE_CARD_ASSOC);
 			};
 
@@ -1545,12 +1621,14 @@
 
 				$(_ID_MODE_NAME).hide();
 				$(_ID_MODE_ID).hide();
+				$(_ID_MODE_YUBIKEY).hide();
 				$(_ID_MODE_CARD_LOCAL).hide();
 				$(_ID_MODE_CARD_IP).hide();
 				$(_ID_MODE_CARD_ASSOC).hide();
 
 				$(_ID_BTN_MODE_NAME).hide();
 				$(_ID_BTN_MODE_ID).hide();
+				$(_ID_BTN_MODE_YUBIKEY).hide();
 				$(_ID_BTN_MODE_CARD_LOCAL).hide();
 				$(_ID_BTN_MODE_CARD_IP).hide();
 
@@ -1561,6 +1639,9 @@
 
 					if (_authId) {
 						$(_ID_BTN_MODE_ID).show();
+					}
+					if (_authYubiKey) {
+						$(_ID_BTN_MODE_YUBIKEY).show();
 					}
 					if (_authCardLocal) {
 						$(_ID_BTN_MODE_CARD_LOCAL).show();
@@ -1576,6 +1657,9 @@
 					$(_ID_MODE_ID).show();
 					$(_ID_BTN_MODE_ID).hide();
 
+					if (_authYubiKey) {
+						$(_ID_BTN_MODE_YUBIKEY).show();
+					}
 					if (_authName) {
 						$(_ID_BTN_MODE_NAME).show();
 					}
@@ -1588,6 +1672,34 @@
 
 					$('#sp-login-id-number').focus();
 
+				} else if (modeSelected === _view.AUTH_MODE_YUBIKEY) {
+
+					$(_ID_MODE_YUBIKEY).show();
+					$(_ID_BTN_MODE_YUBIKEY).hide();
+
+					if (_authName) {
+						$(_ID_BTN_MODE_NAME).show();
+					}
+					if (_authId) {
+						$(_ID_BTN_MODE_ID).show();
+					}
+					if (_authCardLocal) {
+						$(_ID_BTN_MODE_CARD_LOCAL).show();
+					}
+					if (_authCardIp) {
+						$(_ID_BTN_MODE_CARD_IP).show();
+					}
+
+					/*
+					 * Note: the <div id=""> must have the tabindex="0" attribute
+					 * to make it focusable.
+					 *
+					 * A trick to make the focus() work :-)
+					 */
+					window.setTimeout(function() {
+						$('#sp-login-yubikey-otp-group').show().focus();
+					}, 1);
+
 				} else if (modeSelected === _view.AUTH_MODE_CARD_LOCAL) {
 
 					$(_ID_MODE_CARD_LOCAL).show();
@@ -1598,6 +1710,9 @@
 					}
 					if (_authId) {
 						$(_ID_BTN_MODE_ID).show();
+					}
+					if (_authYubiKey) {
+						$(_ID_BTN_MODE_YUBIKEY).show();
 					}
 					if (_authCardIp) {
 						$(_ID_BTN_MODE_CARD_IP).show();
@@ -1626,6 +1741,9 @@
 					if (_authId) {
 						$(_ID_BTN_MODE_ID).show();
 					}
+					if (_authYubiKey) {
+						$(_ID_BTN_MODE_YUBIKEY).show();
+					}
 					if (_authCardLocal) {
 						$(_ID_BTN_MODE_CARD_LOCAL).show();
 					}
@@ -1653,7 +1771,7 @@
 					}, 1000);
 
 				} else {
-					_collectedCardNumber = null;
+					_authKeyLoggerCollected = null;
 					$('.sp-login-dialog').show();
 					$('.sp-login-dialog-assoc').hide();
 				}
@@ -1664,13 +1782,17 @@
 				if (_authId) {
 					nMethods++;
 				}
+				if (_authYubiKey) {
+					nMethods++;
+				}
 				if (_authCardLocal) {
 					nMethods++;
 				}
 				if (_authCardIp) {
 					nMethods++;
 				}
-				if (nMethods < 2) {
+
+				if ($('.sp-btn-login-mode-oauth').length === 0 && nMethods < 2) {
 					$('#sp-login-modes').hide();
 				}
 
@@ -1683,39 +1805,43 @@
 				// SOLUTION: create <form method="post" data-ajax="false">
 				// ----------------------------------------------------------------
 				$(this).keyup(function(e) {
-					var key = e.keyCode || e.which;
+					var key = e.keyCode || e.which, selClick;
 					// 13 = <Enter>, 27 = <ESC>
 					if (key === 13) {
 						if (_modeSelected === _view.AUTH_MODE_NAME) {
-							$(_ID_BTN_LOGIN_NAME).click();
+							selClick = $(_ID_BTN_LOGIN_NAME);
 						} else if (_modeSelected === _view.AUTH_MODE_ID) {
-							$(_ID_BTN_LOGIN_ID).click();
+							selClick = $(_ID_BTN_LOGIN_ID);
 						} else if (_modeSelected === _view.AUTH_MODE_CARD_LOCAL) {
-							$('#sp-login-card-local-number').val(_collectedCardNumber);
-							$(_ID_BTN_LOGIN_CARD_LOCAL).click();
+							$('#sp-login-card-local-number').val(_authKeyLoggerCollected);
+							selClick = $(_ID_BTN_LOGIN_CARD_LOCAL);
+						} else if (_modeSelected === _view.AUTH_MODE_YUBIKEY) {
+							$('#sp-login-yubikey').val(_authKeyLoggerCollected);
+							selClick = $(_ID_BTN_LOGIN_YUBIKEY);
 						} else if (_modeSelected === _view.AUTH_MODE_CARD_IP && $('#sp-login-card-ip-number').val().length > 0) {
-							$(_ID_BTN_LOGIN_CARD_IP).click();
+							selClick = $(_ID_BTN_LOGIN_CARD_IP);
 						} else if (_modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
-							$(_ID_BTN_LOGIN_CARD_ASSOC).click();
+							selClick = $(_ID_BTN_LOGIN_CARD_ASSOC);
+						}
+						// Mantis #735
+						if (!selClick.is(':focus')) {
+							selClick.click();
 						}
 					} else if (key === 27) {
 						if (_modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
 							$(_ID_BTN_LOGIN_CARD_ASSOC + '-cancel').click();
 						}
-					} else if (_modeSelected === _view.AUTH_MODE_CARD_LOCAL && $('#sp-login-card-local-number').val().length === 0) {
+					} else if ((_modeSelected === _view.AUTH_MODE_CARD_LOCAL && $('#sp-login-card-local-number').val().length === 0) || (_modeSelected === _view.AUTH_MODE_YUBIKEY && $('#sp-login-yubikey').val().length === 0)) {
 						/*
-						 * IMPORTANT: only look at printable chars. When doing an
-						 * alt-tab
-						 * to return to THIS application we do not want to
-						 * collect
-						 * !!!
+						 * IMPORTANT: only look at printable chars. When doing an alt-tab
+						 * to return to THIS application we do not want to collect !!!
 						 */
 						if (32 < key && key < 127) {
-							if (_startTimeCardNumber === null) {
-								_startTimeCardNumber = new Date().getTime();
-								_collectedCardNumber = '';
+							if (_authKeyLoggerStartTime === null) {
+								_authKeyLoggerStartTime = new Date().getTime();
+								_authKeyLoggerCollected = '';
 							}
-							_collectedCardNumber += String.fromCharCode(key);
+							_authKeyLoggerCollected += String.fromCharCode(key);
 						}
 					}
 				});
@@ -1730,18 +1856,47 @@
 					return false;
 				});
 
+				$('.sp-btn-login-mode-oauth').click(function() {
+					var res = _api.call({
+						request : "oauth-url",
+						dto : JSON.stringify({
+							provider : $(this).attr('data-savapage')
+						})
+					});
+
+					if (res.result.code === '0') {
+						window.location.assign(res.dto.url);
+					} else {
+						_view.showApiMsg(res);
+					}
+				});
+
 				$('#sp-login-card-local-number-group').focusin(function() {
-					_startTimeCardNumber = null;
+					_authKeyLoggerStartTime = null;
 					$('#sp-login-card-local-focusin').show();
 					$('#sp-login-card-local-focusout').hide();
 				});
 
 				$('#sp-login-card-local-number-group').focusout(function() {
-					_startTimeCardNumber = null;
+					_authKeyLoggerStartTime = null;
 					$('#sp-login-card-local-focusin').hide();
 					// Use the fadeIn to prevent a 'flash' effect when just
 					// anotherfocus is lost because another auth method is selected.
 					$('#sp-login-card-local-focusout').fadeIn(700);
+				});
+
+				$('#sp-login-yubikey-otp-group').focusin(function() {
+					_authKeyLoggerStartTime = null;
+					$('#sp-login-yubikey-focusin').show();
+					$('#sp-login-yubikey-focusout').hide();
+				});
+
+				$('#sp-login-yubikey-otp-group').focusout(function() {
+					_authKeyLoggerStartTime = null;
+					$('#sp-login-yubikey-focusin').hide();
+					// Use the fadeIn to prevent a 'flash' effect when just
+					// anotherfocus is lost because another auth method is selected.
+					$('#sp-login-yubikey-focusout').fadeIn(700);
 				});
 
 				if (_authName) {
@@ -1783,6 +1938,43 @@
 					});
 				}
 
+				if (_authYubiKey) {
+
+					$(_ID_BTN_MODE_YUBIKEY).click(function() {
+						_onAuthModeSelect(_view.AUTH_MODE_YUBIKEY);
+						return false;
+					});
+
+					$(_ID_BTN_LOGIN_YUBIKEY).click(function() {
+						var selCard = $('#sp-login-yubikey'), card = selCard.val()
+						// Elapsed time since the first keyup in the key logger.
+						, authKeyLoggerElapsed
+						//
+						;
+
+						if (card.length === 0) {
+							$('#sp-login-yubikey-otp-group').focus();
+							return false;
+						}
+
+						if (_authKeyLoggerStartTime) {
+							authKeyLoggerElapsed = new Date().getTime() - _authKeyLoggerStartTime;
+							_authKeyLoggerStartTime = null;
+							if (authKeyLoggerElapsed > _MAX_YUBIKEY_MSECS) {
+								selCard.val('');
+								return false;
+							}
+						}
+
+						selCard.val('');
+
+						_onLogin(_view.AUTH_MODE_YUBIKEY, card);
+
+						return false;
+					});
+
+				}
+
 				if (_authCardLocal) {
 
 					$(_ID_BTN_MODE_CARD_LOCAL).click(function() {
@@ -1794,9 +1986,8 @@
 						var selCard = $('#sp-login-card-local-number'), card = selCard.val()
 						//
 						, selPin = $('#sp-login-card-local-pin'), pin = selPin.val()
-						// Elapsed time since the first keyup in the local card
-						// number field.
-						, elapsedTimeCardNumber
+						// Elapsed time since the first keyup in the key logger.
+						, authKeyLoggerElapsed
 						//
 						;
 
@@ -1805,10 +1996,10 @@
 							return false;
 						}
 
-						if (_startTimeCardNumber) {
-							elapsedTimeCardNumber = new Date().getTime() - _startTimeCardNumber;
-							_startTimeCardNumber = null;
-							if (elapsedTimeCardNumber > _MAX_CARD_NUMBER_MSECS) {
+						if (_authKeyLoggerStartTime) {
+							authKeyLoggerElapsed = new Date().getTime() - _authKeyLoggerStartTime;
+							_authKeyLoggerStartTime = null;
+							if (authKeyLoggerElapsed > _MAX_CARD_NUMBER_MSECS) {
 								selCard.val('');
 								return false;
 							}
@@ -1881,7 +2072,7 @@
 
 				if (_authCardSelfAssoc) {
 					$(_ID_BTN_LOGIN_CARD_ASSOC).click(function() {
-						_onLogin(_view.AUTH_MODE_NAME, $('#sp-login-user-name-assoc').val(), $('#sp-login-user-password-assoc').val(), _collectedCardNumber);
+						_onLogin(_view.AUTH_MODE_NAME, $('#sp-login-user-name-assoc').val(), $('#sp-login-user-password-assoc').val(), _authKeyLoggerCollected);
 						return false;
 					});
 					$(_ID_BTN_LOGIN_CARD_ASSOC + '-cancel').click(function() {
@@ -1932,6 +2123,8 @@
 			this.AUTH_MODE_ID = 'id';
 			this.AUTH_MODE_CARD_LOCAL = 'nfc-local';
 			this.AUTH_MODE_CARD_IP = 'nfc-network';
+			this.AUTH_MODE_YUBIKEY = 'yubikey';
+			this.AUTH_MODE_OAUTH = 'oauth';
 
 			// Dummy AUTH Modes to associate Card with user.
 			this.AUTH_MODE_CARD_ASSOC = '_CA';
@@ -2476,6 +2669,10 @@
 				$(radio).checkboxradio("refresh");
 			};
 
+			this.getRadioSelected = function(name) {
+				return $("input:radio[name='" + name + "']:checked");
+			};
+
 			this.getRadioValue = function(name) {
 				return $("input:radio[name='" + name + "']:checked").val();
 			};
@@ -2485,7 +2682,14 @@
 			};
 
 			/**
-			 * Get array with selected values from (multiple) "select" element.
+			 * Set JQM selectmenu value.
+			 */
+			this.setSelectedValue = function(sel, val) {
+				sel.val(val).selectmenu('refresh');
+			};
+
+			/**
+			 * Get array with JQM selected values from (multiple) "select" element.
 			 */
 			this.selectedValues = function(id) {
 				var values = [], i = 0;
@@ -2554,13 +2758,13 @@
 			/**
 			 *
 			 */
-			this.checkPwMatch = function(jqPassw, jqConfirm) {
+			this.checkPwMatch = function(jqPassw, jqConfirm, canBeVoid) {
 
 				var pw_valid = false, pw1 = jqPassw.val(), pw2 = jqConfirm.val(), msg;
 
 				if (pw1 !== pw2) {
 					msg = 'msg-input-mismatch';
-				} else if (!pw1) {
+				} else if (!pw1 && !canBeVoid) {
 					msg = 'msg-input-empty';
 				} else {
 					pw_valid = true;
@@ -2577,3 +2781,208 @@
 
 		};
 	}(jQuery, this, this.document, this.org.savapage));
+
+//--------------------------------------------------------------
+// Drop & Drop File Upload
+//--------------------------------------------------------------
+( function(window, document, navigator, _ns) {"use strict";
+
+		_ns.DropZone = {
+
+			/**
+			 * Format warning as HTML.
+			 */
+			getHtmlWarning : function(i18n, warn, files, filesStatus) {
+				var i, pfx, nameWlk, statWlk, htmlWlk, htmlAccepted = '', htmlRejected = '';
+
+				if (files && filesStatus) {
+					for ( i = 0; i < files.length; i++) {
+						nameWlk = files[i].name;
+						statWlk = filesStatus[nameWlk];
+						if (statWlk !== undefined) {
+							htmlWlk = '<span class="sp-txt-' + ( statWlk ? 'valid' : 'warn') + '">';
+							htmlWlk += '&bull; ' + nameWlk + ' (' + this.humanFileSize(files[i].size) + ')</span><br>';
+							if (statWlk) {
+								htmlAccepted += htmlWlk;
+							} else {
+								htmlRejected += htmlWlk;
+							}
+						}
+					}
+				}
+				htmlWlk = htmlAccepted;
+				if (htmlWlk.length > 0) {
+					htmlWlk += '<span class="sp-txt-valid">&bull; ' + i18n.format('msg-file-upload-completed') + '</span><br>';
+				}
+				htmlWlk += htmlRejected;
+				pfx = htmlWlk.length > 0 ? '&bull; ' : '';  
+				
+				return htmlWlk + '<span class="sp-txt-warn">' + pfx + warn + '</span>';
+			},
+
+			/**
+			 * Is FileReader object supported?
+			 */
+			hasFileReader : function() {
+				return typeof FileReader != 'undefined';
+			},
+
+			/**
+			 *
+			 */
+			hasDraggable : function() {
+				return 'draggable' in document.createElement('span');
+			},
+
+			/**
+			 * The FormData interface is needed for XMLHttpRequest.send().
+			 */
+			hasFormData : function() {
+				return !!window.FormData;
+			},
+
+			/**
+			 *
+			 */
+			hasProgress : function() {
+				return "upload" in new XMLHttpRequest;
+			},
+
+			/**
+			 * Is DropZone supported?
+			 */
+			isSupported : function() {
+				return !_ns.Utils.isMobileOrTablet() && this.hasDraggable() && this.hasFormData && this.hasFileReader;
+			},
+
+			/**
+			 *
+			 */
+			humanFileSize : function(size, bin) {
+				var i, decimals = 1, unit = bin ? 1024 : 1000, unitArray = bin ? ['', 'Ki', 'Mi', 'Gi', 'Ti'] : ['', 'k', 'M', 'G', 'T'];
+				i = Math.floor(Math.log(size) / Math.log(unit));
+				return (size / Math.pow(unit, i) ).toFixed(decimals) * 1 + '&nbsp;' + unitArray[i] + 'B';
+			},
+
+			/**
+			 *
+			 */
+			isFileTypeSupported : function(fileExt, file) {
+				var i, name = file.name.toLowerCase(), arrayLength = fileExt.length;
+				for ( i = 0; i < arrayLength; i++) {
+					if (name.endsWith(fileExt[i])) {
+						return true;
+					}
+				}
+				return false;
+			},
+
+			/**
+			 *
+			 */
+			sendFiles : function(files, url, fileField, fontField, fontEnum, maxBytes, fileExt, i18n, fooBefore, fooAfter, fooWarn, fooInfo) {
+				var i, formData = new FormData(), totBytes = 0, file, allFileNames = '', infoArray = [];
+
+				if (files.length === 0) {
+					fooWarn(i18n.format('msg-file-upload-size-zero', [' ']));
+					// todo
+					return;
+				}
+
+				for ( i = 0; i < files.length; i++) {
+
+					file = files[i];
+
+					if (!this.isFileTypeSupported(fileExt, file)) {
+						fooWarn(i18n.format('msg-file-upload-type-unsupported', [file.name]));
+						return;
+					}
+
+					if (i > 0) {
+						allFileNames += ' + ';
+					}
+					allFileNames += file.name;
+
+					if (file.size > 0) {
+						formData.append(fileField, file);
+						totBytes += file.size;
+
+						infoArray.push({
+							name : file.name,
+							size : file.size
+						});
+					}
+
+				}
+
+				if (totBytes === 0) {
+					fooWarn(i18n.format('msg-file-upload-size-zero', [allFileNames]));
+					return;
+				}
+				if (totBytes > maxBytes) {
+					fooWarn(i18n.format('msg-file-upload-size-exceeded', [allFileNames, this.humanFileSize(totBytes), this.humanFileSize(maxBytes)]));
+					return;
+				}
+
+				if (fooBefore) {
+					fooBefore();
+				}
+
+				$.mobile.loading("show");
+
+				$.ajax({
+					url : (fontField && fontEnum) ? url + '?' + fontField + '=' + fontEnum : url,
+					type : 'POST',
+					data : formData,
+					async : true,
+					cache : false,
+					contentType : false,
+					processData : false,
+					dataType : 'json'
+				}).done(function(res) {
+					if (res.result.code !== '0') {
+						fooWarn(res.result.txt, infoArray, res.filesStatus);
+					} else if (fooInfo) {
+						fooInfo(infoArray);
+					}
+				}).fail(function() {
+					_ns.PanelCommon.onDisconnected();
+				}).always(function() {
+					$.mobile.loading("hide");
+					if (fooAfter) {
+						fooAfter();
+					}
+				});
+			},
+
+			/**
+			 *
+			 * @param {Object} dropzone (JQuery selector).
+			 */
+			setCallbacks : function(dropzone, cssClassDragover, url, fileField, fontField, fontEnum, maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo) {
+				var _obj = this;
+
+				dropzone.bind('dragover', function(e) {
+					$(this).addClass(cssClassDragover);
+					return false;
+				});
+
+				dropzone.bind('dragleave dragend', function(e) {
+					$(this).removeClass(cssClassDragover);
+					return false;
+				});
+
+				dropzone.bind('drop', function(e) {
+					var files = e.originalEvent.dataTransfer.files;
+					$(this).removeClass(cssClassDragover);
+					// A drop of meaningless item(s) results in files.length === zero.
+					if (files.length > 0) {
+						_obj.sendFiles(files, url, fileField, fontField, fontEnum, maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo);
+					}
+					return false;
+				});
+			}
+		};
+
+	}(this, this.document, this.navigator, this.org.savapage));
+

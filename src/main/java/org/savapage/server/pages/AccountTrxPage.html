@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 
 <span style="display: none;" class="json-rsp" wicket:id="json-rsp"></span>
 
-<wicket:fragment wicket:id="nav-bar-1"></wicket:fragment>
+<wicket:panel wicket:id="nav-bar-1" />
 <br />
 <div>
 	<ul data-role="listview" data-filter="false">
@@ -64,6 +64,15 @@
 
 				<wicket:enclosure child="printOut">
 	                &bull; <span wicket:id="printOut" />
+					<wicket:enclosure child="printOutCopies">
+	                &bull; <span wicket:id="printOutCopies" />
+					</wicket:enclosure>
+					<wicket:enclosure child="printOutSheets">
+	                &bull; <span wicket:id="printOutSheets" />
+					</wicket:enclosure>
+					<wicket:enclosure child="printout-options">
+						<wicket:panel wicket:id="printout-options" />
+					</wicket:enclosure>
 				</wicket:enclosure>
 
 				<wicket:enclosure child="extStatus">
@@ -89,6 +98,11 @@
 						wicket:id="delegate" />
 				</wicket:enclosure>
 
+				<wicket:enclosure child="jobticket">
+                    &bull; <span style="font-size: small;"
+						wicket:id="jobticket" />
+				</wicket:enclosure>
+
 				<wicket:enclosure child="downloadReceipt">
 					<div>
 						<button data-savapage="the-db-id"
@@ -106,4 +120,4 @@
 	</ul>
 </div>
 <p>&nbsp;</p>
-<wicket:fragment wicket:id="nav-bar-2"></wicket:fragment>
+<wicket:panel wicket:id="nav-bar-2" />
