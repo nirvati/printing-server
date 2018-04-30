@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.savapage.core.SpException;
+import org.savapage.core.concurrent.ReadLockObtainFailedException;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.enums.ACLRoleEnum;
@@ -37,11 +38,13 @@ import org.savapage.server.api.request.ReqDbBackup;
 import org.savapage.server.api.request.ReqDeviceDelete;
 import org.savapage.server.api.request.ReqDeviceGet;
 import org.savapage.server.api.request.ReqDeviceSet;
+import org.savapage.server.api.request.ReqDocLogRefund;
 import org.savapage.server.api.request.ReqGenerateUuid;
 import org.savapage.server.api.request.ReqJobTicketCancel;
 import org.savapage.server.api.request.ReqJobTicketExec;
 import org.savapage.server.api.request.ReqJobTicketPrintCancel;
 import org.savapage.server.api.request.ReqJobTicketPrintClose;
+import org.savapage.server.api.request.ReqJobTicketQuickSearch;
 import org.savapage.server.api.request.ReqJobTicketSave;
 import org.savapage.server.api.request.ReqLogin;
 import org.savapage.server.api.request.ReqLogout;
@@ -49,6 +52,7 @@ import org.savapage.server.api.request.ReqOAuthUrl;
 import org.savapage.server.api.request.ReqOutboxCancelAll;
 import org.savapage.server.api.request.ReqOutboxCancelJob;
 import org.savapage.server.api.request.ReqOutboxExtend;
+import org.savapage.server.api.request.ReqPdfPropsSetValidate;
 import org.savapage.server.api.request.ReqPosDepositQuickSearch;
 import org.savapage.server.api.request.ReqPrintDelegationSet;
 import org.savapage.server.api.request.ReqPrinterGet;
@@ -56,12 +60,15 @@ import org.savapage.server.api.request.ReqPrinterOptValidate;
 import org.savapage.server.api.request.ReqPrinterPrint;
 import org.savapage.server.api.request.ReqPrinterQuickSearch;
 import org.savapage.server.api.request.ReqPrinterSet;
+import org.savapage.server.api.request.ReqPrinterSnmp;
+import org.savapage.server.api.request.ReqPrinterSync;
 import org.savapage.server.api.request.ReqQueueEnable;
 import org.savapage.server.api.request.ReqQueueGet;
 import org.savapage.server.api.request.ReqQueueSet;
 import org.savapage.server.api.request.ReqSharedAccountGet;
 import org.savapage.server.api.request.ReqSharedAccountQuickSearch;
 import org.savapage.server.api.request.ReqSharedAccountSet;
+import org.savapage.server.api.request.ReqSystemModeChange;
 import org.savapage.server.api.request.ReqUserGet;
 import org.savapage.server.api.request.ReqUserGroupGet;
 import org.savapage.server.api.request.ReqUserGroupMemberQuickSearch;
@@ -87,6 +94,7 @@ public class JsonApiDict {
     public static final String PARM_REQ = "request";
     public static final String PARM_USER = "user";
     public static final String PARM_REQ_SUB = "request-sub";
+    public static final String PARM_REQ_PARM = "request-parm";
     public static final String PARM_DATA = "data";
 
     public static final String REQ_ACCOUNT_VOUCHER_BATCH_CREATE =
@@ -115,6 +123,9 @@ public class JsonApiDict {
 
     public static final String REQ_DEVICE_GET = "device-get";
     public static final String REQ_DEVICE_SET = "device-set";
+
+    public static final String REQ_DOCLOG_REFUND = "doclog-refund";
+
     public static final String REQ_EXIT_EVENT_MONITOR = "exit-event-monitor";
     public static final String REQ_GCP_GET_DETAILS = "gcp-get-details";
     public static final String REQ_GCP_ONLINE = "gcp-online";
@@ -147,6 +158,9 @@ public class JsonApiDict {
     public static final String REQ_JOBTICKET_PRINT_RETRY =
             "jobticket-print-retry";
 
+    public static final String REQ_JOBTICKET_QUICK_SEARCH =
+            "jobticket-quick-search";
+
     public static final String REQ_PAPERCUT_TEST = "papercut-test";
 
     public static final String REQ_SMARTSCHOOL_TEST = "smartschool-test";
@@ -157,6 +171,8 @@ public class JsonApiDict {
 
     public static final String REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV =
             "smartschool-papercut-student-cost-csv";
+
+    public static final String REQ_SYSTEM_MODE_CHANGE = "system-mode-change";
 
     public static final String REQ_PAPERCUT_DELEGATOR_COST_CSV =
             "papercut-delegator-cost-csv";
@@ -171,8 +187,7 @@ public class JsonApiDict {
 
     public static final String REQ_LOGIN = "login";
 
-    public static final String REQ_OAUTH_URL =
-            "oauth-url";
+    public static final String REQ_OAUTH_URL = "oauth-url";
 
     public static final String REQ_LOGOUT = "logout";
 
@@ -200,6 +215,9 @@ public class JsonApiDict {
     public static final String REQ_PDF_SET_PROPERTIES = "pdf-set-properties";
 
     public static final String REQ_PING = "ping";
+
+    public static final String REQ_USER_EXPORT_DATA_HISTORY =
+            "user-export-data-history";
 
     public static final String REQ_USER_CREDIT_TRANSFER =
             "user-credit-transfer";
@@ -250,6 +268,7 @@ public class JsonApiDict {
             "printer-set-media-sources";
 
     public static final String REQ_PRINTER_SYNC = "printer-sync";
+    public static final String REQ_PRINTER_SNMP = "printer-snmp";
 
     public static final String REQ_QUEUE_ENABLE = "queue-enable";
     public static final String REQ_QUEUE_GET = "queue-get";
@@ -523,16 +542,10 @@ public class JsonApiDict {
     }
 
     /**
-     * Checks which DbClaim the request needs.
      *
-     * @param request
-     *            The id string of the request.
-     * @return The database claim needed.
+     * @param lock
+     *            The {@link LetterheadLock}.
      */
-    public DbClaim getDbClaimNeeded(final String request) {
-        return dict.get(request).dbClaim;
-    }
-
     public void lock(final LetterheadLock lock) {
         if (lock == JsonApiDict.LetterheadLock.READ) {
             ReadWriteLockEnum.LETTERHEAD_STORE.setReadLock(true);
@@ -543,15 +556,23 @@ public class JsonApiDict {
 
     /**
      * @param claim
+     *            The {@link DbClaim}.
+     * @throws ReadLockObtainFailedException
+     *             When lock could not be acquired.
      */
-    public void lock(final DbClaim claim) {
+    public void lock(final DbClaim claim) throws ReadLockObtainFailedException {
         if (claim == JsonApiDict.DbClaim.READ) {
-            ReadWriteLockEnum.DATABASE_READONLY.setReadLock(true);
+            ReadWriteLockEnum.DATABASE_READONLY.tryReadLock();
         } else if (claim == JsonApiDict.DbClaim.EXCLUSIVE) {
             ReadWriteLockEnum.DATABASE_READONLY.setWriteLock(true);
         }
     }
 
+    /**
+     *
+     * @param lock
+     *            The {@link LetterheadLock}.
+     */
     public void unlock(final LetterheadLock lock) {
         if (lock == JsonApiDict.LetterheadLock.READ) {
             ReadWriteLockEnum.LETTERHEAD_STORE.setReadLock(false);
@@ -572,6 +593,41 @@ public class JsonApiDict {
     }
 
     /**
+     * Checks which DbClaim the request needs.
+     *
+     * @param request
+     *            The id string of the request.
+     * @param webAppType
+     *            the requesting Web App type.
+     * @return The database claim needed.
+     */
+    public DbClaim getDbClaimNeeded(final String request,
+            final WebAppTypeEnum webAppType) {
+
+        final DbClaim dbClaim;
+
+        switch (webAppType) {
+        case ADMIN:
+            if (request.equals(REQ_LOGIN)) {
+                dbClaim = DbClaim.NONE;
+            } else {
+                dbClaim = null;
+            }
+            break;
+
+        default:
+            dbClaim = null;
+            break;
+        }
+
+        if (dbClaim != null) {
+            return dbClaim;
+        }
+
+        return dict.get(request).dbClaim;
+    }
+
+    /**
      * Checks which Public Letterhead lock is needed for a request.
      * <p>
      * For convenience, we are conservative and assume that request that use
@@ -584,7 +640,7 @@ public class JsonApiDict {
      * @param request
      *            The id string of the request.
      * @param isAdmin
-     *            {@code true} if e requesting is an administrator.
+     *            {@code true} if requesting user is an administrator.
      * @return The {@link LetterheadLock} needed.
      */
     public LetterheadLock getLetterheadLockNeeded(final String request,
@@ -649,6 +705,7 @@ public class JsonApiDict {
         case REQ_POS_RECEIPT_DOWNLOAD_USER:
         case REQ_PRINTER_OPT_DOWNLOAD:
         case REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
+        case REQ_USER_EXPORT_DATA_HISTORY:
             return true;
         default:
             return false;
@@ -785,7 +842,11 @@ public class JsonApiDict {
                 DbAccess.YES);
         adm(REQ_CONFIG_SET_PROPS, ReqConfigPropsSet.class, DbClaim.READ,
                 DbAccess.YES);
-        put(REQ_CONSTANTS, AuthReq.NONE, DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_SYSTEM_MODE_CHANGE, ReqSystemModeChange.class, DbClaim.READ,
+                DbAccess.YES);
+
+        put(REQ_CONSTANTS, AuthReq.NONE, DbClaim.NONE, DbAccess.YES);
 
         adm(REQ_DB_BACKUP, ReqDbBackup.class, DbClaim.NONE, DbAccess.NO);
 
@@ -795,6 +856,9 @@ public class JsonApiDict {
         adm(REQ_DEVICE_NEW_TERMINAL, DbClaim.NONE, DbAccess.NO);
         adm(REQ_DEVICE_GET, ReqDeviceGet.class, DbClaim.NONE, DbAccess.YES);
         adm(REQ_DEVICE_SET, ReqDeviceSet.class, DbClaim.READ, DbAccess.YES);
+
+        acl(REQ_DOCLOG_REFUND, ReqDocLogRefund.class, DbClaim.READ,
+                DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         usr(REQ_EXIT_EVENT_MONITOR, DbClaim.NONE, DbAccess.NO);
         adm(REQ_GCP_GET_DETAILS, DbClaim.READ, DbAccess.YES);
@@ -841,6 +905,9 @@ public class JsonApiDict {
                 DbClaim.READ, DbAccess.YES,
                 EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
+        put(REQ_JOBTICKET_QUICK_SEARCH, ReqJobTicketQuickSearch.class,
+                AuthReq.NONE, DbClaim.NONE, DbAccess.NO);
+
         usr(REQ_JQPLOT, DbClaim.NONE, DbAccess.YES);
         non(REQ_LANGUAGE);
         usr(REQ_LETTERHEAD_ATTACH, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -883,7 +950,9 @@ public class JsonApiDict {
                         ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         usr(REQ_PDF_GET_PROPERTIES, DbClaim.NONE, DbAccess.YES);
-        usr(REQ_PDF_SET_PROPERTIES, DbClaim.READ, DbAccess.YES);
+
+        usr(REQ_PDF_SET_PROPERTIES, ReqPdfPropsSetValidate.class, DbClaim.READ,
+                DbAccess.YES);
 
         non(REQ_PING);
         non(REQ_GENERATE_UUID, ReqGenerateUuid.class);
@@ -930,7 +999,9 @@ public class JsonApiDict {
         adm(REQ_PRINTER_SET_MEDIA_COST, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SET_MEDIA_SOURCES, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_RENAME, DbClaim.READ, DbAccess.YES);
-        adm(REQ_PRINTER_SYNC, DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_PRINTER_SYNC, ReqPrinterSync.class, DbClaim.READ, DbAccess.YES);
+        adm(REQ_PRINTER_SNMP, ReqPrinterSnmp.class, DbClaim.READ, DbAccess.YES);
 
         adm(REQ_QUEUE_GET, ReqQueueGet.class, DbClaim.NONE, DbAccess.YES);
         adm(REQ_QUEUE_SET, ReqQueueSet.class, DbClaim.READ, DbAccess.YES);
@@ -946,6 +1017,7 @@ public class JsonApiDict {
 
         adm(REQ_REPORT, DbClaim.READ, DbAccess.YES);
         usr(REQ_REPORT_USER, DbClaim.READ, DbAccess.YES);
+        usr(REQ_USER_EXPORT_DATA_HISTORY, DbClaim.READ, DbAccess.YES);
 
         adm(REQ_RESET_ADMIN_PASSWORD, DbClaim.NONE, DbAccess.NO);
         adm(REQ_RESET_JMX_PASSWORD, DbClaim.NONE, DbAccess.NO);

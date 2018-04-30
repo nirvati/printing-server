@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -15,21 +16,18 @@
 
 <wicket:panel>
 	<h3>
-		<wicket:enclosure child="printin-pie">
-			<span wicket:id="printin-pie" class="sparkline-printin-pie" />&nbsp;        
-        </wicket:enclosure>
-		<wicket:enclosure child="printout-pie">
-			<span wicket:id="printout-pie" class="sparkline-printout-pie" />&nbsp;        
-        </wicket:enclosure>
-		<wicket:enclosure child="pdfout-pie">
-			<span wicket:id="pdfout-pie" class="sparkline-pdfout-pie" />&nbsp;        
+		<wicket:enclosure child="document-pie">
+			<span wicket:id="document-pie" class="" sparkType="pie"
+				sparkSliceColors="[]" />&nbsp;
         </wicket:enclosure>
 		<span wicket:id="header" />
 	</h3>
-	<div class="sp-txt-wrap">
-		<wicket:message key="prompt-user" />
-		: <strong wicket:id="user-name" />
-	</div>
+	<wicket:enclosure child="user-name">
+		<div class="sp-txt-wrap">
+			<wicket:message key="prompt-user" />
+			: <strong wicket:id="user-name" />
+		</div>
+	</wicket:enclosure>
 	<div class="sp-txt-wrap">
 		<wicket:enclosure child="title">
 			<span wicket:id="title" />
@@ -49,6 +47,9 @@
 	</div>
 	<div class="sp-txt-wrap">
 		<wicket:enclosure child="printoutMode"> &bull;
+            <wicket:enclosure child="img-job-sheet">
+				<img wicket:id="img-job-sheet" src="" height="14" />
+			</wicket:enclosure>
 			<span class="sp-txt-info" wicket:id="printoutMode" /> &bull; 
 		</wicket:enclosure>
 		<span wicket:id="totals" />
@@ -88,6 +89,9 @@
 		</wicket:enclosure>
 		<wicket:enclosure child="collate"> &bull; <span
 				class="sp-txt-info" wicket:id="collate" />
+		</wicket:enclosure>
+		<wicket:enclosure child="pageRotate180"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="pageRotate180" />
 		</wicket:enclosure>
 		<wicket:enclosure child="punch"> &bull; <span
 				class="sp-txt-job-finishing" wicket:id="punch" />
@@ -142,6 +146,10 @@
 
 		<wicket:enclosure child="account-trx">
 			<span wicket:id="account-trx" />
+			<wicket:enclosure child="account-trx-refund">
+            &bull; <span class="sp-txt-warn"
+					wicket:id="account-trx-refund" />
+			</wicket:enclosure>
 		</wicket:enclosure>
 
 	</div>
@@ -162,8 +170,22 @@
 		<wicket:panel wicket:id="extSupplierPanel" />
 	</wicket:enclosure>
 
+	<wicket:enclosure child="btn-account-trx-info">
+		<div data-role="controlgroup" data-type="horizontal" data-mini="true">
+			<button data-savapage="the-doc-log-db-key"
+				wicket:id="btn-account-trx-info"
+				class="sp-doclog-accounttrx-info ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-shop" />
+			<wicket:enclosure child="btn-account-trx-refund">
+				<button data-savapage="the-doc-log-db-key"
+					wicket:id="btn-account-trx-refund"
+					class="sp-doclog-accounttrx-refund ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-recycle" />
+			</wicket:enclosure>
+		</div>
+	</wicket:enclosure>
+
 	<p class="ui-li-aside">
 		<span wicket:id="dateCreated" />
 	</p>
 
 </wicket:panel>
+</html>

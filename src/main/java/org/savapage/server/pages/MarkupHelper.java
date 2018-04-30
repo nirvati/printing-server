@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <https://savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ import java.text.DateFormat;
 import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.util.Date;
+import java.util.Locale;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
@@ -32,8 +33,12 @@ import org.apache.wicket.Component;
 import org.apache.wicket.Localizer;
 import org.apache.wicket.MarkupContainer;
 import org.apache.wicket.behavior.AttributeAppender;
+import org.apache.wicket.markup.html.TransparentWebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrepositionEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.PrintOutVerbEnum;
 import org.savapage.core.ipp.IppJobStateEnum;
@@ -54,10 +59,22 @@ import org.savapage.server.helpers.HtmlButtonEnum;
  */
 public final class MarkupHelper {
 
+    public static final String ATTR_CHECKED = "checked";
+    public static final String ATTR_DISABLED = "disabled";
     public static final String ATTR_ID = "id";
+    public static final String ATTR_FOR = "for";
     public static final String ATTR_TITLE = "title";
     public static final String ATTR_SRC = "src";
     public static final String ATTR_CLASS = "class";
+    public static final String ATTR_STYLE = "style";
+    public static final String ATTR_HREF = "href";
+    public static final String ATTR_NAME = "name";
+    public static final String ATTR_VALUE = "value";
+    public static final String ATTR_SLIDER_MIN = "min";
+    public static final String ATTR_SLIDER_MAX = "max";
+
+    public static final String ATTR_DATA_JQM_DATA_ON_TEXT = "data-on-text";
+    public static final String ATTR_DATA_JQM_DATA_OFF_TEXT = "data-off-text";
 
     public static final String ATTR_DATA_SAVAPAGE = "data-savapage";
     public static final String ATTR_DATA_SAVAPAGE_TYPE = "data-savapage-type";
@@ -79,6 +96,8 @@ public final class MarkupHelper {
     public static final String CSS_PRINT_OUT_PRINTER = "sp-print-out-printer";
     public static final String CSS_PRINT_OUT_PDF = "sp-print-out-pdf";
 
+    public static final String CSS_DISABLED = "sp-disabled";
+    public static final String CSS_INVISIBLE = "sp-invisible";
     /**
      * HTML entity for ⦦ : OBLIQUE ANGLE OPENING UP).
      */
@@ -270,7 +289,7 @@ public final class MarkupHelper {
         final Label label = new Label(wicketId, "");
 
         if (checked) {
-            label.add(new AttributeModifier("checked", "checked"));
+            label.add(new AttributeModifier(ATTR_CHECKED, "checked"));
         }
 
         add(label);
@@ -313,7 +332,7 @@ public final class MarkupHelper {
         modifyLabelAttr(labelWrk, "id", htmlId);
 
         if (checked) {
-            labelWrk.add(new AttributeModifier("checked", "checked"));
+            labelWrk.add(new AttributeModifier(ATTR_CHECKED, "checked"));
         }
         return labelWrk;
     }
@@ -366,7 +385,7 @@ public final class MarkupHelper {
         }
 
         if (checked) {
-            labelWrk.add(new AttributeModifier("checked", "checked"));
+            labelWrk.add(new AttributeModifier(ATTR_CHECKED, "checked"));
         }
 
         add(labelWrk);
@@ -407,6 +426,72 @@ public final class MarkupHelper {
         final Label labelWrk = new Label(wicketId, text);
         add(labelWrk);
         return labelWrk;
+    }
+
+    /**
+     * Adds a Flipswitch.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param onText
+     *            The On text.
+     * @param offText
+     *            The Off text.
+     * @return The added {@link Label}.
+     */
+    public Label addFlipswitch(final String wicketId, final String onText,
+            final String offText) {
+        return modifyLabelAttr(addModifyLabelAttr(wicketId,
+                ATTR_DATA_JQM_DATA_ON_TEXT, onText),
+                ATTR_DATA_JQM_DATA_OFF_TEXT, offText);
+    }
+
+    /**
+     * Adds a noun label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param noun
+     *            The {@link NounEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final NounEnum noun) {
+        final Label label =
+                new Label(wicketId, noun.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
+     * Adds a preposition label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param prepos
+     *            The {@link PrepositionEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final PrepositionEnum prepos) {
+        final Label label =
+                new Label(wicketId, prepos.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
+     * Adds a noun label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param noun
+     *            The {@link PrintOutNounEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final PrintOutNounEnum noun) {
+        final Label label =
+                new Label(wicketId, noun.uiText(this.container.getLocale()));
+        add(label);
+        return label;
     }
 
     /**
@@ -458,6 +543,37 @@ public final class MarkupHelper {
     public static Label modifyLabelAttr(final Label label,
             final String attribute, final String value) {
         label.add(new AttributeModifier(attribute, value));
+        return label;
+    }
+
+    /**
+     * Modifies an attribute value of a {@link Component}.
+     *
+     * @param label
+     *            The {@link Component}.
+     * @param attribute
+     *            The name of the attribute
+     * @param value
+     *            The value of the attribute.
+     * @return The modified {@link Component}.
+     */
+    public static Component modifyComponentAttr(final Component label,
+            final String attribute, final String value) {
+        label.add(new AttributeModifier(attribute, value));
+        return label;
+    }
+
+
+    /**
+     * Sets the on/off texts for a jQuery Mobile Flipswitch.
+     *
+     * @param label
+     *            The flipswitch {@link Label}.
+     */
+    public static Label setFlipswitchOnOffText(final Label label,
+            final Locale locale) {
+        modifyLabelAttr(label, "data-on-text", AdverbEnum.ON.uiText(locale));
+        modifyLabelAttr(label, "data-off-text", AdverbEnum.OFF.uiText(locale));
         return label;
     }
 
@@ -516,6 +632,24 @@ public final class MarkupHelper {
         label.add(new AttributeAppender(attribute,
                 String.format(" %s", value.trim())));
         return label;
+    }
+
+    /**
+     * Appends a value to a component attribute.
+     *
+     * @param component
+     *            The {@link Component}.
+     * @param attribute
+     *            The name of the attribute
+     * @param value
+     *            The value of the attribute.
+     * @return The {@link Component}.
+     */
+    public static Component appendComponentAttr(final Component component,
+            final String attribute, final String value) {
+        component.add(new AttributeAppender(attribute,
+                String.format(" %s", value.trim())));
+        return component;
     }
 
     /**
@@ -593,6 +727,71 @@ public final class MarkupHelper {
     }
 
     /**
+     * Creates a transparent component.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @return The component.
+     */
+    private static Component createTransparent(final String wicketId) {
+        return new TransparentWebMarkupContainer(wicketId);
+    }
+
+    /**
+     * Adds a transparent component.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @return The component.
+     */
+    public Component addTransparant(final String wicketId) {
+        final Component component = createTransparent(wicketId);
+        add(component);
+        return component;
+    }
+
+    /**
+     * Adds a disabled transparent component.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param disabled
+     *            {@code true} when component should be disabled.
+     * @return The component.
+     */
+    public Component addTransparantDisabled(final String wicketId,
+            final boolean disabled) {
+
+        final Component component = createTransparent(wicketId);
+        if (disabled) {
+            component.add(new AttributeAppender(MarkupHelper.ATTR_CLASS,
+                    CSS_DISABLED));
+        }
+        add(component);
+        return component;
+    }
+
+    /**
+     * Adds a visible transparent component.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param invisible
+     *            {@code true} when component should be invisible.
+     * @return The component.
+     */
+    public Component addTransparantInvisible(final String wicketId,
+            final boolean invisible) {
+        final Component component = createTransparent(wicketId);
+        if (invisible) {
+            component.add(new AttributeAppender(MarkupHelper.ATTR_CLASS,
+                    CSS_INVISIBLE));
+        }
+        add(component);
+        return component;
+    }
+
+    /**
      * Gets CSS_TXT_* class of enum value.
      *
      * @param status
@@ -660,18 +859,21 @@ public final class MarkupHelper {
 
         final String imageSrc;
 
-        switch (accountType) {
-        case GROUP:
-            imageSrc = "group.png";
-            break;
-        case SHARED:
-            imageSrc = "tag_green.png";
-            break;
-        default:
-            imageSrc = "user_gray.png";
-            break;
+        if (accountType == null) {
+            imageSrc = "cross.png";
+        } else {
+            switch (accountType) {
+            case GROUP:
+                imageSrc = "group.png";
+                break;
+            case SHARED:
+                imageSrc = "tag_green.png";
+                break;
+            default:
+                imageSrc = "user_gray.png";
+                break;
+            }
         }
-
         return String.format("/%s/%s", "famfamfam-silk", imageSrc);
     }
 }

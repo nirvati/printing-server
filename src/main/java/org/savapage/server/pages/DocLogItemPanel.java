@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,7 +25,6 @@ import java.math.BigDecimal;
 import java.text.DateFormat;
 import java.text.MessageFormat;
 import java.text.NumberFormat;
-import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
@@ -36,23 +35,35 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.IModel;
-import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
+import org.savapage.core.dto.JobTicketTagDto;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrintOutAdjectiveEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.PrintOutVerbEnum;
 import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
+import org.savapage.core.ipp.helpers.IppOptionMap;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
+import org.savapage.core.jpa.User;
+import org.savapage.core.print.proxy.TicketJobSheetDto;
+import org.savapage.core.services.AccountingService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.JobTicketSupplierData;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.CurrencyUtil;
+import org.savapage.server.WebApp;
+import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.helpers.SparklineHtml;
+import org.savapage.server.session.SpSession;
+import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  *
@@ -60,6 +71,12 @@ import org.savapage.core.util.CurrencyUtil;
  *
  */
 public class DocLogItemPanel extends Panel {
+
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
+
+    private static final JobTicketService JOBTICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
 
     private static final ProxyPrintService PROXYPRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
@@ -79,6 +96,11 @@ public class DocLogItemPanel extends Panel {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Number of decimals for decimal scaling.
+     */
+    final int scale;
+
+    /**
      * Number of currency decimals to display.
      */
     private final int currencyDecimals;
@@ -96,6 +118,7 @@ public class DocLogItemPanel extends Panel {
 
         super(id, model);
 
+        this.scale = ConfigManager.getFinancialDecimalsInDatabase();
         this.currencyDecimals = ConfigManager.getUserBalanceDecimals();
         this.showDocLogCost = showFinancialData;
     }
@@ -113,16 +136,16 @@ public class DocLogItemPanel extends Panel {
 
         final Map<String, String> mapVisible = new HashMap<>();
 
-        for (final String attr : new String[] { "title", "log-comment",
-                "printin-pie", "pdfout-pie", "printout-pie", "printoutMode",
-                "signature", "destination", "letterhead", "author", "subject",
-                "keywords", "drm", "userpw", "ownerpw", "duplex", "simplex",
-                "color", "grayscale", "papersize", "media-source", "output-bin",
-                "jog-offset", "cost-currency", "cost", "account-trx", "job-id",
-                "job-state", "job-completed-date",
-                "print-in-denied-reason-hyphen", "print-in-denied-reason",
-                "collate", "ecoPrint", "removeGraphics", "punch", "staple",
-                "fold", "booklet", "jobticket-media", "jobticket-copy",
+        for (final String attr : new String[] { "user-name", "title",
+                "log-comment", "printoutMode", "signature", "destination",
+                "letterhead", "author", "subject", "keywords", "drm", "userpw",
+                "ownerpw", "duplex", "simplex", "color", "grayscale",
+                "papersize", "media-source", "output-bin", "jog-offset",
+                "cost-currency", "cost", "job-id", "job-state",
+                "job-completed-date", "print-in-denied-reason-hyphen",
+                "print-in-denied-reason", "collate", "ecoPrint",
+                "removeGraphics", "pageRotate180", "punch", "staple", "fold",
+                "booklet", "jobticket-media", "jobticket-copy",
                 "jobticket-finishing-ext", "jobticket-custom-ext",
                 "landscape" }) {
             mapVisible.put(attr, null);
@@ -132,6 +155,7 @@ public class DocLogItemPanel extends Panel {
 
         //
         final boolean isExtSupplier = obj.getExtSupplier() != null;
+
         if (isExtSupplier) {
             final ExtSupplierStatusPanel panel =
                     new ExtSupplierStatusPanel("extSupplierPanel");
@@ -151,11 +175,17 @@ public class DocLogItemPanel extends Panel {
         }
 
         // Account Transactions
-        if (!obj.getTransactions().isEmpty()) {
+        final StringBuilder sbAccTrx = new StringBuilder();
 
-            final StringBuilder builder = new StringBuilder();
+        if (obj.getTransactions().isEmpty()) {
+            helper.discloseLabel("account-trx");
+            helper.discloseLabel("btn-account-trx-info");
+        } else {
+            final String currencySymbol = CurrencyUtil
+                    .getCurrencySymbol(obj.getCurrencyCode(), getLocale());
 
             int totWeightDelegators = 0;
+            int copiesDelegatorsImplicit = 0;
 
             for (final AccountTrx trx : obj.getTransactions()) {
 
@@ -166,41 +196,122 @@ public class DocLogItemPanel extends Panel {
 
                 if (accountType != AccountTypeEnum.SHARED
                         && accountType != AccountTypeEnum.GROUP) {
-                    totWeightDelegators +=
-                            trx.getTransactionWeight().intValue();
+
+                    final boolean isRefund =
+                            trx.getAmount().compareTo(BigDecimal.ZERO) == 1;
+                    if (!isRefund) {
+                        totWeightDelegators +=
+                                trx.getTransactionWeight().intValue();
+                    }
                     continue;
                 }
 
+                copiesDelegatorsImplicit +=
+                        trx.getTransactionWeight().intValue();
+
                 final Account accountParent = account.getParent();
 
-                builder.append(" • ");
+                sbAccTrx.append(" &bull; ");
 
                 if (accountParent != null) {
-                    builder.append(accountParent.getName()).append('\\');
+                    sbAccTrx.append(accountParent.getName()).append('\\');
                 }
 
-                builder.append(account.getName());
+                sbAccTrx.append(account.getName());
 
                 if (trx.getAmount().compareTo(BigDecimal.ZERO) != 0) {
-                    builder.append(" ")
-                            .append(CurrencyUtil.getCurrencySymbol(
-                                    trx.getCurrencyCode(), getLocale()))
-                            .append(" ")
+                    sbAccTrx.append(" ").append(currencySymbol).append("&nbsp;")
                             .append(localizedDecimal(trx.getAmount()));
                 }
 
-                builder.append(" (").append(trx.getTransactionWeight())
+                sbAccTrx.append("&nbsp;(").append(trx.getTransactionWeight())
                         .append(')');
             }
 
+            final int copiesDelegatorsIndividual =
+                    obj.getCopies() - copiesDelegatorsImplicit;
+
+            if (copiesDelegatorsIndividual > 0 && obj.getCopies() > 1) {
+
+                final BigDecimal amount = ACCOUNTING_SERVICE.calcWeightedAmount(
+                        obj.getCost(), obj.getCopies(),
+                        copiesDelegatorsIndividual, this.scale);
+
+                if (amount.compareTo(BigDecimal.ZERO) != 0) {
+                    sbAccTrx.append(" &bull; ").append(currencySymbol)
+                            .append("&nbsp;")
+                            .append(localizedDecimal(amount.negate()));
+                    sbAccTrx.append("&nbsp;(")
+                            .append(copiesDelegatorsIndividual).append(")");
+                }
+            }
+
             if (isExtSupplier && totWeightDelegators > 0) {
-                builder.append(" • ");
-                builder.append(localized("delegators")).append(" (")
+                sbAccTrx.append(" &bull; ");
+                sbAccTrx.append(localized("delegators")).append(" (")
                         .append(totWeightDelegators).append(")");
             }
 
-            mapVisible.put("account-trx", builder.toString());
+            // When no text accumulated, this must be a charge to personal
+            // account only.
+            if (sbAccTrx.length() == 0
+                    && obj.getCost().compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" &bull; ")
+                        .append(PrintOutAdjectiveEnum.PERSONAL.uiText(locale))
+                        .append(" ").append(currencySymbol).append("&nbsp;")
+                        .append(localizedDecimal(obj.getCost().negate()))
+                        .append("&nbsp;(").append(obj.getCopies()).append(")");
+            }
+
+            add(new Label("account-trx", sbAccTrx.toString())
+                    .setEscapeModelStrings(false));
+
+            helper.encloseLabel("account-trx-refund",
+                    NounEnum.REFUND.uiText(locale), obj.isRefunded());
+
+            final WebAppTypeEnum webAppType = SpSession.get().getWebAppType();
+
+            if (webAppType == WebAppTypeEnum.JOBTICKETS
+                    || webAppType == WebAppTypeEnum.ADMIN
+                    || webAppType == WebAppTypeEnum.USER) {
+
+                Label labelBtn = helper.encloseLabel("btn-account-trx-info",
+                        "&nbsp;", true);
+                labelBtn.setEscapeModelStrings(false);
+
+                MarkupHelper.modifyLabelAttr(labelBtn,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        obj.getDocLogId().toString());
+
+                MarkupHelper.modifyLabelAttr(labelBtn, MarkupHelper.ATTR_TITLE,
+                        NounEnum.TRANSACTION.uiText(getLocale(), true));
+
+                if (webAppType == WebAppTypeEnum.JOBTICKETS && !obj.isRefunded()
+                        && obj.getCost().compareTo(BigDecimal.ZERO) != 0) {
+
+                    labelBtn = helper.encloseLabel("btn-account-trx-refund",
+                            "&nbsp;", true);
+                    labelBtn.setEscapeModelStrings(false);
+
+                    MarkupHelper.modifyLabelAttr(labelBtn,
+                            MarkupHelper.ATTR_DATA_SAVAPAGE,
+                            obj.getDocLogId().toString());
+
+                    MarkupHelper.modifyLabelAttr(labelBtn,
+                            MarkupHelper.ATTR_TITLE,
+                            HtmlButtonEnum.REFUND.uiText(getLocale(), true));
+
+                } else {
+                    helper.discloseLabel("btn-account-trx-refund");
+                }
+
+            } else {
+                helper.discloseLabel("btn-account-trx-info");
+            }
         }
+
+        String pieData = null;
+        String pieSliceColors = null;
 
         //
         if (obj.getDocType() == DocLogDao.Type.IN) {
@@ -231,8 +342,9 @@ public class DocLogItemPanel extends Panel {
                 mapVisible.put("print-in-denied-reason", localized(key));
 
             } else {
-                mapVisible.put("printin-pie",
-                        String.valueOf(obj.getTotalPages()));
+                pieData = String.valueOf(obj.getTotalPages());
+                pieSliceColors =
+                        SparklineHtml.arrayAttr(SparklineHtml.COLOR_QUEUE);
             }
 
         } else {
@@ -266,18 +378,30 @@ public class DocLogItemPanel extends Panel {
                     mapVisible.put("ownerpw", "O");
                 }
 
-                mapVisible.put("pdfout-pie",
-                        String.valueOf(obj.getTotalPages()));
+                pieData = String.valueOf(obj.getTotalPages());
+                pieSliceColors =
+                        SparklineHtml.arrayAttr(SparklineHtml.COLOR_PDF);
 
             } else {
 
                 final String ticketNumber;
                 final String ticketOperator;
+                final String ticketTag;
+
                 if (obj.getPrintMode() == PrintModeEnum.TICKET
                         || obj.getPrintMode() == PrintModeEnum.TICKET_C
                         || obj.getPrintMode() == PrintModeEnum.TICKET_E) {
 
                     ticketNumber = obj.getExtId();
+
+                    final JobTicketTagDto tag =
+                            JOBTICKET_SERVICE.getTicketNumberTag(ticketNumber);
+
+                    if (tag == null) {
+                        ticketTag = null;
+                    } else {
+                        ticketTag = String.format("• %s", tag.getWord());
+                    }
 
                     // Just in case.
                     if (obj.getExtData() == null) {
@@ -295,18 +419,23 @@ public class DocLogItemPanel extends Panel {
                         }
                     }
 
+                    this.addJobSheetImg(obj.getIppOptionMap(), helper);
+
                 } else {
                     ticketNumber = null;
                     ticketOperator = null;
+                    ticketTag = null;
+                    helper.discloseLabel("img-job-sheet");
                 }
 
                 mapVisible.put(
                         "printoutMode", String
-                                .format("%s %s %s",
+                                .format("%s %s %s %s",
                                         obj.getPrintMode().uiText(getLocale()),
                                         StringUtils.defaultString(ticketNumber),
                                         StringUtils
-                                                .defaultString(ticketOperator))
+                                                .defaultString(ticketOperator),
+                                        StringUtils.defaultString(ticketTag))
                                 .trim());
 
                 cssClass = MarkupHelper.CSS_PRINT_OUT_PRINTER;
@@ -327,17 +456,30 @@ public class DocLogItemPanel extends Panel {
                             helper.localized(PrintOutNounEnum.COLOR));
                 }
 
+                if (obj.isPageRotate180()) {
+                    mapVisible.put("pageRotate180",
+                            PROXYPRINT_SERVICE.localizePrinterOpt(locale,
+                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_INT_PAGE_ROTATE180));
+                }
                 if (obj.isFinishingPunch()) {
                     mapVisible.put("punch",
-                            helper.localized(PrintOutVerbEnum.PUNCH));
+                            uiIppKeywordValue(locale,
+                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH,
+                                    obj));
                 }
                 if (obj.isFinishingStaple()) {
                     mapVisible.put("staple",
-                            helper.localized(PrintOutVerbEnum.STAPLE));
+                            uiIppKeywordValue(locale,
+                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE,
+                                    obj));
                 }
                 if (obj.isFinishingFold()) {
                     mapVisible.put("fold",
-                            helper.localized(PrintOutVerbEnum.FOLD));
+                            String.format("%s %s",
+                                    helper.localized(PrintOutVerbEnum.FOLD),
+                                    uiIppKeywordValue(locale,
+                                            IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_FOLD,
+                                            obj)));
                 }
                 if (obj.isFinishingBooklet()) {
                     mapVisible.put("booklet",
@@ -410,21 +552,35 @@ public class DocLogItemPanel extends Panel {
                     }
                 }
 
-                final String sparklineData =
-                        String.format("%d,%d", obj.getTotalSheets(),
-                                obj.getTotalPages() * obj.getCopies()
-                                        - obj.getTotalSheets());
-
-                mapVisible.put("printout-pie", sparklineData);
+                pieData = SparklineHtml.valueString(
+                        String.valueOf(obj.getTotalSheets()),
+                        String.valueOf(obj.getTotalPages() * obj.getCopies()
+                                - obj.getTotalSheets()));
+                pieSliceColors = SparklineHtml.arrayAttr(
+                        SparklineHtml.COLOR_PRINTER, SparklineHtml.COLOR_SHEET);
             }
+
         }
 
+        if (pieData == null) {
+            helper.discloseLabel("document-pie");
+        } else {
+            MarkupHelper.modifyLabelAttr(
+                    helper.addModifyLabelAttr("document-pie", pieData,
+                            SparklineHtml.ATTR_SLICE_COLORS, pieSliceColors),
+                    MarkupHelper.ATTR_CLASS, SparklineHtml.CSS_CLASS_DOCLOG);
+        }
+        //
         Label labelWlk = new Label("header");
         labelWlk.add(new AttributeModifier("class", cssClass));
+
         add(labelWlk);
 
         //
-        add(new Label("user-name", obj.getUserId()));
+        if (!obj.getUserId().equals(User.ERASED_USER_ID)) {
+            mapVisible.put("user-name", obj.getUserId());
+        }
+
         //
         add(new Label("dateCreated",
                 localizedShortDateTime(obj.getCreatedDate())));
@@ -443,8 +599,6 @@ public class DocLogItemPanel extends Panel {
         final StringBuilder totals = new StringBuilder();
 
         //
-        String key = null;
-
         int total = obj.getTotalPages();
         int copies = obj.getCopies();
 
@@ -510,9 +664,8 @@ public class DocLogItemPanel extends Panel {
                         IppDictJobTemplateAttr.JOBTICKET_ATTR_FINISHINGS_EXT,
                         obj.getIppOptionMap()));
 
-        mapVisible.put("jobticket-custom-ext",
-                PROXYPRINT_SERVICE.getJobTicketOptionsExtHtml(getLocale(),
-                        obj.getIppOptions()));
+        mapVisible.put("jobticket-custom-ext", PROXYPRINT_SERVICE
+                .getJobTicketOptionsExtHtml(getLocale(), obj.getIppOptions()));
 
         //
         if (obj.getIppOptionMap() != null
@@ -539,7 +692,41 @@ public class DocLogItemPanel extends Panel {
             addVisible(StringUtils.isNotBlank(entry.getValue()), entry.getKey(),
                     entry.getValue(), cssClassWlk);
         }
+    }
 
+    /**
+     *
+     * @param locale
+     * @param ippKeyword
+     * @param obj
+     * @return
+     */
+    private String uiIppKeywordValue(final Locale locale,
+            final String ippKeyword, final DocLogItem obj) {
+        return PROXYPRINT_SERVICE.localizePrinterOptValue(locale, ippKeyword,
+                obj.getIppOptionMap().getOptionValue(ippKeyword));
+    }
+
+    /**
+     *
+     * @param optMap
+     * @param helper
+     */
+    private void addJobSheetImg(final IppOptionMap optMap,
+            final MarkupHelper helper) {
+        //
+        final TicketJobSheetDto jobSheet =
+                JOBTICKET_SERVICE.getTicketJobSheet(optMap);
+
+        if (jobSheet != null && jobSheet.isEnabled()) {
+            final StringBuilder imgSrc = new StringBuilder();
+            imgSrc.append(WebApp.PATH_IMAGES).append('/');
+            imgSrc.append("copy-jobticket-128x128.png");
+            helper.addModifyLabelAttr("img-job-sheet", MarkupHelper.ATTR_SRC,
+                    imgSrc.toString());
+        } else {
+            helper.discloseLabel("img-job-sheet");
+        }
     }
 
     /**
@@ -570,17 +757,13 @@ public class DocLogItemPanel extends Panel {
     /**
      * Gets the localized string for a BigDecimal.
      *
-     * @param vlaue
+     * @param value
      *            The {@link BigDecimal}.
      * @return The localized string.
      */
     protected final String localizedDecimal(final BigDecimal value) {
-        try {
-            return BigDecimalUtil.localize(value, this.currencyDecimals,
-                    getSession().getLocale(), true);
-        } catch (ParseException e) {
-            throw new SpException(e);
-        }
+        return BigDecimalUtil.localizeUc(value, this.currencyDecimals,
+                getSession().getLocale(), true);
     }
 
     /**
@@ -588,6 +771,7 @@ public class DocLogItemPanel extends Panel {
      * is used.
      *
      * @param number
+     *            The number.
      * @return The localized string.
      */
     protected final String localizedNumber(final long number) {

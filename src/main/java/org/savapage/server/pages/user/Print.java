@@ -21,6 +21,8 @@
  */
 package org.savapage.server.pages.user;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -36,15 +38,20 @@ import org.savapage.core.dao.UserGroupAccountDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
+import org.savapage.core.dto.JobTicketTagDto;
 import org.savapage.core.dto.SharedAccountDto;
+import org.savapage.core.i18n.JobTicketNounEnum;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.InboxSelectScopeEnum;
-import org.savapage.server.SpSession;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.EnumRadioPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.QuickSearchPanel;
+import org.savapage.server.session.SpSession;
 
 /**
  *
@@ -58,19 +65,34 @@ public class Print extends AbstractUserPage {
      */
     private static final long serialVersionUID = 1L;
 
+    /** */
     private static final AccessControlService ACCESS_CONTROL_SERVICE =
             ServiceContext.getServiceFactory().getAccessControlService();
 
+    /** */
+    private static final JobTicketService JOBTICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
+
+    /** */
     private static final UserGroupAccountDao USER_GROUP_ACCOUNT_DAO =
             ServiceContext.getDaoContext().getUserGroupAccountDao();
 
-    final String ID_DELETE_PAGES = "delete-pages-after-print";
-    final String ID_DELETE_PAGES_WARN = "delete-pages-after-print-warn";
-    final String ID_DELETE_PAGES_SCOPE = "delete-pages-after-print-scope";
-    final String HTML_NAME_DELETE_PAGES_SCOPE = ID_DELETE_PAGES_SCOPE;
+    /** */
+    private static final String ID_DELETE_PAGES = "delete-pages-after-print";
+    /** */
+    private static final String ID_DELETE_PAGES_WARN =
+            "delete-pages-after-print-warn";
+    /** */
+    private static final String ID_DELETE_PAGES_SCOPE =
+            "delete-pages-after-print-scope";
+    /** */
+    private static final String HTML_NAME_DELETE_PAGES_SCOPE =
+            ID_DELETE_PAGES_SCOPE;
 
     /**
      *
+     * @param parameters
+     *            The page parms.
      */
     public Print(final PageParameters parameters) {
 
@@ -80,34 +102,45 @@ public class Print extends AbstractUserPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
+        helper.addLabel("label-copy",
+                PrintOutNounEnum.COPY.uiText(getLocale()));
+
         helper.addModifyLabelAttr("slider-print-copies", "max",
                 cm.getConfigValue(Key.WEBAPP_USER_PROXY_PRINT_MAX_COPIES));
 
         if (cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_ENABLE)) {
 
-            final InboxSelectScopeEnum clearScope =
-                    cm.getConfigEnum(InboxSelectScopeEnum.class,
-                            Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_SCOPE);
-
-            final String keyWarn;
-            switch (clearScope) {
-            case ALL:
-                keyWarn = "delete-pages-after-print-info-all";
-                break;
-            case JOBS:
-                keyWarn = "delete-pages-after-print-info-jobs";
-                break;
-            case PAGES:
-                keyWarn = "delete-pages-after-print-info-pages";
-                break;
-            case NONE:
-            default:
-                throw new SpException(String.format("%s is not handled.",
-                        clearScope.toString()));
-            }
-
             helper.discloseLabel(ID_DELETE_PAGES);
-            helper.encloseLabel(ID_DELETE_PAGES_WARN, localized(keyWarn), true);
+
+            if (cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_PROMPT)) {
+
+                final InboxSelectScopeEnum clearScope =
+                        cm.getConfigEnum(InboxSelectScopeEnum.class,
+                                Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_SCOPE);
+
+                final String keyWarn;
+                switch (clearScope) {
+                case ALL:
+                    keyWarn = "delete-pages-after-print-info-all";
+                    break;
+                case JOBS:
+                    keyWarn = "delete-pages-after-print-info-jobs";
+                    break;
+                case PAGES:
+                    keyWarn = "delete-pages-after-print-info-pages";
+                    break;
+                case NONE:
+                default:
+                    throw new SpException(String.format("%s is not handled.",
+                            clearScope.toString()));
+                }
+
+                helper.encloseLabel(ID_DELETE_PAGES_WARN, localized(keyWarn),
+                        true);
+            } else {
+                helper.discloseLabel(ID_DELETE_PAGES_WARN);
+            }
 
         } else {
 
@@ -133,18 +166,18 @@ public class Print extends AbstractUserPage {
         add(panel);
 
         panel.populate("sp-print-qs-printer", "",
-                getLocalizer().getString("search-printer-placeholder", this));
-
-        // Prepare for hiding ...
-        helper.encloseLabel("print-documents-separate-ticket",
-                localized("print-documents-separate"), true);
+                getLocalizer().getString("search-printer-placeholder", this),
+                false);
 
         //
         if (cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_SEPARATE_ENABLE)) {
-            helper.addCheckbox("print-documents-separate-print",
-                    cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_SEPARATE));
+            final boolean isSeparate =
+                    cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_SEPARATE);
+            helper.addCheckbox("print-documents-separate-print", isSeparate);
+            helper.addCheckbox("print-documents-separate-ticket", isSeparate);
         } else {
             helper.discloseLabel("print-documents-separate-print");
+            helper.discloseLabel("print-documents-separate-ticket");
         }
 
         //
@@ -180,11 +213,25 @@ public class Print extends AbstractUserPage {
         final boolean isPrintDelegate = ACCESS_CONTROL_SERVICE.hasAccess(user,
                 ACLRoleEnum.PRINT_DELEGATE);
 
-        addVisible(isPrintDelegate, "button-print-delegation", "-");
+        addVisible(isPrintDelegate, "button-print-delegation",
+                PrintOutNounEnum.COPY.uiText(getLocale(), true));
+
+        if (isPrintDelegate) {
+
+            if (cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATE_COPIES_APPLY_SWITCH)) {
+
+                MarkupHelper.setFlipswitchOnOffText(
+                        helper.addLabel("flipswitch-print-as-delegate", ""),
+                        getLocale());
+            } else {
+                helper.discloseLabel("flipswitch-print-as-delegate");
+            }
+        }
 
         //
         final Integer privsLetterhead = ACCESS_CONTROL_SERVICE
-                .getUserPrivileges(user, ACLOidEnum.U_LETTERHEAD);
+                .getPrivileges(user, ACLOidEnum.U_LETTERHEAD);
 
         helper.encloseLabel("prompt-letterhead", localized("prompt-letterhead"),
                 privsLetterhead == null || ACLPermissionEnum.READER
@@ -229,8 +276,36 @@ public class Print extends AbstractUserPage {
         }
 
         //
-        add(new Label("button-send-jobticket",
-                HtmlButtonEnum.SEND.uiText(getLocale())));
+        final Collection<JobTicketTagDto> jobTicketTags;
+
+        if (cm.isConfigValue(Key.JOBTICKET_TAGS_ENABLE)) {
+
+            jobTicketTags = JOBTICKET_SERVICE.getTicketTagsByWord();
+
+            if (!jobTicketTags.isEmpty()) {
+                helper.encloseLabel("label-jobticket-tag",
+                        JobTicketNounEnum.TAG.uiText(getLocale()), true);
+                helper.addLabel("jobticket-tag-option-select",
+                        HtmlButtonEnum.SELECT.uiText(getLocale(), true)
+                                .toLowerCase());
+                addJobTicketTags(jobTicketTags);
+            }
+        } else {
+            jobTicketTags = null;
+        }
+
+        if (jobTicketTags == null || jobTicketTags.isEmpty()) {
+            helper.discloseLabel("label-jobticket-tag");
+        }
+        //
+        helper.addButton("button-send-jobticket", HtmlButtonEnum.SEND);
+        helper.addButton("button-inbox", HtmlButtonEnum.BACK);
+        helper.addLabel("label-invoicing", NounEnum.INVOICING);
+        helper.addLabel("header-job", PrintOutNounEnum.JOB);
+
+        helper.addModifyLabelAttr("jobticket-copy-pages",
+                MarkupHelper.ATTR_TITLE,
+                localized("sp-jobticket-copy-pages-tooltip"));
     }
 
     /**
@@ -258,4 +333,33 @@ public class Print extends AbstractUserPage {
         });
     }
 
+    /**
+     * Adds the Job Tickets tags as select options.
+     *
+     * @param jobTicketTags
+     *            The job ticket tags.
+     */
+    private void
+            addJobTicketTags(final Collection<JobTicketTagDto> jobTicketTags) {
+
+        final List<JobTicketTagDto> tags = new ArrayList<>();
+
+        for (final JobTicketTagDto tag : jobTicketTags) {
+            tags.add(tag);
+        }
+
+        add(new PropertyListView<JobTicketTagDto>("jobticket-tag-option",
+                tags) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void populateItem(final ListItem<JobTicketTagDto> item) {
+                final JobTicketTagDto dto = item.getModel().getObject();
+                final Label label = new Label("option", dto.getWord());
+                label.add(new AttributeModifier("value", dto.getId()));
+                item.add(label);
+            }
+        });
+    }
 }

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,16 @@
  */
 package org.savapage.server.pages.admin;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.EnumSet;
 
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.SpException;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.UserAccountingDto;
 import org.savapage.server.helpers.HtmlButtonEnum;
@@ -49,7 +54,7 @@ public final class PageUser extends AbstractAdminPage {
      */
     public PageUser(final PageParameters parameters) {
 
-        super(parameters);
+        super(parameters, ACLOidEnum.A_USERS, RequiredPermission.EDIT);
 
         final MarkupHelper helper = new MarkupHelper(this);
 
@@ -85,5 +90,37 @@ public final class PageUser extends AbstractAdminPage {
 
         add(new Label("button-user-pw-erase",
                 HtmlButtonEnum.ERASE.uiText(getLocale())));
+
+        try {
+            final URL pgpPublicKeySearchUrl =
+                    ConfigManager.instance().getPGPPublicKeySearchUrl();
+
+            final String pgpPublicKeyPreviewUrlTemplate = ConfigManager
+                    .instance().getPGPPublicKeyPreviewUrlTemplate();
+
+            if (pgpPublicKeySearchUrl == null
+                    || pgpPublicKeyPreviewUrlTemplate == null) {
+
+                helper.discloseLabel("button-pgp-pubkey-search");
+
+            } else {
+
+                helper.addModifyLabelAttr("button-pgp-pubkey-search",
+                        HtmlButtonEnum.SEARCH.uiText(getLocale()),
+                        MarkupHelper.ATTR_HREF,
+                        pgpPublicKeySearchUrl.toString());
+
+                helper.addLabel("button-pgp-pubkey-preview",
+                        HtmlButtonEnum.CHECK.uiText(getLocale()));
+
+                helper.addModifyLabelAttr("pgp-pubkey-preview-url-template",
+                        MarkupHelper.ATTR_VALUE,
+                        pgpPublicKeyPreviewUrlTemplate);
+            }
+
+        } catch (MalformedURLException e) {
+            throw new SpException(e.getMessage(), e);
+        }
+
     }
 }

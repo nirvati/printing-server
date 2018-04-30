@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,14 @@
  */
 package org.savapage.server.pages.user;
 
+import java.math.BigDecimal;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -39,6 +42,8 @@ import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.IRequestParameters;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.SpException;
+import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.AccountDao;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.PrintOutDao;
@@ -47,6 +52,10 @@ import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.DaoEnumHelper;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.dto.JobTicketTagDto;
+import org.savapage.core.i18n.AdjectiveEnum;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrintOutAdjectiveEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.PrintOutVerbEnum;
 import org.savapage.core.ipp.IppJobStateEnum;
@@ -58,23 +67,29 @@ import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.outbox.OutboxInfoDto;
+import org.savapage.core.outbox.OutboxInfoDto.OutboxAccountTrxInfo;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxAccountTrxInfoSet;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.print.proxy.JsonProxyPrinter;
 import org.savapage.core.print.proxy.ProxyPrintInboxReq;
+import org.savapage.core.print.proxy.TicketJobSheetDto;
+import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.OutboxService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
+import org.savapage.core.services.helpers.ProxyPrintCostDto;
+import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.MediaUtils;
-import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.pages.ExtSupplierStatusPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -98,6 +113,12 @@ public class OutboxAddin extends AbstractUserPage {
      */
     private static final AccountDao ACCOUNT_DAO =
             ServiceContext.getDaoContext().getAccountDao();
+
+    /**
+     * .
+     */
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
 
     /**
      * .
@@ -156,6 +177,12 @@ public class OutboxAddin extends AbstractUserPage {
     private static final String WICKET_ID_BTN_JOBTICKET_SETTLE =
             "button-jobticket-settle";
 
+    private static final String WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOB =
+            "button-account-trx-info-job";
+
+    private static final String WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOBTICKET =
+            "button-account-trx-info-jobticket";
+
     private static final String WICKET_ID_BTN_JOBTICKET_PRINT =
             "button-jobticket-print";
 
@@ -169,8 +196,35 @@ public class OutboxAddin extends AbstractUserPage {
             "button-jobticket-print-retry";
 
     private static final String WICKET_ID_OWNER_USER_ID = "owner-user-id";
+    private static final String WICKET_ID_OWNER_USER_EMAIL = "owner-user-email";
+
     private static final String WICKET_ID_JOB_STATE = "job-state";
     private static final String WICKET_ID_JOB_STATE_IND = "job-state-ind";
+
+    /**
+     * Boolean.
+     */
+    private static final String PAGE_PARM_JOBTICKETS = "jobTickets";
+
+    /**
+     * String.
+     */
+    private static final String PAGE_PARM_JOBTICKET_ID = "jobTicketId";
+
+    /**
+     * String.
+     */
+    private static final String PAGE_PARM_USERKEY = "userKey";
+
+    /**
+     * Boolean.
+     */
+    private static final String PAGE_PARM_EXPIRY_ASC = "expiryAsc";
+
+    /**
+     * Integer.
+     */
+    private static final String PAGE_PARM_MAX_ITEMS = "maxItems";
 
     /**
      * .
@@ -190,6 +244,16 @@ public class OutboxAddin extends AbstractUserPage {
         private final boolean isJobticketView;
 
         /**
+         * Number of decimals for decimal scaling.
+         */
+        final int scale;
+
+        /**
+         * Number of currency decimals to display.
+         */
+        private final int currencyDecimals;
+
+        /**
          *
          * @param id
          * @param list
@@ -199,10 +263,12 @@ public class OutboxAddin extends AbstractUserPage {
                 final boolean jobticketView) {
             super(id, list);
             this.isJobticketView = jobticketView;
+            this.scale = ConfigManager.getFinancialDecimalsInDatabase();
+            this.currencyDecimals = ConfigManager.getUserBalanceDecimals();
         }
 
         @Override
-        protected void populateItem(ListItem<OutboxJobDto> item) {
+        protected void populateItem(final ListItem<OutboxJobDto> item) {
 
             final MarkupHelper helper = new MarkupHelper(item);
             final OutboxJobDto job = item.getModelObject();
@@ -251,10 +317,10 @@ public class OutboxAddin extends AbstractUserPage {
             imgSrc.append(WebApp.PATH_IMAGES).append('/');
             if (isJobTicketItem) {
                 if (isCopyJobTicket) {
-                    imgSrc.append("copy-jobticket-128x128.png");
+                    imgSrc.append("scanner-32x32.png");
                     jobticketCopy = localized("jobticket-type-copy");
                 } else {
-                    imgSrc.append("printer-jobticket-32x32.png");
+                    imgSrc.append("printer-26x26.png");
                 }
             } else {
                 imgSrc.append("device-card-reader-16x16.png");
@@ -275,6 +341,24 @@ public class OutboxAddin extends AbstractUserPage {
             }
 
             //
+            final TicketJobSheetDto jobSheet;
+            if (isJobTicketItem) {
+                jobSheet = JOBTICKET_SERVICE
+                        .getTicketJobSheet(job.createIppOptionMap());
+            } else {
+                jobSheet = null;
+            }
+            if (jobSheet != null && jobSheet.isEnabled()) {
+                imgSrc.setLength(0);
+                imgSrc.append(WebApp.PATH_IMAGES).append('/');
+                imgSrc.append("copy-jobticket-128x128.png");
+                helper.addModifyLabelAttr("img-job-sheet",
+                        MarkupHelper.ATTR_SRC, imgSrc.toString());
+            } else {
+                helper.discloseLabel("img-job-sheet");
+            }
+
+            //
             helper.encloseLabel("jobticket-remark", job.getComment(),
                     isJobTicketItem
                             && StringUtils.isNotBlank(job.getComment()));
@@ -283,13 +367,26 @@ public class OutboxAddin extends AbstractUserPage {
             helper.encloseLabel("jobticket-nr", job.getTicketNumber(),
                     job.getTicketNumber() != null);
 
+            if (job.getTicketNumber() != null) {
+
+                final JobTicketTagDto tag = JOBTICKET_SERVICE
+                        .getTicketNumberTag(job.getTicketNumber());
+                final String tagWord;
+                if (tag == null) {
+                    tagWord = null;
+                } else {
+                    tagWord = tag.getWord();
+                }
+                helper.encloseLabel("jobticket-tag",
+                        StringUtils.defaultString(tagWord), tagWord != null);
+            }
+
             /*
              * Totals
              */
             StringBuilder totals = new StringBuilder();
 
             //
-            String key = null;
             int total = job.getPages();
             int copies = job.getCopies();
 
@@ -322,16 +419,26 @@ public class OutboxAddin extends AbstractUserPage {
             item.add(new Label("totals", totals.toString()));
 
             //
-            final String sparklineData = String.format("%d,%d", job.getSheets(),
-                    job.getPages() * job.getCopies() - job.getSheets());
-            item.add(new Label("printout-pie", sparklineData));
-
+            MarkupHelper
+                    .modifyLabelAttr(
+                            helper.addModifyLabelAttr("printout-pie",
+                                    SparklineHtml.valueString(
+                                            String.valueOf(job.getSheets()),
+                                            String.valueOf(job.getPages()
+                                                    * job.getCopies()
+                                                    - job.getSheets())),
+                                    SparklineHtml.ATTR_SLICE_COLORS,
+                                    SparklineHtml.arrayAttr(
+                                            SparklineHtml.COLOR_PRINTER,
+                                            SparklineHtml.COLOR_SHEET)),
+                            MarkupHelper.ATTR_CLASS,
+                            SparklineHtml.CSS_CLASS_PRINTOUT);
+            //
             if (!getSessionWebAppType().equals(WebAppTypeEnum.JOBTICKETS)
                     || printOut != null) {
                 helper.discloseLabel(WICKET_ID_BTN_EDIT_OUTBOX_JOBTICKET);
                 helper.discloseLabel(WICKET_ID_BTN_SETTINGS_OUTBOX_JOBTICKET);
             } else {
-
                 labelWlk = helper.encloseLabel(
                         WICKET_ID_BTN_EDIT_OUTBOX_JOBTICKET,
                         HtmlButtonEnum.EDIT.uiTextDottedSfx(getLocale()),
@@ -349,9 +456,24 @@ public class OutboxAddin extends AbstractUserPage {
                 if (isJobTicketItem) {
                     this.addJobIdAttr(labelWlk, job);
                 }
-
             }
 
+            // AccounTrx preview
+            final String encloseButtonIdTrx;
+            if (isJobTicketItem) {
+                helper.discloseLabel(WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOB);
+                encloseButtonIdTrx = WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOBTICKET;
+            } else {
+                helper.discloseLabel(WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOBTICKET);
+                encloseButtonIdTrx = WICKET_ID_BTN_ACCOUNT_TRX_INFO_JOB;
+            }
+            this.addJobIdAttr(helper.encloseLabel(encloseButtonIdTrx,
+                    String.format("%s%s",
+                            NounEnum.TRANSACTION.uiText(getLocale(), true),
+                            HtmlButtonEnum.DOTTED_SUFFIX),
+                    true), job);
+
+            //
             final String encloseButtonIdRemove;
             final String encloseButtonIdPreview;
 
@@ -418,7 +540,8 @@ public class OutboxAddin extends AbstractUserPage {
                     cssClass = MarkupHelper.CSS_TXT_VALID;
                 }
 
-                MarkupHelper.modifyLabelAttr(labelWlk, "class", cssClass);
+                MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_CLASS,
+                        cssClass);
                 item.add(labelWlk);
             }
 
@@ -427,11 +550,11 @@ public class OutboxAddin extends AbstractUserPage {
             for (final String attr : new String[] { "title", "papersize",
                     "letterhead", "duplex", "simplex", "color", "collate",
                     "grayscale", "accounts", "removeGraphics", "ecoPrint",
-                    "extSupplier", "owner-user-name", "drm", "punch", "staple",
-                    "fold", "booklet", "jobticket-media", "jobticket-copy",
-                    "jobticket-finishing-ext", "jobticket-custom-ext",
-                    "landscape", "portrait", "job-id", "job-completed-time",
-                    "job-printer" }) {
+                    "extSupplier", "owner-user-name", "drm", "pageRotate180",
+                    "punch", "staple", "fold", "booklet", "jobticket-media",
+                    "jobticket-copy", "jobticket-finishing-ext",
+                    "jobticket-custom-ext", "landscape", "portrait", "job-id",
+                    "job-completed-time", "job-printer", "msg-invalid" }) {
                 mapVisible.put(attr, null);
             }
 
@@ -490,16 +613,31 @@ public class OutboxAddin extends AbstractUserPage {
                 mapVisible.put("ecoPrint", "Eco Print");
             }
 
+            if (optionMap.hasPageRotate180()) {
+                mapVisible.put("pageRotate180",
+                        PROXYPRINT_SERVICE.localizePrinterOpt(getLocale(),
+                                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_INT_PAGE_ROTATE180));
+            }
+
             if (optionMap.hasFinishingPunch()) {
                 mapVisible.put("punch",
-                        helper.localized(PrintOutVerbEnum.PUNCH));
+                        uiIppKeywordValue(getLocale(),
+                                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH,
+                                optionMap));
             }
             if (optionMap.hasFinishingStaple()) {
                 mapVisible.put("staple",
-                        helper.localized(PrintOutVerbEnum.STAPLE));
+                        uiIppKeywordValue(getLocale(),
+                                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE,
+                                optionMap));
             }
             if (optionMap.hasFinishingFold()) {
-                mapVisible.put("fold", helper.localized(PrintOutVerbEnum.FOLD));
+                mapVisible.put("fold",
+                        String.format("%s %s",
+                                helper.localized(PrintOutVerbEnum.FOLD),
+                                uiIppKeywordValue(getLocale(),
+                                        IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_FOLD,
+                                        optionMap)));
             }
             if (optionMap.hasFinishingBooklet()) {
                 mapVisible.put("booklet",
@@ -531,60 +669,20 @@ public class OutboxAddin extends AbstractUserPage {
             }
 
             // Cost
-            final StringBuilder cost = new StringBuilder();
-            cost.append(job.getLocaleInfo().getCost());
+            final StringBuilder sbAccTrx = new StringBuilder();
+            final int nAccountsMissing = getCostHtml(helper, job, sbAccTrx);
 
-            //
-            final OutboxAccountTrxInfoSet trxInfoSet =
-                    job.getAccountTransactions();
+            item.add(new Label("cost", sbAccTrx.toString())
+                    .setEscapeModelStrings(false));
 
-            if (trxInfoSet != null) {
-
-                final int nAccounts = trxInfoSet.getTransactions().size();
-
-                if (nAccounts > 0) {
-
-                    cost.append(" (");
-
-                    final boolean showAccountSum;
-
-                    if (nAccounts == 1) {
-
-                        final Account account = ACCOUNT_DAO.findById(trxInfoSet
-                                .getTransactions().get(0).getAccountId());
-
-                        final AccountTypeEnum accountType = AccountTypeEnum
-                                .valueOf(account.getAccountType());
-
-                        showAccountSum = accountType != AccountTypeEnum.SHARED;
-
-                        if (!showAccountSum) {
-                            if (account.getParent() != null) {
-                                cost.append(account.getParent().getName())
-                                        .append("\\");
-                            }
-                            account.getName();
-                            cost.append(account.getName());
-                        }
-
-                    } else {
-                        showAccountSum = true;
-                    }
-
-                    if (showAccountSum) {
-                        cost.append(nAccounts).append(" ")
-                                .append(helper.localized(
-                                        PrintOutNounEnum.ACCOUNT,
-                                        nAccounts > 1));
-                    }
-                    cost.append(")");
-                }
-
+            if (nAccountsMissing == 1) {
+                mapVisible.put("msg-invalid", localized("msg-missing-account"));
+            } else if (nAccountsMissing > 1) {
+                mapVisible.put("msg-invalid",
+                        localized("msg-missing-accounts", nAccountsMissing));
             }
 
-            item.add(new Label("cost",
-                    StringUtils.replace(cost.toString(), " ", "&nbsp;"))
-                            .setEscapeModelStrings(false));
+            final boolean allAccountsArePresent = nAccountsMissing == 0;
 
             // Job Ticket Supplier
             final String extSupplierImgUrl;
@@ -642,7 +740,18 @@ public class OutboxAddin extends AbstractUserPage {
             //
             if (printOut == null) {
 
-                helper.discloseLabel(WICKET_ID_JOB_STATE_IND);
+                if (allAccountsArePresent) {
+                    helper.discloseLabel(WICKET_ID_JOB_STATE_IND);
+                } else {
+                    MarkupHelper
+                            .appendLabelAttr(
+                                    helper.encloseLabel(WICKET_ID_JOB_STATE_IND,
+                                            AdjectiveEnum.INVALID
+                                                    .uiText(getLocale()),
+                                            true),
+                                    MarkupHelper.ATTR_CLASS,
+                                    MarkupHelper.CSS_TXT_ERROR);
+                }
 
             } else {
 
@@ -654,7 +763,8 @@ public class OutboxAddin extends AbstractUserPage {
                 //
                 labelWlk = helper.encloseLabel(WICKET_ID_JOB_STATE,
                         jobState.uiText(getLocale()), true);
-                MarkupHelper.appendLabelAttr(labelWlk, "class", cssClass);
+                MarkupHelper.appendLabelAttr(labelWlk, MarkupHelper.ATTR_CLASS,
+                        cssClass);
 
                 if (printOut.getCupsCompletedTime() != null) {
                     mapVisible.put("job-completed-time",
@@ -678,7 +788,8 @@ public class OutboxAddin extends AbstractUserPage {
 
                 labelWlk = helper.encloseLabel(WICKET_ID_JOB_STATE_IND,
                         jobStateInd, true);
-                MarkupHelper.appendLabelAttr(labelWlk, "class", cssClassInd);
+                MarkupHelper.appendLabelAttr(labelWlk, MarkupHelper.ATTR_CLASS,
+                        cssClassInd);
 
             }
 
@@ -736,19 +847,67 @@ public class OutboxAddin extends AbstractUserPage {
 
             final boolean readUser;
 
+            // Assign default: set to false in exceptional situations, where
+            // Ticket must not be processed.
+            boolean enclosePrintSettle = allAccountsArePresent;
+
             if (printOut != null) {
 
                 mapVisible.put("job-id", printOut.getCupsJobId().toString());
                 mapVisible.put("job-printer",
                         printOut.getPrinter().getDisplayName());
 
-                helper.discloseLabel(WICKET_ID_BTN_JOBTICKET_PRINT);
-                helper.discloseLabel(WICKET_ID_BTN_JOBTICKET_SETTLE);
-
+                enclosePrintSettle = false;
                 readUser = true;
 
             } else if (this.isJobticketView && job.getUserId() != null) {
 
+                readUser = true;
+
+            } else {
+                helper.discloseLabel(WICKET_ID_OWNER_USER_ID);
+                helper.discloseLabel(WICKET_ID_OWNER_USER_EMAIL);
+
+                enclosePrintSettle = false;
+                readUser = false;
+            }
+
+            if (readUser) {
+
+                final org.savapage.core.jpa.User user =
+                        USER_DAO.findById(job.getUserId());
+
+                if (user == null) {
+                    labelWlk = helper.encloseLabel(WICKET_ID_OWNER_USER_ID,
+                            "*** USER NOT FOUND ***", true);
+                    MarkupHelper.appendLabelAttr(labelWlk,
+                            MarkupHelper.ATTR_CLASS, MarkupHelper.CSS_TXT_WARN);
+
+                    helper.discloseLabel(WICKET_ID_OWNER_USER_EMAIL);
+
+                    enclosePrintSettle = false;
+
+                } else {
+                    helper.encloseLabel(WICKET_ID_OWNER_USER_ID,
+                            user.getUserId(), true);
+                    mapVisible.put("owner-user-name", user.getFullName());
+
+                    final String email =
+                            USER_SERVICE.getPrimaryEmailAddress(user);
+
+                    if (StringUtils.isBlank(email)) {
+                        helper.discloseLabel("owner-user-email");
+                    } else {
+                        labelWlk = helper.encloseLabel("owner-user-email",
+                                email, true);
+                        MarkupHelper.appendLabelAttr(labelWlk,
+                                MarkupHelper.ATTR_HREF,
+                                String.format("mailto:%s", email));
+                    }
+                }
+            }
+
+            if (enclosePrintSettle) {
                 if (isCopyJobTicket || optionMap.isJobTicketSettleOnly()) {
                     helper.discloseLabel(WICKET_ID_BTN_JOBTICKET_PRINT);
                 } else {
@@ -764,42 +923,11 @@ public class OutboxAddin extends AbstractUserPage {
                                         .uiTextDottedSfx(getLocale()),
                                 true),
                         job);
-
-                readUser = true;
-
             } else {
-                helper.discloseLabel(WICKET_ID_OWNER_USER_ID);
                 helper.discloseLabel(WICKET_ID_BTN_JOBTICKET_PRINT);
                 helper.discloseLabel(WICKET_ID_BTN_JOBTICKET_SETTLE);
-                readUser = false;
             }
 
-            if (readUser) {
-                final org.savapage.core.jpa.User user =
-                        USER_DAO.findById(job.getUserId());
-                if (user == null) {
-                    labelWlk = helper.encloseLabel(WICKET_ID_OWNER_USER_ID,
-                            "*** USER NOT FOUND ***", true);
-                    MarkupHelper.appendLabelAttr(labelWlk, "class",
-                            MarkupHelper.CSS_TXT_WARN);
-                } else {
-                    helper.encloseLabel(WICKET_ID_OWNER_USER_ID,
-                            user.getUserId(), true);
-                    mapVisible.put("owner-user-name", user.getFullName());
-
-                    final String email =
-                            USER_SERVICE.getPrimaryEmailAddress(user);
-
-                    if (StringUtils.isBlank(email)) {
-                        helper.discloseLabel("owner-user-email");
-                    } else {
-                        labelWlk = helper.encloseLabel("owner-user-email",
-                                email, true);
-                        MarkupHelper.appendLabelAttr(labelWlk, "href",
-                                String.format("mailto:%s", email));
-                    }
-                }
-            }
             /*
              * Hide/Show
              */
@@ -812,6 +940,19 @@ public class OutboxAddin extends AbstractUserPage {
                 helper.encloseLabel(entry.getKey(), entry.getValue(),
                         StringUtils.isNotBlank(entry.getValue()));
             }
+        }
+
+        /**
+         *
+         * @param locale
+         * @param ippKeyword
+         * @param map
+         * @return
+         */
+        private String uiIppKeywordValue(final Locale locale,
+                final String ippKeyword, final IppOptionMap map) {
+            return PROXYPRINT_SERVICE.localizePrinterOptValue(locale,
+                    ippKeyword, map.getOptionValue(ippKeyword));
         }
 
         /**
@@ -830,6 +971,158 @@ public class OutboxAddin extends AbstractUserPage {
                             label.getDefaultModelObjectAsString()));
             return label;
         }
+
+        /**
+         *
+         * @param costTotal
+         * @param weight
+         * @param copies
+         * @param currencySymbol
+         * @param sbAccTrx
+         */
+        private void appendAccountCost(final BigDecimal costTotal,
+                final int weight, final int copies, final String currencySymbol,
+                final StringBuilder sbAccTrx) {
+
+            final BigDecimal weightedCost = ACCOUNTING_SERVICE
+                    .calcWeightedAmount(costTotal, copies, weight, this.scale);
+
+            if (weightedCost.compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" ").append(currencySymbol).append("&nbsp;")
+                        .append(localizedDecimal(weightedCost.negate()));
+            }
+
+            sbAccTrx.append("&nbsp;(").append(weight).append(')');
+        }
+
+        /**
+         * Gets HTML with extra cost details.
+         *
+         * @param helper
+         *            The helper.
+         * @param job
+         *            The job.
+         * @param sbAccTrx
+         *            Builder to append on.
+         * @return The number of missing accounts.
+         */
+        private int getCostHtml(final MarkupHelper helper,
+                final OutboxJobDto job, final StringBuilder sbAccTrx) {
+
+            int missingAccounts = 0;
+
+            final ProxyPrintCostDto costResult = job.getCostResult();
+            final BigDecimal costTotal = costResult.getCostTotal();
+
+            final OutboxAccountTrxInfoSet trxInfoSet =
+                    job.getAccountTransactions();
+
+            final String currencySymbol = SpSession.getAppCurrencySymbol();
+
+            sbAccTrx.append(StringUtils.replace(job.getLocaleInfo().getCost(),
+                    " ", "&nbsp;"));
+
+            if (trxInfoSet == null) {
+                if (costTotal.compareTo(BigDecimal.ZERO) != 0) {
+                    sbAccTrx.append(" &bull; ")
+                            .append(PrintOutAdjectiveEnum.PERSONAL
+                                    .uiText(getLocale()))
+                            .append(" ").append(currencySymbol).append("&nbsp;")
+                            .append(localizedDecimal(costTotal.negate()))
+                            .append("&nbsp;(").append(job.getCopies())
+                            .append(")");
+                }
+                return missingAccounts;
+            }
+
+            final int copies = trxInfoSet.getWeightTotal();
+            int copiesDelegatorsImplicit = 0;
+            int missingCopies = 0;
+
+            for (final OutboxAccountTrxInfo trxInfo : trxInfoSet
+                    .getTransactions()) {
+
+                final int weight = trxInfo.getWeight();
+
+                final Account account =
+                        ACCOUNT_DAO.findById(trxInfo.getAccountId());
+
+                if (account == null) {
+
+                    sbAccTrx.append(" &bull; <span class=\"")
+                            .append(MarkupHelper.CSS_TXT_ERROR).append("\">");
+
+                    if (StringUtils.isNotBlank(trxInfo.getExtDetails())) {
+                        sbAccTrx.append(trxInfo.getExtDetails());
+                    }
+
+                    appendAccountCost(costTotal, weight, copies, currencySymbol,
+                            sbAccTrx);
+
+                    sbAccTrx.append("</span>");
+
+                    missingAccounts++;
+                    missingCopies += weight;
+
+                    continue;
+                }
+
+                final AccountTypeEnum accountType =
+                        AccountTypeEnum.valueOf(account.getAccountType());
+
+                if (accountType != AccountTypeEnum.SHARED
+                        && accountType != AccountTypeEnum.GROUP) {
+                    continue;
+                }
+
+                copiesDelegatorsImplicit += weight;
+
+                final Account accountParent = account.getParent();
+
+                sbAccTrx.append(" &bull; ");
+
+                if (accountParent != null) {
+                    sbAccTrx.append(accountParent.getName()).append("\\");
+                }
+
+                sbAccTrx.append(account.getName());
+
+                appendAccountCost(costTotal, weight, copies, currencySymbol,
+                        sbAccTrx);
+            }
+
+            final int copiesDelegatorsIndividual =
+                    copies - copiesDelegatorsImplicit - missingCopies;
+
+            if (copiesDelegatorsIndividual > 0) {
+                sbAccTrx.append(" &bull; ");
+                sbAccTrx.append(" ").append(currencySymbol).append("&nbsp;")
+                        .append(localizedDecimal(ACCOUNTING_SERVICE
+                                .calcWeightedAmount(costTotal, copies,
+                                        copiesDelegatorsIndividual, this.scale)
+                                .negate()));
+                sbAccTrx.append("&nbsp;(").append(copiesDelegatorsIndividual)
+                        .append(")");
+            }
+
+            return missingAccounts;
+        }
+
+        /**
+         * Gets the localized string for a BigDecimal.
+         *
+         * @param value
+         *            The {@link BigDecimal}.
+         * @return The localized string.
+         */
+        protected final String localizedDecimal(final BigDecimal value) {
+            try {
+                return BigDecimalUtil.localize(value, this.currencyDecimals,
+                        getLocale(), true);
+            } catch (ParseException e) {
+                throw new SpException(e);
+            }
+        }
     }
 
     /**
@@ -843,7 +1136,7 @@ public class OutboxAddin extends AbstractUserPage {
                 getRequestCycle().getRequest().getPostParameters();
 
         final boolean isJobticketView =
-                parms.getParameterValue("jobTickets").toBoolean();
+                parms.getParameterValue(PAGE_PARM_JOBTICKETS).toBoolean();
 
         if (isJobticketView
                 && getSessionWebAppType() != WebAppTypeEnum.JOBTICKETS
@@ -866,53 +1159,34 @@ public class OutboxAddin extends AbstractUserPage {
 
         final SpSession session = SpSession.get();
 
-        final OutboxInfoDto outboxInfo;
+        final OutboxInfoDto outboxInfo = new OutboxInfoDto();
+
+        final Integer maxItems;
+        final List<OutboxJobDto> tickets;
 
         if (isJobticketView) {
 
-            outboxInfo = new OutboxInfoDto();
+            maxItems = parms.getParameterValue(PAGE_PARM_MAX_ITEMS)
+                    .toOptionalInteger();
 
             /*
              * Job Tickets mix-in.
              */
-            final Long userKey =
-                    parms.getParameterValue("userKey").toOptionalLong();
+            final JobTicketService.JobTicketFilter filter =
+                    new JobTicketService.JobTicketFilter();
 
-            final boolean expiryAsc = BooleanUtils.isTrue(
-                    parms.getParameterValue("expiryAsc").toOptionalBoolean());
+            filter.setUserId(parms.getParameterValue(PAGE_PARM_USERKEY)
+                    .toOptionalLong());
+            filter.setSearchTicketId(
+                    parms.getParameterValue(PAGE_PARM_JOBTICKET_ID)
+                            .toOptionalString());
 
-            final List<OutboxJobDto> tickets;
-
-            if (userKey == null) {
-                tickets = JOBTICKET_SERVICE.getTickets();
-            } else {
-                tickets = JOBTICKET_SERVICE.getTickets(userKey);
-            }
-
-            Collections.sort(tickets, new Comparator<OutboxJobDto>() {
-                @Override
-                public int compare(final OutboxJobDto left,
-                        final OutboxJobDto right) {
-                    final int ret;
-                    if (left.getExpiryTime() < right.getExpiryTime()) {
-                        ret = -1;
-                    } else if (left.getExpiryTime() > right.getExpiryTime()) {
-                        ret = 1;
-                    } else {
-                        ret = 0;
-                    }
-                    if (expiryAsc) {
-                        return ret;
-                    }
-                    return -ret;
-                }
-            });
-
-            for (final OutboxJobDto dto : tickets) {
-                outboxInfo.addJob(dto.getFile(), dto);
-            }
+            tickets = JOBTICKET_SERVICE.getTickets(filter);
 
         } else {
+
+            maxItems = null;
+
             final DaoContext daoContext = ServiceContext.getDaoContext();
             /*
              * Lock user while getting the OutboxInfo.
@@ -922,11 +1196,50 @@ public class OutboxAddin extends AbstractUserPage {
             final org.savapage.core.jpa.User lockedUser =
                     daoContext.getUserDao().lock(session.getUser().getId());
 
-            outboxInfo = OUTBOX_SERVICE.getOutboxJobTicketInfo(lockedUser,
-                    ServiceContext.getTransactionDate());
-
+            final OutboxInfoDto outboxInfoTmp =
+                    OUTBOX_SERVICE.getOutboxJobTicketInfo(lockedUser,
+                            ServiceContext.getTransactionDate());
             // unlock
             daoContext.rollback();
+
+            tickets = new ArrayList<>();
+            tickets.addAll(outboxInfoTmp.getJobs().values());
+        }
+
+        final boolean expiryAsc = BooleanUtils.isTrue(parms
+                .getParameterValue(PAGE_PARM_EXPIRY_ASC).toOptionalBoolean());
+
+        final Comparator<OutboxJobDto> comparator =
+                new Comparator<OutboxJobDto>() {
+                    @Override
+                    public int compare(final OutboxJobDto left,
+                            final OutboxJobDto right) {
+                        final int ret;
+                        if (left.getExpiryTime() < right.getExpiryTime()) {
+                            ret = -1;
+                        } else if (left.getExpiryTime() > right
+                                .getExpiryTime()) {
+                            ret = 1;
+                        } else {
+                            ret = 0;
+                        }
+                        if (expiryAsc) {
+                            return ret;
+                        }
+                        return -ret;
+                    }
+                };
+
+        Collections.sort(tickets, comparator);
+
+        int iItems = 0;
+
+        for (final OutboxJobDto dto : tickets) {
+            outboxInfo.addJob(dto.getFile(), dto);
+            if (maxItems != null && maxItems.intValue() > 0
+                    && ++iItems >= maxItems.intValue()) {
+                break;
+            }
         }
 
         OUTBOX_SERVICE.applyLocaleInfo(outboxInfo, session.getLocale(),
@@ -942,5 +1255,4 @@ public class OutboxAddin extends AbstractUserPage {
         //
         add(new OutboxJobView("job-entry", entryList, isJobticketView));
     }
-
 }

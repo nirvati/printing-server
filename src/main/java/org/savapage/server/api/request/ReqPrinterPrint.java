@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,8 +21,10 @@
  */
 package org.savapage.server.api.request;
 
+import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -33,23 +35,25 @@ import java.util.Map;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.codehaus.jackson.JsonProcessingException;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.DeviceDao;
+import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.JsonPrintDelegation;
 import org.savapage.core.dto.AbstractDto;
+import org.savapage.core.dto.IppMediaSourceCostDto;
 import org.savapage.core.dto.PrintDelegationDto;
+import org.savapage.core.i18n.JobTicketNounEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.imaging.EcoPrintPdfTaskPendingException;
 import org.savapage.core.inbox.InboxInfoDto;
-import org.savapage.core.inbox.RangeAtom;
-import org.savapage.core.ipp.IppMediaSizeEnum;
+import org.savapage.core.inbox.InboxInfoDto.InboxJob;
 import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.ipp.attribute.syntax.IppKeyword;
 import org.savapage.core.ipp.client.IppConnectException;
@@ -58,25 +62,29 @@ import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.jpa.User;
+import org.savapage.core.pdf.PdfPageRotateHelper;
 import org.savapage.core.print.proxy.JsonProxyPrinter;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
 import org.savapage.core.print.proxy.ProxyPrintException;
 import org.savapage.core.print.proxy.ProxyPrintInboxReq;
+import org.savapage.core.print.proxy.ProxyPrintJobChunk;
 import org.savapage.core.print.proxy.ProxyPrintJobChunkInfo;
+import org.savapage.core.print.proxy.ProxyPrintJobChunkRange;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.AccountTrxInfo;
 import org.savapage.core.services.helpers.AccountTrxInfoSet;
 import org.savapage.core.services.helpers.InboxSelectScopeEnum;
+import org.savapage.core.services.helpers.PageRangeException;
 import org.savapage.core.services.helpers.PageScalingEnum;
+import org.savapage.core.services.helpers.PrinterAttrLookup;
 import org.savapage.core.services.helpers.ProxyPrintCostDto;
 import org.savapage.core.services.helpers.ProxyPrintCostParms;
-import org.savapage.core.services.impl.InboxServiceImpl;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.DateUtil;
 import org.savapage.ext.papercut.PaperCutServerProxy;
 import org.savapage.ext.papercut.job.PaperCutPrintMonitorJob;
-import org.savapage.server.SpSession;
 import org.savapage.server.api.JsonApiDict;
+import org.savapage.server.session.SpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,7 +110,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
     private static final Logger LOGGER =
             LoggerFactory.getLogger(ReqPrinterPrint.class);
 
-    private enum JobTicketTypeEnum {
+    public enum JobTicketTypeEnum {
         PRINT, COPY
     }
 
@@ -119,6 +127,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         private String readerName;
         private String jobName;
         private Integer jobIndex;
+        private Boolean landscapeView;
         private PageScalingEnum pageScaling;
         private Integer copies;
         private String ranges;
@@ -129,6 +138,8 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         private Boolean separateDocs;
         private Boolean jobTicket;
         private JobTicketTypeEnum jobTicketType;
+        private String jobTicketTag;
+        private Integer jobTicketCopyPages;
         private Long jobTicketDate;
         private Integer jobTicketHrs;
         private Integer jobTicketMin;
@@ -184,6 +195,14 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         @SuppressWarnings("unused")
         public void setJobIndex(Integer jobIndex) {
             this.jobIndex = jobIndex;
+        }
+
+        public Boolean getLandscapeView() {
+            return landscapeView;
+        }
+
+        public void setLandscapeView(Boolean landscapeView) {
+            this.landscapeView = landscapeView;
         }
 
         public PageScalingEnum getPageScaling() {
@@ -276,6 +295,24 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             this.jobTicketType = jobTicketType;
         }
 
+        public String getJobTicketTag() {
+            return jobTicketTag;
+        }
+
+        @SuppressWarnings("unused")
+        public void setJobTicketTag(String jobTicketTag) {
+            this.jobTicketTag = jobTicketTag;
+        }
+
+        public Integer getJobTicketCopyPages() {
+            return jobTicketCopyPages;
+        }
+
+        @SuppressWarnings("unused")
+        public void setJobTicketCopyPages(Integer jobTicketCopyPages) {
+            this.jobTicketCopyPages = jobTicketCopyPages;
+        }
+
         public Long getJobTicketDate() {
             return jobTicketDate;
         }
@@ -349,8 +386,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
     @Override
     protected void onRequest(final String requestingUser, final User lockedUser)
-            throws JsonProcessingException, IOException, ProxyPrintException,
-            ParseException {
+            throws JsonProcessingException, IOException, ParseException {
 
         final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
 
@@ -358,21 +394,38 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             LOGGER.trace(DtoReq.prettyPrint(getParmValue("dto")));
         }
 
+        // Validate
+        if (!validateCommon(dtoReq)) {
+            return;
+        }
+
         final boolean isJobTicket = BooleanUtils.isTrue(dtoReq.getJobTicket());
+
+        final ConfigManager cm = ConfigManager.instance();
+
+        // INVARIANT
+        if (isJobTicket && cm.isConfigValue(Key.JOBTICKET_TAGS_ENABLE)
+                && cm.isConfigValue(Key.JOBTICKET_TAGS_REQUIRED)
+                && StringUtils.isBlank(dtoReq.getJobTicketTag())) {
+
+            setApiResult(ApiResultCodeEnum.WARN, "msg-jobticket-tag-required",
+                    JobTicketNounEnum.TAG.uiText(getLocale()));
+            return;
+        }
 
         final boolean isCopyJobTicket = isJobTicket
                 && dtoReq.getJobTicketType() == JobTicketTypeEnum.COPY;
 
         // Validate
-        if (isCopyJobTicket && !validateJobTicketCopy(dtoReq)) {
-            return;
+        if (isCopyJobTicket) {
+            if (!validateJobTicketCopy(dtoReq)) {
+                return;
+            }
+        } else {
+            if (!validateProxyPrintFiltering(dtoReq)) {
+                return;
+            }
         }
-
-        if (!isCopyJobTicket && !validateProxyPrintFiltering(dtoReq)) {
-            return;
-        }
-
-        final ConfigManager cm = ConfigManager.instance();
 
         /*
          * If/how to clear the inbox.
@@ -421,7 +474,8 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         //
         final InboxInfoDto jobs;
-        final int nPagesTot;
+
+        final boolean isPrintAllDocuments = dtoReq.getJobIndex().intValue() < 0;
         final boolean isPrintAllPages;
 
         int nPagesPrinted;
@@ -430,59 +484,34 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         if (isCopyJobTicket) {
 
             jobs = null;
-            nPagesTot = Integer.parseInt(dtoReq.getRanges());
-            nPagesPrinted = nPagesTot;
+            nPagesPrinted = dtoReq.getJobTicketCopyPages().intValue();
             ranges = null;
             isPrintAllPages = true;
 
         } else {
 
-            jobs = INBOX_SERVICE.getInboxInfo(lockedUser.getUserId());
-
-            nPagesTot = INBOX_SERVICE.calcNumberOfPagesInJobs(jobs);
-            nPagesPrinted = nPagesTot;
-
-            /*
-             * Validate the ranges.
-             */
+            jobs = INBOX_SERVICE.getInboxInfo(requestingUser);
             ranges = dtoReq.getRanges().trim();
-
             isPrintAllPages = ranges.isEmpty();
 
-            if (!isPrintAllPages) {
-                /*
-                 * Remove inner spaces.
-                 */
-                ranges = ranges.replace(" ", "");
-                try {
-                    final List<RangeAtom> rangeAtoms =
-                            INBOX_SERVICE.createSortedRangeArray(ranges);
+            final StringBuilder sortedRangesOut = new StringBuilder();
 
-                    nPagesPrinted = InboxServiceImpl
-                            .calcSelectedDocPages(rangeAtoms, nPagesTot);
-                    /*
-                     * This gives the SORTED ranges as string: CUPS cannot
-                     * handle ranges like '7-8,5,2' but needs '2,5,7-8'
-                     */
-                    ranges = RangeAtom.asText(rangeAtoms);
+            try {
+                nPagesPrinted = INBOX_SERVICE.calcPagesInRanges(jobs,
+                        dtoReq.getJobIndex().intValue(), ranges,
+                        sortedRangesOut);
 
-                } catch (Exception e) {
-                    setApiResult(ApiResultCodeEnum.ERROR,
-                            "msg-clear-range-syntax-error", ranges);
-                    return;
-                }
+            } catch (PageRangeException e) {
+                setApiResultText(ApiResultCodeEnum.ERROR,
+                        e.getMessage(getLocale()));
+                return;
             }
-        }
 
-        /*
-         * INVARIANT: number of printed pages can NOT exceed total number of
-         * pages.
-         */
-        if (nPagesPrinted > nPagesTot) {
-            setApiResult(ApiResultCodeEnum.ERROR,
-                    "msg-print-out-of-range-error", ranges,
-                    String.valueOf(nPagesTot));
-            return;
+            /*
+             * This gives the SORTED ranges as string: CUPS cannot handle ranges
+             * like '7-8,5,2' but needs '2,5,7-8'
+             */
+            ranges = sortedRangesOut.toString();
         }
 
         /*
@@ -515,8 +544,6 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         /*
          * Vanilla jobs and job separation?
          */
-        final boolean isPrintAllDocuments = dtoReq.getJobIndex().intValue() < 0;
-
         final boolean isSeparateVanillaJobsCandidate =
                 isPrintAllDocuments && isPrintAllPages && jobs != null
                         && INBOX_SERVICE.isInboxVanilla(jobs);
@@ -589,14 +616,33 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         if (isCopyJobTicket) {
 
-            printReq.setJobChunkInfo(ProxyPrintJobChunkInfo.createCopyJobChunk(
-                    IppMediaSizeEnum.find(printReq.getMediaOption()),
-                    printReq.getNumberOfPages()));
+            if (!validateAddCopyJobRequestOpts(printer, printReq)) {
+                return;
+            }
 
         } else {
-            PROXY_PRINT_SERVICE.chunkProxyPrintRequest(lockedUser, printReq,
-                    dtoReq.getPageScaling(), doChunkVanillaJobs, iVanillaJob);
+
+            try {
+                PROXY_PRINT_SERVICE.chunkProxyPrintRequest(lockedUser, printReq,
+                        dtoReq.getPageScaling(), doChunkVanillaJobs,
+                        iVanillaJob);
+            } catch (ProxyPrintException e) {
+                if (e.hasLogFileMessage()) {
+                    LOGGER.warn(e.getLogFileMessage());
+                }
+                setApiResultText(ApiResultCodeEnum.WARN, e.getMessage());
+                return;
+            }
+
+            /*
+             * INVARIANT: User expected page orientation MUST match actual
+             * orientation.
+             */
+            if (!validatePdfOrientation(dtoReq, printReq.getJobChunkInfo())) {
+                return;
+            }
         }
+
         /*
          * Non-secure Proxy Print, integrated with PaperCut?
          */
@@ -642,6 +688,13 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
          */
         final JsonProxyPrinter proxyPrinter =
                 PROXY_PRINT_SERVICE.getCachedPrinter(printReq.getPrinterName());
+
+        /*
+         * INVARIANT:
+         */
+        if (!validateOptions(proxyPrinter, printReq.getOptionValues())) {
+            return;
+        }
 
         final String currencySymbol = SpSession.getAppCurrencySymbol();
 
@@ -798,6 +851,41 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
     }
 
     /**
+     * Adds and validates dummy options to the proxy print request for a Copy
+     * Job.
+     *
+     * @param printer
+     *            The printer.
+     * @param printReq
+     *            The request.
+     * @return {@code false} when validation error (and API result is set).
+     */
+    private boolean validateAddCopyJobRequestOpts(final Printer printer,
+            final ProxyPrintInboxReq printReq) {
+
+        final PrinterAttrLookup printerAttrLookup =
+                new PrinterAttrLookup(printer);
+
+        final IppMediaSourceCostDto mediaSourceCost =
+                printerAttrLookup.get(new PrinterDao.MediaSourceAttr(
+                        printReq.getMediaSourceOption()));
+
+        if (mediaSourceCost == null || mediaSourceCost.getMedia() == null) {
+            setApiResult(ApiResultCodeEnum.ERROR,
+                    "msg-copyjob-media-source-missing");
+            return false;
+        }
+
+        printReq.setMediaSourceOption(mediaSourceCost.getSource());
+        printReq.setMediaOption(mediaSourceCost.getMedia().getMedia());
+
+        printReq.setJobChunkInfo(ProxyPrintJobChunkInfo.createCopyJobChunk(
+                mediaSourceCost, printReq.getNumberOfPages()));
+
+        return true;
+    }
+
+    /**
      * Applies print delegation info into the print request.
      *
      * @param dtoReq
@@ -912,6 +1000,50 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
     }
 
     /**
+     * Validates input for all cases.
+     *
+     * @param dtoReq
+     *            The user request.
+     * @return {@code true} when input is valid.
+     */
+    private boolean validateCommon(final DtoReq dtoReq) {
+
+        final int copies = dtoReq.getCopies().intValue();
+
+        //
+        if (copies <= 0) {
+            setApiResultText(ApiResultCodeEnum.ERROR,
+                    "Invalid number of copies.");
+            return false;
+        }
+
+        final Map<String, String> options = dtoReq.getOptions();
+
+        if (options == null) {
+            return true;
+        }
+
+        String optValWlk = null;
+
+        optValWlk = options.get(
+                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_BOOKLET);
+
+        if (copies > 1 && !StringUtils
+                .defaultString(optValWlk,
+                        IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_BOOKLET_NONE)
+                .equals(IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_BOOKLET_NONE)) {
+
+            if (BooleanUtils.isFalse(dtoReq.getCollate())) {
+                setApiResult(ApiResultCodeEnum.WARN,
+                        "msg-print-booklet-collate-mismatch");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Validates input for Copy Job ticket.
      *
      * @param dtoReq
@@ -922,7 +1054,8 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         if (StringUtils.isBlank(dtoReq.getJobName())) {
             setApiResult(ApiResultCodeEnum.ERROR, "msg-copyjob-title-missing");
-        } else if (!NumberUtils.isDigits(dtoReq.getRanges())) {
+        } else if (dtoReq.getJobTicketCopyPages() == null
+                || dtoReq.getJobTicketCopyPages().intValue() < 1) {
             setApiResult(ApiResultCodeEnum.ERROR, "msg-copyjob-pages-invalid");
         } else {
             return true;
@@ -945,6 +1078,150 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
                 && dtoReq.getEcoprint() != null && dtoReq.getEcoprint()) {
             setApiResult(ApiResultCodeEnum.INFO,
                     "msg-select-single-pdf-filter");
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Validates expected PDF page orientation when punch or staple is
+     * requested.
+     *
+     * @param dtoReq
+     *            The user request.
+     * @param chunkInfo
+     *            The {@link ProxyPrintJobChunkInfo}.
+     * @return {@code true} when input is valid.
+     */
+    private boolean validatePdfOrientation(final DtoReq dtoReq,
+            final ProxyPrintJobChunkInfo chunkInfo) {
+
+        if (dtoReq.getLandscapeView() == null || !ConfigManager.instance()
+                .isConfigValue(Key.WEBAPP_NUMBER_UP_PREVIEW_ENABLE)) {
+            return true;
+        }
+
+        final Map<String, String> options = dtoReq.getOptions();
+
+        if (options == null) {
+            return true;
+        }
+
+        final boolean isFinishing;
+
+        String optValWlk = null;
+
+        optValWlk = options.get(
+                IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE);
+
+        if (StringUtils
+                .defaultString(optValWlk,
+                        IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE_NONE)
+                .equals(IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE_NONE)) {
+
+            optValWlk = options.get(
+                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH);
+
+            isFinishing = !StringUtils
+                    .defaultString(optValWlk,
+                            IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH_NONE)
+                    .equals(IppKeyword.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH_NONE);
+        } else {
+            isFinishing = true;
+        }
+
+        if (!isFinishing) {
+            return true;
+        }
+
+        // Traverse print chunks
+        for (final ProxyPrintJobChunk chunk : chunkInfo.getChunks()) {
+
+            // Get the first range.
+            final ProxyPrintJobChunkRange chunkRange = chunk.getRanges().get(0);
+
+            final InboxInfoDto filteredInbox = chunkInfo.getFilteredInboxInfo();
+
+            // Find job
+            for (int i = 0; i < filteredInbox.getJobs().size(); i++) {
+
+                if (i != chunkRange.getJob()) {
+                    continue;
+                }
+
+                final InboxJob job = filteredInbox.getJobs().get(i);
+
+                final File pdfFile = Paths
+                        .get(ConfigManager.getUserHomeDir(dtoReq.getUser()),
+                                job.getFile())
+                        .toFile();
+
+                final boolean expectedLandscape =
+                        dtoReq.getLandscapeView().booleanValue();
+
+                final int firstPage;
+                if (chunkRange.pageBegin == null) {
+                    firstPage = 1;
+                } else {
+                    firstPage = chunkRange.pageBegin.intValue();
+                }
+
+                final boolean seenLandscape;
+                try {
+                    seenLandscape = PdfPageRotateHelper.isSeenAsLandscape(
+                            pdfFile, firstPage,
+                            Integer.valueOf(job.getRotate()));
+                } catch (IOException | NumberFormatException e) {
+                    throw new IllegalStateException(e.getMessage(), e);
+                }
+
+                if (expectedLandscape == seenLandscape) {
+                    continue;
+                }
+
+                final PrintOutNounEnum orientationAct;
+                final PrintOutNounEnum orientationExp;
+                if (seenLandscape) {
+                    orientationAct = PrintOutNounEnum.LANDSCAPE;
+                    orientationExp = PrintOutNounEnum.PORTRAIT;
+                } else {
+                    orientationAct = PrintOutNounEnum.PORTRAIT;
+                    orientationExp = PrintOutNounEnum.LANDSCAPE;
+                }
+
+                setApiResult(ApiResultCodeEnum.WARN,
+                        "msg-print-orientation-mismatch",
+                        orientationExp.uiText(getLocale()),
+                        orientationAct.uiText(getLocale()));
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Validates IPP choices constraint rules. When not valid,
+     * {@link #setApiResultText(ApiResultCodeEnum, String)} is called with
+     * {@link ApiResultCodeEnum#WARN}.
+     *
+     * @param proxyPrinter
+     *            The proxy printer.
+     * @param ippOptions
+     *            The IPP attribute key/choices.
+     * @param costResult
+     *            The calculated cost result.
+     * @param isJobTicket
+     *            {@code true} when these are Job Ticket options.
+     * @return {@code true} when choices are valid.
+     */
+    private boolean validateOptions(final JsonProxyPrinter proxyPrinter,
+            final Map<String, String> ippOptions) {
+
+        final String msg = PROXY_PRINT_SERVICE
+                .validateContraintsMsg(proxyPrinter, ippOptions, getLocale());
+        if (msg != null) {
+            setApiResultText(ApiResultCodeEnum.WARN, msg);
             return false;
         }
         return true;
@@ -1091,7 +1368,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         printReq.setComment(dtoReq.getJobTicketRemark());
 
         JOBTICKET_SERVICE.createCopyJob(lockedUser, printReq,
-                calcJobTicketDeliveryDate(dtoReq));
+                calcJobTicketDeliveryDate(dtoReq), dtoReq.getJobTicketTag());
 
         setApiResultMsg(dtoReq, printReq);
 
@@ -1121,7 +1398,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         try {
             JOBTICKET_SERVICE.proxyPrintInbox(lockedUser, printReq,
-                    deliveryDate);
+                    deliveryDate, dtoReq.getJobTicketTag());
 
         } catch (EcoPrintPdfTaskPendingException e) {
             setApiResult(ApiResultCodeEnum.INFO, "msg-ecoprint-pending");

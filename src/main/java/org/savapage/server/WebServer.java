@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -59,8 +59,11 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.savapage.common.ConfigDefaults;
 import org.savapage.core.SpException;
+import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.ipp.operation.IppMessageMixin;
+import org.savapage.core.util.InetUtils;
+import org.savapage.server.feed.AtomFeedLoginService;
 import org.savapage.server.xmlrpc.SpXmlRpcServlet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,7 +140,7 @@ public final class WebServer {
              * modules are not prepared for SSL yet.
              */
             if (request.getPathInfo()
-                    .startsWith(SpXmlRpcServlet.SERVLET_URL_PATTERN)) {
+                    .startsWith(SpXmlRpcServlet.URL_PATTERN_BASE)) {
                 return;
             }
 
@@ -238,6 +241,10 @@ public final class WebServer {
      */
     private static final String PROP_KEY_SSL_KEY_PW = "server.ssl.key-password";
 
+    /** */
+    private static final String PROP_KEY_WEBAPP_CUSTOM_I18N =
+            "webapp.custom.i18n";
+
     /**
      * .
      */
@@ -258,10 +265,21 @@ public final class WebServer {
      */
     private static SslCertInfo sslCertInfo;
 
+    /** */
+    private static boolean webAppCustomI18n;
+
     /**
     *
     */
     private WebServer() {
+    }
+
+    /**
+     *
+     * @return {@code true} when custom Web App i18n is to be applied.
+     */
+    public static boolean isWebAppCustomI18n() {
+        return webAppCustomI18n;
     }
 
     /**
@@ -469,13 +487,35 @@ public final class WebServer {
         serverPortSsl = Integer.parseInt(propsServer.getProperty(
                 PROP_KEY_SERVER_PORT_SSL, ConfigDefaults.SERVER_SSL_PORT));
 
+        /*
+         * Check if ports are in use.
+         */
+        boolean portsInUse = false;
+
+        for (final int port : new int[] { serverPort, serverPortSsl }) {
+            if (InetUtils.isPortInUse(port)) {
+                portsInUse = true;
+                System.err.println(String.format("Port [%d] is in use.", port));
+            }
+        }
+        if (portsInUse) {
+            System.err.println(String.format("%s not started.",
+                    CommunityDictEnum.SAVAPAGE.getWord()));
+            System.exit(-1);
+            return;
+        }
+
+        //
         serverSslRedirect = !isSSLOnly() && BooleanUtils.toBooleanDefaultIfNull(
                 BooleanUtils.toBooleanObject(
                         propsServer.getProperty(PROP_KEY_HTML_REDIRECT_SSL)),
                 false);
-        /*
-         *
-         */
+
+        webAppCustomI18n = BooleanUtils.toBooleanDefaultIfNull(
+                BooleanUtils.toBooleanObject(
+                        propsServer.getProperty(PROP_KEY_WEBAPP_CUSTOM_I18N)),
+                false);
+        //
         final QueuedThreadPool threadPool = new QueuedThreadPool();
         final String poolName = "jetty-threadpool";
 
@@ -704,8 +744,11 @@ public final class WebServer {
         server.setHandler(handlerList);
 
         /*
-         *
+         * BASIC Authentication for Atom Feed.
          */
+        server.addBean(new AtomFeedLoginService());
+
+        //
         final String serverStartedFile =
                 String.format("%s%clogs%cserver.started.txt", serverHome,
                         File.separatorChar, File.separatorChar);

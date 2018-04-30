@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,8 @@ package org.savapage.server.pages.admin;
 
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.dao.enums.ACLOidEnum;
+import org.savapage.server.pages.JrExportFileExtButtonPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.TooltipPanel;
 
@@ -31,17 +33,13 @@ import org.savapage.server.pages.TooltipPanel;
  * @author Rijk Ravestein
  *
  */
-public class UserGroupsBase extends AbstractAdminPage {
+public final class UserGroupsBase extends AbstractAdminPage {
 
-    /**
-     * .
-     */
+    /** */
     private static final String WICKET_ID_BUTTON_ADD_REMOVE =
             "button-add-remove";
 
-    /**
-     * .
-     */
+    /** */
     private static final String WICKET_ID_TXT_NOT_READY =
             "warn-not-ready-to-use";
 
@@ -52,22 +50,33 @@ public class UserGroupsBase extends AbstractAdminPage {
 
     /**
      *
+     * @param parameters
+     *            The page parameters.
      */
     public UserGroupsBase(final PageParameters parameters) {
 
         super(parameters);
 
+        final boolean hasEditorAccess =
+                this.probePermissionToEdit(ACLOidEnum.A_USERS);
+
         final MarkupHelper helper = new MarkupHelper(this);
 
         if (ConfigManager.instance().isAppReadyToUse()) {
 
-            helper.encloseLabel(WICKET_ID_BUTTON_ADD_REMOVE,
-                    localized("button-add-remove"), true);
+            if (hasEditorAccess) {
 
-            final TooltipPanel tooltip = new TooltipPanel("tooltip-add-remove");
-            tooltip.populate(localized("tooltip-add-remove"));
+                helper.encloseLabel(WICKET_ID_BUTTON_ADD_REMOVE,
+                        localized("button-add-remove"), true);
 
-            add(tooltip);
+                final TooltipPanel tooltip =
+                        new TooltipPanel("tooltip-add-remove");
+                tooltip.populate(localized("tooltip-add-remove"));
+
+                add(tooltip);
+            } else {
+                helper.discloseLabel(WICKET_ID_BUTTON_ADD_REMOVE);
+            }
 
             helper.discloseLabel(WICKET_ID_TXT_NOT_READY);
 
@@ -76,5 +85,8 @@ public class UserGroupsBase extends AbstractAdminPage {
             helper.encloseLabel(WICKET_ID_TXT_NOT_READY,
                     localized("warn-not-ready-to-use"), true);
         }
+
+        add(new JrExportFileExtButtonPanel("report-button-panel",
+                "sp-btn-user-groups-report"));
     }
 }

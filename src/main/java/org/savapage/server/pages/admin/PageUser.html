@@ -3,7 +3,7 @@
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -58,12 +58,10 @@
 					<wicket:message key="user-admin" />
 				</label>
 				<input type="checkbox" id="user-isadmin" value="0" />
-
 				<label for="user-isperson">
 					<wicket:message key="user-person" />
 				</label>
 				<input type="checkbox" id="user-isperson" value="0" />
-
 				<label for="user-disabled">
 					<wicket:message key="user-disabled" />
 				</label>
@@ -89,13 +87,11 @@
 			<input type="text" id="user-email" value="" maxlength="128"
 				autocomplete="off" autocorrect="off" autocapitalize="off"
 				spellcheck="false" />
-
 			<label for="user-email-other">
 				<wicket:message key="user-email-other" />
 			</label>
 			<textarea id="user-email-other" autocomplete="off" autocorrect="off"
 				autocapitalize="off" spellcheck="false" />
-
 		</li>
 
 		<li>
@@ -104,24 +100,47 @@
 			</label>
 			<input type="text" id="user-card-number" maxlength="32" value=""
 				data-clear-btn="true" />
-
 			<label for="user-id-number">
 				<wicket:message key="user-id-number" />
 			</label>
 			<input type="text" id="user-id-number" maxlength="32" value=""
 				data-clear-btn="true" />
-
 			<label for="user-pin">
 				<wicket:message key="user-pin" />
 			</label>
 			<input type="password" id="user-pin" maxlength="6" pattern="[0-9]*"
 				value="" data-clear-btn="true" />
-
 			<label for="user-yubikey-public-id">
 				<wicket:message key="user-yubikey-public-id" />
 			</label>
 			<input type="text" id="user-yubikey-public-id" maxlength="12"
 				value="" data-clear-btn="true" />
+
+			<div id="user-uuid-collapsible" data-role="collapsible"
+				data-collapsed="true" data-mini="true">
+				<h3>OpenPGP</h3>
+				<label for="user-pgp-pubkey-id">
+					<span class="sp-txt-wrap"> <wicket:message
+							key="user-pgp-pubkey-id" /> &nbsp;<small>&bull;</small>&nbsp;<small><wicket:message
+								key="user-pgp-pubkey-id-format" /></small>
+					</span>
+				</label>
+				<input type="text" id="user-pgp-pubkey-id" maxlength="16" value=""
+					data-clear-btn="true" />
+
+				<wicket:enclosure child="button-pgp-pubkey-search">
+					<div>
+						<a href="" target="_blank" wicket:id="button-pgp-pubkey-search"
+							class="ui-btn ui-mini ui-btn-inline ui-btn-icon-left ui-icon-search" />
+
+						<button wicket:id="button-pgp-pubkey-preview"
+							id="sp-button-pgp-pubkey-preview"
+							class="ui-btn ui-mini ui-btn-inline ui-btn-icon-left ui-icon-eye" />
+					</div>
+					<input type="hidden" id="sp-pgp-pubkey-preview-url-template"
+						wicket:id="pgp-pubkey-preview-url-template" />
+				</wicket:enclosure>
+			</div>
 
 			<div id="user-uuid-collapsible" data-role="collapsible"
 				data-collapsed="true" data-mini="true">
@@ -178,7 +197,6 @@
 				<input type="radio" name="user-account-credit-limit-type"
 					id="user-account-credit-limit-default"
 					wicket:id="credit-limit-default" />
-
 				<label for="user-account-credit-limit-individual">
 					<wicket:message key="label-credit-limit-individual" />
 				</label>
@@ -187,7 +205,6 @@
 					wicket:id="credit-limit-individual" />
 
 			</fieldset>
-
 			<input type="text" id="user-account-credit-limit-amount" value=""
 				maxlength="10" pattern="[0-9]*" />
 		</li>

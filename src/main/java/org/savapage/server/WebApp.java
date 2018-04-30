@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -42,6 +43,7 @@ import org.apache.wicket.request.Request;
 import org.apache.wicket.request.Response;
 import org.apache.wicket.request.mapper.parameter.UrlPathPageParametersEncoder;
 import org.apache.wicket.request.resource.JavaScriptResourceReference;
+import org.apache.wicket.resource.loader.IStringResourceLoader;
 import org.savapage.common.ConfigDefaults;
 import org.savapage.core.SpException;
 import org.savapage.core.SpInfo;
@@ -60,6 +62,7 @@ import org.savapage.core.services.helpers.UserAuth;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.Messages;
+import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.payment.PaymentMethodEnum;
 import org.savapage.server.api.JsonApiServer;
 import org.savapage.server.cometd.AbstractEventService;
@@ -72,6 +75,9 @@ import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.admin.AbstractAdminPage;
 import org.savapage.server.pages.user.AbstractUserPage;
 import org.savapage.server.raw.RawPrintServer;
+import org.savapage.server.session.SpSession;
+import org.savapage.server.webapp.CustomStringResourceLoader;
+import org.savapage.server.webapp.OAuthRedirectPage;
 import org.savapage.server.webapp.WebAppAdmin;
 import org.savapage.server.webapp.WebAppJobTickets;
 import org.savapage.server.webapp.WebAppPos;
@@ -114,6 +120,27 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * Used in this class to set mountPage().
      */
     public static final String MOUNT_PATH_WEBAPP_USER = "/user";
+
+    /**
+     * The URL path for "printers" as used in {@link #MOUNT_PATH_WEBAPP_OAUTH}
+     * and {@link #MOUNT_PATH_WEBAPP_USER_OAUTH}.
+     */
+    public static final String PATH_OAUTH = "oauth";
+
+    /**
+     * URL path to directly authenticate with OAuth provider for User Web App.
+     * E.g. /oauth/google . Where "google" is lowercase
+     * {@link OAuthProviderEnum} value.
+     */
+    public static final String MOUNT_PATH_WEBAPP_OAUTH = "/" + PATH_OAUTH;
+
+    /**
+     * URL path to directly authenticate with OAuth provider for User Web App .
+     * E.g. /user/oauth/google . Where "google" is lowercase
+     * {@link OAuthProviderEnum} value.
+     */
+    public static final String MOUNT_PATH_WEBAPP_USER_OAUTH =
+            MOUNT_PATH_WEBAPP_USER + "/" + PATH_OAUTH;
 
     /**
      * Used in this class to set mountPage().
@@ -582,7 +609,11 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             mountPage(MOUNT_PATH_WEBAPP_ADMIN, WebAppAdmin.class);
             mountPage(MOUNT_PATH_WEBAPP_JOBTICKETS, WebAppJobTickets.class);
             mountPage(MOUNT_PATH_WEBAPP_POS, WebAppPos.class);
+
             mountPage(MOUNT_PATH_WEBAPP_USER, WebAppUser.class);
+
+            mountPage(MOUNT_PATH_WEBAPP_OAUTH, OAuthRedirectPage.class);
+            mountPage(MOUNT_PATH_WEBAPP_USER_OAUTH, OAuthRedirectPage.class);
 
             mountPage(MOUNT_PATH_API, JsonApiServer.class);
             mountPage(MOUNT_PATH_PRINTERS, IppPrintServer.class);
@@ -690,6 +721,10 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              */
             ConfigManager.instance().initScheduler();
 
+            if (WebServer.isWebAppCustomI18n()) {
+                SpInfo.instance().log("Web App Custom i18n enabled.");
+            }
+
             /*
              * Server plug-in manager.
              */
@@ -795,12 +830,31 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
+     * Add the {@link CustomStringResourceLoader} as first resource loader.
+     */
+    private void addCustomStringResourceLoader() {
+        /*
+         * Retrieve ResourceSettings and then the list of resource loaders.
+         */
+        final List<IStringResourceLoader> resourceLoaders =
+                getResourceSettings().getStringResourceLoaders();
+        /*
+         * Add custom resource loader as first.
+         */
+        resourceLoaders.add(0, new CustomStringResourceLoader());
+    }
+
+    /**
      * @see org.apache.wicket.Application#init()
      */
     @Override
     public void init() {
 
         super.init();
+
+        if (WebServer.isWebAppCustomI18n()) {
+            addCustomStringResourceLoader();
+        }
 
         applyWicketApplicationSettings();
 

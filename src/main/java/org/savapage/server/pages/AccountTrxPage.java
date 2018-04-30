@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -39,12 +39,14 @@ import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.AccountTrxDao;
 import org.savapage.core.dao.AccountTrxDao.ListFilter;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.AccountTrxTypeEnum;
 import org.savapage.core.dao.enums.DaoEnumHelper;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.helpers.AccountTrxPagerReq;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
@@ -58,8 +60,8 @@ import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.BitcoinUtil;
 import org.savapage.core.util.CurrencyUtil;
 import org.savapage.ext.payment.PaymentMethodEnum;
-import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +70,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Rijk Ravestein
  */
-public class AccountTrxPage extends AbstractListPage {
+public final class AccountTrxPage extends AbstractListPage {
 
     /**
      *
@@ -87,6 +89,11 @@ public class AccountTrxPage extends AbstractListPage {
      */
     private static final int MAX_PAGES_IN_NAVBAR = 5;
 
+    /**
+     *
+     * @author Rijk Ravestein
+     *
+     */
     private final class AccountTrxListView
             extends PropertyListView<AccountTrx> {
 
@@ -181,6 +188,11 @@ public class AccountTrxPage extends AbstractListPage {
                 throw new SpException(e);
             }
 
+            helper.encloseLabel("amount-refund",
+                    NounEnum.REFUND.uiText(getLocale()).toLowerCase(),
+                    printOut != null && accountTrx.getAmount()
+                            .compareTo(BigDecimal.ZERO) > 0);
+
             Label labelWrk;
 
             labelWrk = new Label("balance", balance);
@@ -224,7 +236,6 @@ public class AccountTrxPage extends AbstractListPage {
             String jobticket = null;
 
             //
-            String msgKey;
             String key;
 
             switch (trxType) {
@@ -391,14 +402,13 @@ public class AccountTrxPage extends AbstractListPage {
             }
 
             //
-
             helper.encloseLabel("delegate", delegate, delegate != null);
             helper.encloseLabel("jobticket", jobticket, jobticket != null);
 
             final boolean isExtBitcoin =
                     StringUtils.isNotBlank(accountTrx.getExtCurrencyCode())
                             && accountTrx.getExtCurrencyCode()
-                                    .equals(CurrencyUtil.BITCOIN_CURRENCY_CODE);
+                                    .equals(CurrencyUtil.CURRENCY_CODE_BITCOIN);
 
             // External supplier
             final ExternalSupplierEnum extSupplierEnum =
@@ -606,20 +616,17 @@ public class AccountTrxPage extends AbstractListPage {
     }
 
     @Override
-    protected final boolean needMembership() {
-        return this.getSessionWebAppType() == WebAppTypeEnum.ADMIN;
+    protected boolean needMembership() {
+        return false;
     }
 
     /**
-     *
+     * @param parameters
+     *            The page parameters.
      */
     public AccountTrxPage(final PageParameters parameters) {
 
         super(parameters);
-
-        if (isAuthErrorHandled()) {
-            return;
-        }
 
         //
         final String data = getParmValue(POST_PARM_DATA);
@@ -645,6 +652,8 @@ public class AccountTrxPage extends AbstractListPage {
         Long accountId = null;
 
         if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
+
+            this.probePermissionToRead(ACLOidEnum.A_TRANSACTIONS);
 
             userId = req.getSelect().getUserId();
             accountId = req.getSelect().getAccountId();

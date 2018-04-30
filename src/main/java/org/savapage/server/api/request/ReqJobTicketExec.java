@@ -38,6 +38,11 @@ import org.savapage.core.jpa.User;
 import org.savapage.core.msg.UserMsgIndicator;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.JobTicketExecParms;
+import org.savapage.server.session.JobTicketSession;
+import org.savapage.server.session.SpSession;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 /**
  * Job Ticket Executor.
@@ -59,6 +64,7 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
         private boolean retry;
         private Long printerId;
         private String mediaSource;
+        private String mediaSourceJobSheet;
         private String outputBin;
         private String jogOffset;
 
@@ -121,6 +127,22 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
         }
 
         /**
+         * @return The {@link IppDictJobTemplateAttr#ATTR_MEDIA_SOURCE} value
+         *         for the Job Sheet print job. Is irrelevant ({@code null})
+         *         when settlement.
+         */
+        public String getMediaSourceJobSheet() {
+            return mediaSourceJobSheet;
+        }
+
+        /**
+         * @param mediaSourceJobSheet
+         */
+        public void setMediaSourceJobSheet(String mediaSourceJobSheet) {
+            this.mediaSourceJobSheet = mediaSourceJobSheet;
+        }
+
+        /**
          * @return The {@link IppDictJobTemplateAttr#ATTR_OUTPUT_BIN} value for
          *         the print job. Is irrelevant ({@code null}) when settlement.
          */
@@ -148,13 +170,38 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
             this.jogOffset = jogOffset;
         }
 
+        /**
+         * Creates parameter object.
+         *
+         * @param operator
+         *            The operator.
+         * @param printer
+         *            The printer.
+         * @return The parameter object.
+         */
+        @JsonIgnore
+        public JobTicketExecParms createExecParms(final String operator,
+                final Printer printer) {
+
+            final JobTicketExecParms parms = new JobTicketExecParms();
+
+            parms.setOperator(operator);
+            parms.setPrinter(printer);
+            parms.setIppMediaSource(this.getMediaSource());
+            parms.setIppMediaSourceJobSheet(this.getMediaSourceJobSheet());
+            parms.setIppOutputBin(this.getOutputBin());
+            parms.setIppJogOffset(this.getJogOffset());
+            parms.setFileName(this.getJobFileName());
+
+            return parms;
+        }
     }
 
     @Override
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
+        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValueDto());
 
         Long printerId = dtoReq.getPrinterId();
 
@@ -196,6 +243,7 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
 
             // Ad-hoc assign the media-source.
             dtoReq.setMediaSource(IppKeyword.MEDIA_SOURCE_AUTO);
+            dtoReq.setMediaSourceJobSheet(IppKeyword.MEDIA_SOURCE_AUTO);
         }
 
         final Printer printer = ServiceContext.getDaoContext().getPrinterDao()
@@ -220,17 +268,41 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
                     return;
                 }
 
+                final JobTicketExecParms parms =
+                        dtoReq.createExecParms(requestingUser, printer);
+
+                /*
+                 * INVARIANT: When org.savapage-job-sheet is specified,
+                 * output-bin can NOT be auto.
+                 */
+                if (parms.getIppMediaSourceJobSheet() != null
+                        && parms.getIppOutputBin() != null) {
+                    if (parms.getIppOutputBin()
+                            .equals(IppKeyword.OUTPUT_BIN_AUTO)) {
+                        this.setApiResult(ApiResultCodeEnum.WARN,
+                                "msg-jobticket-option-mismatch",
+                                PROXY_PRINT_SERVICE.localizePrinterOpt(
+                                        getLocale(),
+                                        IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_JOB_SHEETS),
+                                PROXY_PRINT_SERVICE.localizePrinterOpt(
+                                        getLocale(),
+                                        IppDictJobTemplateAttr.ATTR_OUTPUT_BIN),
+                                PROXY_PRINT_SERVICE.localizePrinterOptValue(
+                                        getLocale(),
+                                        IppDictJobTemplateAttr.ATTR_OUTPUT_BIN,
+                                        IppKeyword.OUTPUT_BIN_AUTO));
+                        return;
+                    }
+                }
+
                 if (dtoReq.isRetry()) {
-
-                    dto = JOBTICKET_SERVICE.retryTicketPrint(requestingUser,
-                            printer, dtoReq.getMediaSource(),
-                            dtoReq.getOutputBin(), dtoReq.getJogOffset(),
-                            dtoReq.getJobFileName());
-
+                    dto = JOBTICKET_SERVICE.retryTicketPrint(parms);
                 } else {
-                    dto = JOBTICKET_SERVICE.printTicket(requestingUser, printer,
-                            dtoReq.getMediaSource(), dtoReq.getOutputBin(),
-                            dtoReq.getJogOffset(), dtoReq.getJobFileName());
+                    dto = JOBTICKET_SERVICE.printTicket(parms);
+                }
+
+                if (dtoReq.getPrinterId() != null) {
+                    saveToSession(dtoReq);
                 }
 
             } else {
@@ -259,6 +331,44 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
         } catch (IppConnectException e) {
             this.setApiResultText(ApiResultCodeEnum.ERROR, e.getMessage());
         }
+    }
+
+    /**
+     * Saves printer options to server session.
+     *
+     * @param dto
+     *            The request.
+     */
+    private void saveToSession(final DtoReq dto) {
+
+        JobTicketSession session = SpSession.get().getJobTicketSession();
+
+        if (session == null) {
+            session = new JobTicketSession();
+            SpSession.get().setJobTicketSession(session);
+        }
+
+        session.setJogOffsetOption(dto.getJogOffset());
+
+        Map<Long, Map<JobTicketSession.PrinterOpt, String>> printerOpts =
+                session.getRedirectPrinterOptions();
+
+        if (printerOpts == null) {
+            printerOpts = new HashMap<>();
+        }
+
+        final Map<JobTicketSession.PrinterOpt, String> opts = new HashMap<>();
+
+        opts.put(JobTicketSession.PrinterOpt.MEDIA_SOURCE,
+                dto.getMediaSource());
+        opts.put(JobTicketSession.PrinterOpt.MEDIA_SOURCE_SHEET,
+                dto.getMediaSourceJobSheet());
+        opts.put(JobTicketSession.PrinterOpt.OUTPUT_BIN, dto.getOutputBin());
+
+        //
+        printerOpts.put(dto.getPrinterId(), opts);
+
+        session.setRedirectPrinterOptions(printerOpts);
     }
 
     /**

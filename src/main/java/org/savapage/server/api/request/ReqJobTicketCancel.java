@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -23,6 +23,7 @@ package org.savapage.server.api.request;
 
 import java.io.IOException;
 
+import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.UserDao;
@@ -47,6 +48,7 @@ public final class ReqJobTicketCancel extends ApiRequestMixin {
     private static class DtoReq extends AbstractDto {
 
         private String jobFileName;
+        private String reason;
 
         public String getJobFileName() {
             return jobFileName;
@@ -55,6 +57,14 @@ public final class ReqJobTicketCancel extends ApiRequestMixin {
         @SuppressWarnings("unused")
         public void setJobFileName(String jobFileName) {
             this.jobFileName = jobFileName;
+        }
+
+        public String getReason() {
+            return reason;
+        }
+
+        public void setReason(String reason) {
+            this.reason = reason;
         }
 
     }
@@ -74,19 +84,33 @@ public final class ReqJobTicketCancel extends ApiRequestMixin {
             msgKey = "msg-outbox-cancelled-jobticket-none";
         } else {
             msgKey = "msg-outbox-cancelled-jobticket";
+
             final User user = notifyUser(dto.getUserId());
-            sendEmailNotification(requestingUser, dto, user);
+
+            if (user != null) {
+                sendEmailNotification(requestingUser, dto,
+                        StringUtils.defaultString(
+                                StringUtils.trimToNull(dtoReq.getReason()),
+                                "-"),
+                        user);
+            }
         }
 
         this.setApiResult(ApiResultCodeEnum.OK, msgKey);
     }
 
     /**
+     * Notifies a user.
+     * <p>
+     * In case the Ticket was canceled because a user is not found, {@code null}
+     * is returned.
+     * </p>
+     *
      * @param userKey
      *            The user database key
      * @throws IOException
      *             When IO error.
-     * @return The User.
+     * @return The User, or {@code null} when user is not found.
      */
     private User notifyUser(final Long userKey) throws IOException {
 
@@ -94,7 +118,8 @@ public final class ReqJobTicketCancel extends ApiRequestMixin {
 
         final User user = userDao.findById(userKey);
 
-        if (UserMsgIndicator.isSafePagesDirPresent(user.getUserId())) {
+        if (user != null
+                && UserMsgIndicator.isSafePagesDirPresent(user.getUserId())) {
 
             UserMsgIndicator.write(user.getUserId(),
                     ServiceContext.getTransactionDate(),
@@ -114,17 +139,17 @@ public final class ReqJobTicketCancel extends ApiRequestMixin {
      * @return The email address or {@code null} when not send.
      */
     private String sendEmailNotification(final String operator,
-            final OutboxJobDto dto, final User user) {
+            final OutboxJobDto dto, final String reason, final User user) {
         /*
          * INVARIANT: Notification must be enabled.
          */
         if (!ConfigManager.instance()
-                .isConfigValue(Key.JOBTICKET_NOTIFY_EMAIL_COMPLETED_ENABLE)) {
+                .isConfigValue(Key.JOBTICKET_NOTIFY_EMAIL_CANCELED_ENABLE)) {
             return null;
         }
 
         return JOBTICKET_SERVICE.notifyTicketCanceledByEmail(dto, operator,
-                user, ConfigManager.getDefaultLocale());
+                user, reason, ConfigManager.getDefaultLocale());
     }
 
 }

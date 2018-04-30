@@ -26,8 +26,8 @@ import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.server.SpSession;
 import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.session.SpSession;
 
 /**
  *
@@ -60,7 +60,7 @@ public class Letterhead extends AbstractUserPage {
             canCreate = true;
         } else {
             final Integer letterheadPriv =
-                    ACCESS_CONTROL_SERVICE.getUserPrivileges(
+                    ACCESS_CONTROL_SERVICE.getPrivileges(
                             SpSession.get().getUser(), ACLOidEnum.U_LETTERHEAD);
             canCreate = letterheadPriv == null || ACLPermissionEnum.EDITOR
                     .isPresent(letterheadPriv.intValue());

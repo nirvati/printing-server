@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,6 +45,7 @@ import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.crypto.OneTimeAuthToken;
+import org.savapage.core.doc.DocContentTypeEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserEmail;
 import org.savapage.core.services.ServiceContext;
@@ -54,13 +55,13 @@ import org.savapage.ext.oauth.OAuthClientPlugin;
 import org.savapage.ext.oauth.OAuthPluginException;
 import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.oauth.OAuthUserInfo;
-import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.FontOptionsPanel;
 import org.savapage.server.pages.MarkupHelper;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,6 +77,9 @@ public final class WebAppUser extends AbstractWebAppPage {
 
     private final static String PAGE_PARM_AUTH_TOKEN = "auth_token";
     private final static String PAGE_PARM_AUTH_TOKEN_USERID = "auth_user";
+
+    private final static String WICKET_ID_FILE_UPLOAD_FONTFAMILY_OPT =
+            "file-upload-fontfamily-options";
 
     /**
      *
@@ -162,8 +166,8 @@ public final class WebAppUser extends AbstractWebAppPage {
 
             default:
                 htmlId = "sp-file-upload-inbox-button";
-                cssClass = "ui-icon-main-arr-return";
-                uiText = getLocalizer().getString("button-inbox", getPage());
+                cssClass = "ui-icon-main-home";
+                uiText = HtmlButtonEnum.BACK.uiText(getPage().getLocale());
                 break;
             }
 
@@ -426,6 +430,12 @@ public final class WebAppUser extends AbstractWebAppPage {
         }
     }
 
+    /** */
+    private void discloseAll() {
+        final MarkupHelper helper = new MarkupHelper(this);
+        helper.discloseLabel(WICKET_ID_FILE_UPLOAD_FONTFAMILY_OPT);
+    }
+
     /**
      *
      * @param parameters
@@ -436,6 +446,7 @@ public final class WebAppUser extends AbstractWebAppPage {
         super(parameters);
 
         if (isWebAppCountExceeded(parameters)) {
+            discloseAll();
             this.setWebAppCountExceededResponse();
             return;
         }
@@ -450,6 +461,8 @@ public final class WebAppUser extends AbstractWebAppPage {
             checkOneTimeAuthToken(parameters);
 
         } else if (!oauth.booleanValue()) {
+
+            discloseAll();
 
             final PageParameters parms = new PageParameters();
 
@@ -475,12 +488,11 @@ public final class WebAppUser extends AbstractWebAppPage {
         //
         final List<UploadNextButton> nextButtons = new ArrayList<>();
 
-        nextButtons.add(UploadNextButton.PRINT);
-        nextButtons.add(UploadNextButton.PDF);
         nextButtons.add(UploadNextButton.INBOX);
+        nextButtons.add(UploadNextButton.PDF);
+        nextButtons.add(UploadNextButton.PRINT);
 
         add(new UploadNextButtonView("next-buttons", nextButtons));
-
     }
 
     @Override
@@ -532,10 +544,18 @@ public final class WebAppUser extends AbstractWebAppPage {
         add(fileUploadField);
 
         //
-        final FontOptionsPanel fontOptionsPanel =
-                new FontOptionsPanel("file-upload-fontfamily-options");
-        fontOptionsPanel.populate(ConfigManager
-                .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY));
-        add(fontOptionsPanel);
+        final Set<DocContentTypeEnum> excludeTypes =
+                WebPrintHelper.getExcludeTypes();
+
+        if (excludeTypes.contains(DocContentTypeEnum.TXT)) {
+            final MarkupHelper helper = new MarkupHelper(this);
+            helper.discloseLabel(WICKET_ID_FILE_UPLOAD_FONTFAMILY_OPT);
+        } else {
+            final FontOptionsPanel fontOptionsPanel =
+                    new FontOptionsPanel(WICKET_ID_FILE_UPLOAD_FONTFAMILY_OPT);
+            fontOptionsPanel.populate(ConfigManager
+                    .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY));
+            add(fontOptionsPanel);
+        }
     }
 }

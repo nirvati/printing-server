@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -66,6 +66,9 @@ public final class ReqPrinterOptValidate extends ApiRequestMixin {
     private static class DtoReq extends AbstractDto {
 
         private String printer;
+
+        ReqPrinterPrint.JobTicketTypeEnum jobTicketType;
+
         private Map<String, String> options;
 
         public String getPrinter() {
@@ -75,6 +78,16 @@ public final class ReqPrinterOptValidate extends ApiRequestMixin {
         @SuppressWarnings("unused")
         public void setPrinter(String printer) {
             this.printer = printer;
+        }
+
+        public ReqPrinterPrint.JobTicketTypeEnum getJobTicketType() {
+            return jobTicketType;
+        }
+
+        @SuppressWarnings("unused")
+        public void setJobTicketType(
+                ReqPrinterPrint.JobTicketTypeEnum jobTicketType) {
+            this.jobTicketType = jobTicketType;
         }
 
         public Map<String, String> getOptions() {
@@ -102,12 +115,35 @@ public final class ReqPrinterOptValidate extends ApiRequestMixin {
         final JsonProxyPrinter proxyPrinter =
                 PROXY_PRINT_SERVICE.getCachedPrinter(dtoReq.getPrinter());
 
-        // Get the assigned media
-        mediaFromMediaSource(dtoReq.getOptions(), dtoReq.getPrinter());
+        final String requestedMediaSource = dtoReq.getOptions()
+                .get(IppDictJobTemplateAttr.ATTR_MEDIA_SOURCE);
 
-        //
-        final String msg = PROXY_PRINT_SERVICE.validateCustomCostRules(
-                proxyPrinter, dtoReq.getOptions(), getLocale());
+        final boolean isAssignedMediaSource = requestedMediaSource != null
+                && !requestedMediaSource.equals(IppKeyword.MEDIA_SOURCE_AUTO);
+
+        if (proxyPrinter.getJobTicket() && dtoReq.getJobTicketType() != null
+                && dtoReq.getJobTicketType()
+                        .equals(ReqPrinterPrint.JobTicketTypeEnum.COPY)
+                && !isAssignedMediaSource) {
+
+            setApiResult(ApiResultCodeEnum.WARN,
+                    "msg-copyjob-media-source-missing");
+            return;
+        }
+
+        // Get the assigned media
+        mediaFromMediaSource(requestedMediaSource, dtoReq.getOptions(),
+                dtoReq.getPrinter());
+
+        // Standard constraints
+        String msg = PROXY_PRINT_SERVICE.validateContraintsMsg(proxyPrinter,
+                dtoReq.getOptions(), getLocale());
+
+        // Job Ticket constraints only.
+        if (msg == null && proxyPrinter.getJobTicket()) {
+            msg = PROXY_PRINT_SERVICE.validateCustomCostRules(proxyPrinter,
+                    dtoReq.getOptions(), getLocale());
+        }
 
         if (msg == null) {
             setApiResultOk();
@@ -117,18 +153,17 @@ public final class ReqPrinterOptValidate extends ApiRequestMixin {
     }
 
     /**
-     * Updates the IPP media from the selected media-source.
+     * Updates the IPP media from the requested media-source.
      *
+     * @param requestedMediaSource
+     *            The requested media-source.
      * @param options
      *            The IPP option map.
      * @param printerName
      *            The printer name.
      */
-    private void mediaFromMediaSource(final Map<String, String> options,
-            final String printerName) {
-
-        final String requestedMediaSource =
-                options.get(IppDictJobTemplateAttr.ATTR_MEDIA_SOURCE);
+    private void mediaFromMediaSource(final String requestedMediaSource,
+            final Map<String, String> options, final String printerName) {
 
         if (requestedMediaSource == null
                 || requestedMediaSource.equals(IppKeyword.MEDIA_SOURCE_AUTO)) {

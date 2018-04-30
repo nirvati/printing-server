@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -57,14 +58,32 @@
 						<label for="sp-jobticket-userid">
 							<wicket:message key="prompt-userid" />
 						</label>
-						<input tabindex="1" type="text" id="sp-jobticket-userid" value=""
+
+						<input tabindex="0" type="text" id="sp-jobticket-userid" value=""
 							maxlength="128" autofocus data-type="search" autocomplete="off"
 							autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+						<ul id="sp-jobticket-userid-filter" data-role="listview"
+							data-filter="true" data-input="#sp-jobticket-userid"
+							data-filter-theme="a" data-inset="true" style="float: right;" />
+
 					</div>
-					<ul id="sp-jobticket-userid-filter" data-role="listview"
-						data-filter="true" data-input="#sp-jobticket-userid"
-						data-filter-placeholder="Find a User by ID..."
-						data-filter-theme="a" data-inset="true" />
+
+					<div class="ui-field-contain">
+						<label for="sp-jobticket-search-ticket">
+							<span class="sp-txt-wrap" wicket:id="prompt-ticket" />
+						</label>
+
+						<input type="text" id="sp-jobticket-search-ticket" value=""
+							placeholder="" maxlength="32" data-type="search"
+							autocomplete="off" autocorrect="off" autocapitalize="off"
+							spellcheck="false" data-clear-btn="true" />
+
+						<ul id="sp-jobticket-search-ticket-filter" data-role="listview"
+							data-filter="true" data-input="#sp-jobticket-search-ticket"
+							data-filter-theme="a" data-inset="true" style="float: right;" />
+
+					</div>
 
 					<div class="ui-field-contain">
 						<fieldset data-role="controlgroup" data-type="horizontal"
@@ -88,6 +107,15 @@
 
 						</fieldset>
 					</div>
+
+					<div class="ui-field-contain">
+						<label for="jobtickets-max-items">
+							<wicket:message key="prompt-number" />
+						</label>
+						<input id="jobtickets-max-items" wicket:id="jobtickets-max-items"
+							min="0" max="50" step="1" value="0" type="range" />
+					</div>
+
 				</div>
 
 				<div>
@@ -106,6 +134,9 @@
 								style="width: 0%; height: 100%; background-color: #ededed;" />
 						</div>
 					</div>
+
+					<div id="div-ticket-queue-info" style="float: right; margin: 10px;" />
+
 				</div>
 
 				<div data-role="controlgroup" data-type="horizontal">
@@ -117,15 +148,18 @@
 						wicket:id="button-cancel-all"
 						class="sp-jobtickets-all ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-delete" />
 
-					<button id="btn-jobtickets-print-all" data-rel="popup"
-						wicket:id="button-print-all"
-						class="sp-jobtickets-all ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-action" />
+					<wicket:enclosure child="button-print-all">
+						<button id="btn-jobtickets-print-all" data-rel="popup"
+							wicket:id="button-print-all"
+							class="sp-jobtickets-all ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-action" />
+					</wicket:enclosure>
 
 					<button id="btn-jobtickets-close" data-rel="back"
 						data-direction="reverse" wicket:id="button-logout"
 						class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-power" />
 
 				</div>
+
 			</div>
 
 			<div id="jobticket-list" />
@@ -136,9 +170,48 @@
 			<!-- TAB: Closed -->
 		</wicket:remove>
 
-		<div id="sp-jobtickets-tab-closed" class="ui-content" />
+		<div id="sp-jobtickets-tab-closed" class="ui-content">
+
+			<input type="hidden" id="sp-doclog-hidden-user-id" />
+
+			<ul data-role="listview" data-inset="true">
+				<li class="ui-mini">
+					<div class="ui-field-contain">
+						<label for="sp-doclog-select-userid">
+							<wicket:message key="prompt-userid" />
+						</label>
+						<input tabindex="0" type="text" id="sp-doclog-select-userid"
+							value="" maxlength="128" autofocus data-type="search"
+							autocomplete="off" autocorrect="off" autocapitalize="off"
+							spellcheck="false" />
+
+						<ul id="sp-doclog-select-userid-filter" data-role="listview"
+							data-filter="true" data-input="#sp-doclog-select-userid"
+							data-filter-placeholder="Find a User by ID..."
+							data-filter-theme="a" data-inset="true" style="float: right;" />
+					</div>
+				</li>
+			</ul>
+
+			<div id="sp-jobtickets-tab-closed-doclog" />
+		</div>
 
 	</div>
+</div>
+
+<div data-role="footer" data-position="fixed">
+	<fieldset data-role="controlgroup" data-type="horizontal"
+		data-mini="true">
+
+		<wicket:enclosure child="mini-sys-maintenance">
+			<button class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-alert">
+				<span wicket:id="mini-sys-maintenance" class="sp-txt-warn" />
+			</button>
+		</wicket:enclosure>
+
+		<wicket:panel wicket:id="community-status-footer-panel" />
+
+	</fieldset>
 </div>
 
 
@@ -221,3 +294,4 @@ THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG
 </wicket:remove>
 <div data-role="popup" data-position-to="window"
 	class="sp-msg-popup ui-content" />
+</html>

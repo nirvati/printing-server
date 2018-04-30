@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -68,6 +68,7 @@ import org.savapage.server.WebApp;
  */
 public final class DocLogItem {
 
+    private Long docLogId;
     private ExternalSupplierEnum extSupplier;
     private ExternalSupplierStatusEnum extSupplierStatus;
     private String extId;
@@ -86,6 +87,8 @@ public final class DocLogItem {
 
     private String currencyCode;
     private BigDecimal cost;
+    private BigDecimal costOriginal;
+    private boolean refunded;
 
     private String humanReadableByteCount;
     private int totalPages;
@@ -101,6 +104,7 @@ public final class DocLogItem {
     private Integer numberUp;
     private Boolean grayscale;
 
+    private boolean pageRotate180;
     private boolean finishingPunch;
     private boolean finishingStaple;
     private boolean finishingFold;
@@ -129,6 +133,14 @@ public final class DocLogItem {
     private Boolean ownerPw;
 
     private List<AccountTrx> transactions;
+
+    public Long getDocLogId() {
+        return docLogId;
+    }
+
+    public void setDocLogId(Long docLogId) {
+        this.docLogId = docLogId;
+    }
 
     public ExternalSupplierEnum getExtSupplier() {
         return extSupplier;
@@ -401,6 +413,7 @@ public final class DocLogItem {
 
                 DocLogItem log = new DocLogItem();
 
+                log.setDocLogId(docLog.getId());
                 log.setExtSupplier(DaoEnumHelper.getExtSupplier(docLog));
                 log.setExtSupplierStatus(
                         DaoEnumHelper.getExtSupplierStatus(docLog));
@@ -415,6 +428,8 @@ public final class DocLogItem {
                 log.setDrmRestricted(docLog.getDrmRestricted());
                 log.setCreatedDate(docLog.getCreatedDate());
                 log.setCost(docLog.getCost());
+                log.setCostOriginal(docLog.getCostOriginal());
+                log.setRefunded(docLog.getRefunded());
 
                 if (docLog.getNumberOfPages() == null) {
                     log.setTotalPages(0);
@@ -540,6 +555,7 @@ public final class DocLogItem {
                                     new IppOptionMap(ippOptions);
                             log.setIppOptionMap(optionMap);
 
+                            log.setPageRotate180(optionMap.hasPageRotate180());
                             log.setFinishingBooklet(
                                     optionMap.hasFinishingBooklet());
                             log.setFinishingFold(optionMap.hasFinishingFold());
@@ -1251,6 +1267,14 @@ public final class DocLogItem {
         this.grayscale = grayscale;
     }
 
+    public boolean isPageRotate180() {
+        return pageRotate180;
+    }
+
+    public void setPageRotate180(boolean pageRotate180) {
+        this.pageRotate180 = pageRotate180;
+    }
+
     public boolean isFinishingPunch() {
         return finishingPunch;
     }
@@ -1474,6 +1498,22 @@ public final class DocLogItem {
 
     public void setCost(BigDecimal cost) {
         this.cost = cost;
+    }
+
+    public BigDecimal getCostOriginal() {
+        return costOriginal;
+    }
+
+    public void setCostOriginal(BigDecimal costOriginal) {
+        this.costOriginal = costOriginal;
+    }
+
+    public boolean isRefunded() {
+        return refunded;
+    }
+
+    public void setRefunded(boolean refunded) {
+        this.refunded = refunded;
     }
 
 }

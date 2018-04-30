@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2017 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.AbstractDto;
@@ -39,25 +40,16 @@ import org.savapage.core.services.ServiceContext;
  * @author Rijk Ravestein
  *
  */
-public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
-
-    /**
-     * The number of rows to retrieve in the Quick Search result set as multiple
-     * of requested rows. This factor is needed since some retrieved items don't
-     * qualify for the ACL role.
-     */
-    private static final int MAX_RESULTS_FACTOR = 2;
+public final class ReqUserGroupMemberQuickSearch extends ReqQuickSearchMixin {
 
     /**
      *
      * @author Rijk Ravestein
      *
      */
-    private static class DtoRsp extends AbstractDto {
+    private static class DtoRsp extends DtoQuickSearchRsp {
 
         private List<QuickSearchUserGroupMemberItemDto> items;
-
-        private String searchMsg;
 
         @SuppressWarnings("unused")
         public List<QuickSearchUserGroupMemberItemDto> getItems() {
@@ -66,15 +58,6 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
 
         public void setItems(List<QuickSearchUserGroupMemberItemDto> items) {
             this.items = items;
-        }
-
-        @SuppressWarnings("unused")
-        public String getSearchMsg() {
-            return searchMsg;
-        }
-
-        public void setSearchMsg(String searchMsg) {
-            this.searchMsg = searchMsg;
         }
     }
 
@@ -90,47 +73,31 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
 
         final List<QuickSearchUserGroupMemberItemDto> items = new ArrayList<>();
 
-        //
-        final UserDao.ListFilter filter = new UserDao.ListFilter();
+        final UserDao.ListFilter userFilter = new UserDao.ListFilter();
 
-        filter.setUserGroupId(dto.getGroupId());
-        filter.setContainingNameText(dto.getFilter());
-        filter.setDeleted(Boolean.FALSE);
+        userFilter.setUserGroupId(dto.getGroupId());
+        userFilter.setContainingNameText(dto.getFilter());
+        userFilter.setDeleted(Boolean.FALSE);
+        userFilter.setDisabled(Boolean.FALSE);
 
-        final int nUsersMax = dto.getMaxResults();
+        if (dto.getAclRole() != null) {
+            userFilter.setAclFilter(createACLFilter(dto.getAclRole(),
+                    dto.getGroupId() != null));
+        }
 
-        int nUsersConsumed = 0;
-        int nUsersSelected = 0;
-        int iStartPosition = 0;
+        final int totalResults;
 
-        // The number of rows to retrieve in the Quick Search result set.
-        final int maxListChunkResults = MAX_RESULTS_FACTOR * nUsersMax;
+        if (dto.getTotalResults() == null) {
+            totalResults = (int) userDao.getListCount(userFilter);
+        } else {
+            totalResults = dto.getTotalResults().intValue();
+        }
 
         final List<User> userListChunkFirst =
-                userDao.getListChunk(filter, iStartPosition,
-                        maxListChunkResults, UserDao.Field.USERID, true);
+                userDao.getListChunk(userFilter, dto.getStartPosition(),
+                        dto.getMaxResults(), UserDao.Field.USERID, true);
 
         for (final User user : userListChunkFirst) {
-
-            nUsersConsumed++;
-
-            final boolean selectUser;
-
-            if (dto.getAclRole() == null) {
-                // Not restricted by role.
-                selectUser = true;
-            } else if (dto.getAclRole() == ACLRoleEnum.PRINT_DELEGATOR
-                    && user.getUserId().equals(requestingUser)) {
-                // Requesting user can be its own print delegator.
-                selectUser = true;
-            } else {
-                selectUser = ACCESSCONTROL_SERVICE.isAuthorized(user,
-                        dto.getAclRole());
-            }
-
-            if (!selectUser) {
-                continue;
-            }
 
             final QuickSearchUserGroupMemberItemDto itemWlk =
                     new QuickSearchUserGroupMemberItemDto();
@@ -140,12 +107,6 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
             itemWlk.setFullName(user.getFullName());
 
             items.add(itemWlk);
-
-            nUsersSelected++;
-
-            if (nUsersSelected == nUsersMax) {
-                break;
-            }
         }
 
         /*
@@ -153,26 +114,65 @@ public final class ReqUserGroupMemberQuickSearch extends ApiRequestMixin {
          */
         final DtoRsp rsp = new DtoRsp();
         rsp.setItems(items);
-
-        // Assume there are next candidates.
-        String msg = ". . .";
-
-        if (nUsersConsumed == maxListChunkResults) {
-            // Is next chunk available?
-            iStartPosition += maxListChunkResults;
-            final List<User> userListChunkNext = userDao.getListChunk(filter,
-                    iStartPosition, 1, UserDao.Field.USERID, true);
-
-            if (userListChunkNext.isEmpty()) {
-                msg = null;
-            }
-        } else if (nUsersConsumed != nUsersMax) {
-            msg = null;
-        }
-
-        rsp.setSearchMsg(msg);
+        rsp.calcNavPositions(dto.getMaxResults().intValue(),
+                dto.getStartPosition().intValue(), totalResults);
 
         setResponse(rsp);
         setApiResultOk();
+    }
+
+    /**
+     * Creates an {@link UserDao.ACLFilter} for a {@link ACLRoleEnum}.
+     *
+     * @param role
+     *            The role.
+     * @param withinGroup
+     *            If {@code true}, a filter is created that will work within
+     *            User Group scope only.
+     * @return The filter.
+     */
+    private static UserDao.ACLFilter createACLFilter(final ACLRoleEnum role,
+            final boolean withinGroup) {
+
+        final UserDao.ACLFilter filter = new UserDao.ACLFilter();
+        filter.setAclRole(role);
+
+        if (withinGroup) {
+            filter.setAclUserExternal(true);
+            filter.setAclUserInternal(true);
+            return filter;
+        }
+
+        final Boolean authExt = ACCESSCONTROL_SERVICE.isGroupAuthorized(
+                USER_GROUP_SERVICE.getExternalUserGroup(), role);
+
+        final Boolean authInt = ACCESSCONTROL_SERVICE.isGroupAuthorized(
+                USER_GROUP_SERVICE.getInternalUserGroup(), role);
+
+        if (authExt != null && authInt != null) {
+
+            filter.setAclUserExternal(authExt.booleanValue());
+            filter.setAclUserInternal(authInt.booleanValue());
+
+        } else {
+
+            final Boolean authAll =
+                    BooleanUtils.isTrue(ACCESSCONTROL_SERVICE.isGroupAuthorized(
+                            USER_GROUP_SERVICE.getAllUserGroup(), role));
+
+            if (authExt == null) {
+                filter.setAclUserExternal(authAll.booleanValue());
+            } else {
+                filter.setAclUserExternal(authExt.booleanValue());
+            }
+
+            if (authInt == null) {
+                filter.setAclUserInternal(authAll.booleanValue());
+            } else {
+                filter.setAclUserInternal(authInt.booleanValue());
+            }
+        }
+
+        return filter;
     }
 }

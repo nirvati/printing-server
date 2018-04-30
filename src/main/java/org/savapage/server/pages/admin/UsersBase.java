@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,9 +30,12 @@ import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.UserGroupDao;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ReservedUserGroupEnum;
 import org.savapage.core.jpa.UserGroup;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.pages.JrExportFileExtButtonPanel;
 
 /**
  *
@@ -41,14 +44,10 @@ import org.savapage.core.services.ServiceContext;
  */
 public final class UsersBase extends AbstractAdminPage {
 
-    /**
-     * .
-     */
+    /** */
     private static final String WICKET_ID_BUTTON_NEW = "button-new";
 
-    /**
-     * .
-     */
+    /** */
     private static final String WICKET_ID_TXT_NOT_READY =
             "warn-not-ready-to-use";
 
@@ -59,18 +58,26 @@ public final class UsersBase extends AbstractAdminPage {
 
     /**
      *
+     * @param parameters
+     *            The page parameters.
      */
     public UsersBase(final PageParameters parameters) {
 
         super(parameters);
 
+        final boolean hasEditorAccess =
+                this.probePermissionToEdit(ACLOidEnum.A_USERS);
+
         final boolean isAppReady = ConfigManager.instance().isAppReadyToUse();
 
-        addVisible(isAppReady && ConfigManager.isInternalUsersEnabled(),
-                WICKET_ID_BUTTON_NEW, localized("button-new"));
+        addVisible(isAppReady && hasEditorAccess, WICKET_ID_BUTTON_NEW,
+                HtmlButtonEnum.ADD.uiText(getLocale()));
 
         addVisible(!isAppReady, WICKET_ID_TXT_NOT_READY,
                 localized("warn-not-ready-to-use"));
+
+        add(new JrExportFileExtButtonPanel("report-button-panel",
+                "sp-btn-users-report"));
 
         //
         final UserGroupDao userGroupDao =

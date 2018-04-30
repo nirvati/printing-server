@@ -21,9 +21,12 @@
  */
 package org.savapage.server.pages;
 
+import org.apache.wicket.markup.html.basic.Label;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dto.PrintDelegationDto;
+import org.savapage.core.i18n.PrintOutNounEnum;
+import org.savapage.server.helpers.HtmlButtonEnum;
 
 /**
  *
@@ -45,6 +48,15 @@ public final class PagePrintDelegation extends AbstractPage {
         //
         final MarkupHelper helper = new MarkupHelper(this);
 
+        final String txtCopies =
+                PrintOutNounEnum.COPY.uiText(getLocale(), true);
+        //
+        add(new Label("header-copies-1", txtCopies));
+        add(new Label("header-copies-2", txtCopies));
+
+        helper.addButton("btn-next", HtmlButtonEnum.NEXT);
+        helper.addButton("button-inbox", HtmlButtonEnum.BACK);
+
         //
         final ConfigManager cm = ConfigManager.instance();
 
@@ -55,27 +67,27 @@ public final class PagePrintDelegation extends AbstractPage {
             helper.discloseLabel("radio-account-group");
         }
 
-        if (cm.isConfigValue(Key.PROXY_PRINT_DELEGATE_ACCOUNT_USER_ENABLE)) {
-            helper.addModifyLabelAttr("radio-account-user", "value",
-                    PrintDelegationDto.DelegatorAccountEnum.USER.toString());
-        } else {
-            helper.discloseLabel("radio-account-user");
-        }
+        helper.addModifyLabelAttr("radio-account-user", "value",
+                PrintDelegationDto.DelegatorAccountEnum.USER.toString());
+
+        helper.encloseLabel("member-copies", txtCopies, cm.isConfigValue(
+                Key.PROXY_PRINT_DELEGATE_MULTIPLE_MEMBER_COPIES_ENABLE));
 
         if (cm.isConfigValue(Key.PROXY_PRINT_DELEGATE_ACCOUNT_SHARED_ENABLE)) {
 
             helper.addModifyLabelAttr("radio-account-shared", "value",
                     PrintDelegationDto.DelegatorAccountEnum.SHARED.toString());
 
-            helper.encloseLabel("radio-add-copies",
-                    localized("label-add-copies"), true);
+            helper.encloseLabel("radio-add-extra", localized("label-add-extra"),
+                    true);
 
-            helper.encloseLabel("copies-to-add", "", true);
+            helper.encloseLabel("extra-to-add", "", true);
+            helper.addLabel("member-copies-2", txtCopies);
 
         } else {
             helper.discloseLabel("radio-account-shared");
-            helper.discloseLabel("radio-add-copies");
-            helper.discloseLabel("copies-to-add");
+            helper.discloseLabel("radio-add-extra");
+            helper.discloseLabel("extra-to-add");
         }
 
         //
@@ -83,7 +95,7 @@ public final class PagePrintDelegation extends AbstractPage {
                 new QuickSearchPanel("quicksearch-user-groups");
         add(panel);
         panel.populate("sp-print-delegation-groups-select-to-add",
-                getLocalizer().getString("label-groups", this), "");
+                getLocalizer().getString("label-groups", this), "", true);
 
         //
         final QuickSearchPanel panelUsers =
@@ -91,15 +103,15 @@ public final class PagePrintDelegation extends AbstractPage {
         add(panelUsers);
 
         panelUsers.populate("sp-print-delegation-users-select-to-add",
-                getLocalizer().getString("label-users", this), "");
+                getLocalizer().getString("label-users", this), "", true);
 
         //
         final QuickSearchPanel panelAccounts =
                 new QuickSearchPanel("quicksearch-shared-account");
         add(panelAccounts);
 
-        panelAccounts.populate("sp-print-delegation-select-shared-account", "",
-                "");
+        panelAccounts.populate("sp-print-delegation-select-shared-account",
+                PrintOutNounEnum.ACCOUNT.uiText(getLocale()), "", true);
     }
 
 }

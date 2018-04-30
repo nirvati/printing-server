@@ -23,6 +23,7 @@ package org.savapage.server.pages;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.wicket.AttributeModifier;
@@ -32,6 +33,7 @@ import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.IRequestParameters;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
+import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.DeviceDao;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
@@ -39,11 +41,13 @@ import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.UserAuth;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.ext.ServerPluginHelper;
 import org.savapage.server.ext.ServerPluginManager;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -65,6 +69,19 @@ public final class Login extends AbstractPage {
 
         super(parameters);
 
+        final MarkupHelper helper = new MarkupHelper(this);
+
+        final List<Locale> availableLocales =
+                LocaleHelper.getAvailableLanguages();
+
+        if (availableLocales.size() == 1) {
+            SpSession.get().setLocale(availableLocales.get(0));
+        }
+
+        helper.encloseLabel("button-lang", getString("button-lang"),
+                availableLocales.size() > 1);
+
+        //
         add(new Label("title",
                 localized("title", CommunityDictEnum.SAVAPAGE.getWord())));
 
@@ -88,8 +105,6 @@ public final class Login extends AbstractPage {
 
         final HtmlInjectComponent htmlInject = new HtmlInjectComponent(
                 "login-inject", webAppType, HtmlInjectEnum.LOGIN);
-
-        final MarkupHelper helper = new MarkupHelper(this);
 
         if (htmlInject.isInjectAvailable()) {
             add(htmlInject);
@@ -147,6 +162,15 @@ public final class Login extends AbstractPage {
                         .toString() != null;
 
         addOAuthButtons(localLoginRestricted);
+
+        //
+        if (ConfigManager.isSysMaintenance()) {
+            helper.addLabel("maintenance-header",
+                    localized("maintenance-header"));
+            helper.addLabel("maintenance-body", localized("maintenance-body"));
+        } else {
+            helper.discloseLabel("maintenance-header");
+        }
     }
 
     /**
@@ -225,6 +249,5 @@ public final class Login extends AbstractPage {
             }
 
         });
-
     }
 }

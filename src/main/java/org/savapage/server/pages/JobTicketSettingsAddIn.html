@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +=========================================================================+ 
@@ -13,31 +14,34 @@
     -->
 </wicket:remove>
 
-<table class="sp-jobtickets-settings">
+<wicket:enclosure child="setting-row">
 
-	<wicket:container wicket:id="setting-row">
-		<wicket:enclosure child="cat-th">
-			<tr class="sp-jobtickets-settings-cat">
-				<th wicket:id="cat-th" />
-				<td wicket:id="cat-td" />
+	<table class="sp-jobtickets-settings">
+
+		<wicket:container wicket:id="setting-row">
+			<wicket:enclosure child="cat-th">
+				<tr class="sp-jobtickets-settings-cat">
+					<th wicket:id="cat-th" />
+					<td wicket:id="cat-td" />
+				</tr>
+			</wicket:enclosure>
+			<wicket:enclosure child="td">
+				<tr>
+					<th />
+					<td wicket:id="td" />
+				</tr>
+			</wicket:enclosure>
+		</wicket:container>
+
+		<wicket:enclosure child="jobticket-remark">
+			<tr valign="top" class="sp-jobtickets-settings-cat">
+				<td colspan="2" style="max-width: 350px;"
+					wicket:id="jobticket-remark"></td>
 			</tr>
 		</wicket:enclosure>
-		<wicket:enclosure child="td">
-			<tr>
-				<th />
-				<td wicket:id="td" />
-			</tr>
-		</wicket:enclosure>
-	</wicket:container>
 
-	<wicket:enclosure child="jobticket-remark">
-		<tr valign="top" class="sp-jobtickets-settings-cat">
-			<td colspan="2" style="max-width: 350px;"
-				wicket:id="jobticket-remark"></td>
-		</tr>
-	</wicket:enclosure>
+	</table>
 
-</table>
+</wicket:enclosure>
 
-
-
+</html>

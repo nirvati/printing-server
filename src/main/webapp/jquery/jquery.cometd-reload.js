@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2016 the original author or authors.
+ * Copyright (c) 2008-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,23 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-(function() {
-    function bind(org_cometd, cookie, ReloadExtension, cometd) {
-        // Remap cometd COOKIE functions to jquery cookie functions
-        // Avoid to set to undefined if the jquery cookie plugin is not present
-        if (cookie) {
-            org_cometd.COOKIE.set = cookie;
-            org_cometd.COOKIE.get = cookie;
-        }
 
-        var result = new ReloadExtension();
-        cometd.registerExtension('reload', result);
-        return result;
-    }
-
-    if (typeof define === 'function' && define.amd) {
-        define(['org/cometd', 'jquery.cookie', 'org/cometd/ReloadExtension', 'jquery.cometd'], bind);
+(function(root, factory){
+    if (typeof exports === 'object') {
+        module.exports = factory(require('./jquery.cometd'), require('cometd/ReloadExtension'));
+    } else if (typeof define === 'function' && define.amd) {
+        define(['jquery.cometd', 'cometd/ReloadExtension'], factory);
     } else {
-        bind(org.cometd, jQuery.cookie, org.cometd.ReloadExtension, jQuery.cometd);
+        factory(jQuery.cometd, root.org.cometd.ReloadExtension);
     }
-})();
+}(this, function(cometd, ReloadExtension){
+    var result = new ReloadExtension();
+    cometd.registerExtension('reload', result);
+    return result;
+}));

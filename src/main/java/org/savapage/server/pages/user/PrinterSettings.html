@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -19,15 +20,64 @@
 
 		<li data-role="list-divider" id="title-printer-settings" />
 
-		<li class="sp-print-job-info">
-			<div data-role="controlgroup" data-type="horizontal" class="ui-mini">
-				<button
-					class="ui-shadow ui-btn ui-corner-all ui-btn-icon-notext sp-print-job-media-sources-info" />
-				<button
-					class="ui-shadow ui-btn ui-corner-all ui-btn-icon-notext sp-print-job-media-info" />
+		<li>
+			<div style="width: 100%; float: left;">
+
+				<div class="ui-mini" style="float: left;">
+
+					<div class="sp-print-job-info" data-role="controlgroup"
+						data-type="horizontal">
+						<button tabindex="-1"
+							class="ui-shadow ui-btn ui-corner-all ui-btn-icon-notext sp-print-job-media-sources-info" />
+						<button tabindex="-1"
+							class="ui-shadow ui-btn ui-corner-all ui-btn-icon-notext sp-print-job-media-info" />
+					</div>
+
+					<div class="sp-copy-job-info" data-role="controlgroup"
+						data-type="horizontal">
+						<button
+							class="ui-shadow ui-btn ui-corner-all ui-btn-icon-notext sp-copy-job-info">
+							<span wicket:id="label-copy" /> &nbsp; <span
+								class="sp-txt-wrap sp-copy-job-media-sources-info sp-ipp-media-info-match" />
+						</button>
+					</div>
+
+				</div>
+
+				<div class="ui-mini" style="float: right; margin-right: 10px;">
+
+					<button id="button-print-settings-default"
+						wicket:id="button-default"
+						class="ui-btn ui-btn-icon-right ui-icon-recycle ui-shadow ui-corner-all sp-txt-info" />
+
+					<wicket:enclosure child="label-landscape">
+
+						<div style="float: left;">
+							<label type="checkbox" wicket:id="label-landscape"
+								for="cb-nup-preview-landscape" />
+							<input type="checkbox" id="cb-nup-preview-landscape" />
+						</div>
+
+						<div style="float: right;">
+							<div class="sp-print-job-info"
+								style="float: right; height: 100%; vertical-align: middle;">
+								<wicket:panel wicket:id="tooltip-flipswitch-landscape-print" />
+							</div>
+							<div class="sp-copy-job-info"
+								style="float: right; height: 100%; vertical-align: middle;">
+								<wicket:panel wicket:id="tooltip-flipswitch-landscape-copy" />
+							</div>
+						</div>
+					</wicket:enclosure>
+
+				</div>
+
+				<wicket:enclosure child="number-up-preview">
+					<wicket:panel wicket:id="number-up-preview" />
+				</wicket:enclosure>
+
 			</div>
 		</li>
-
 		<li class="sp-print-job-scaling">
 
 			<wicket:message key="page-scaling" />
@@ -40,7 +90,8 @@
 					<input type="radio" name="" id="" wicket:id="page-scaling-none" />
 
 					<label for="" wicket:id="page-scaling-fit-label" />
-					<input type="radio" name="" id="" wicket:id="page-scaling-fit" checked />
+					<input type="radio" name="" id="" wicket:id="page-scaling-fit"
+						checked />
 
 				</fieldset>
 
@@ -59,12 +110,17 @@
 		</li>
 	</ul>
 
-	<a href="#page-print" id="button-print-settings-next"
-		wicket:id="button-next"
-		class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-arrow-r" />
+	<button id="button-print-settings-back" wicket:id="button-inbox"
+		class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-home" />
 
-	<button id="button-print-settings-default" wicket:id="button-default"
-		class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-recycle" />
+	<wicket:enclosure child="button-next-invoicing">
+		<button id="button-print-settings-next-invoicing"
+			wicket:id="button-next-invoicing"
+			class="ui-btn ui-btn-inline ui-btn-icon-right ui-icon-arrow-r" />
+	</wicket:enclosure>
+
+	<button id="button-print-settings-next" wicket:id="button-next"
+		class="ui-btn ui-btn-inline ui-btn-icon-right ui-icon-arrow-r" />
 
 </div>
 
@@ -75,3 +131,5 @@ THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG
 </wicket:remove>
 <div data-role="popup" data-position-to="window"
 	class="sp-msg-popup ui-content" />
+
+</html>

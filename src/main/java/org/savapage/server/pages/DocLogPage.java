@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -34,7 +34,7 @@ import org.savapage.core.dao.helpers.DocLogPagerReq;
 import org.savapage.core.dao.impl.DaoContextImpl;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.server.SpSession;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Rijk Ravestein
  */
-public class DocLogPage extends AbstractListPage {
+public final class DocLogPage extends AbstractListPage {
 
     private static final long serialVersionUID = 1L;
 
@@ -61,7 +61,7 @@ public class DocLogPage extends AbstractListPage {
 
     @Override
     protected boolean needMembership() {
-        return this.getSessionWebAppType() == WebAppTypeEnum.ADMIN;
+        return false;
     }
 
     /**
@@ -71,8 +71,8 @@ public class DocLogPage extends AbstractListPage {
 
         super(parameters);
 
-        if (isAuthErrorHandled()) {
-            return;
+        if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
+            this.probePermissionToRead(ACLOidEnum.A_DOCUMENTS);
         }
 
         final String data = getParmValue(POST_PARM_DATA);
@@ -92,7 +92,7 @@ public class DocLogPage extends AbstractListPage {
         if (this.getSessionWebAppType() == WebAppTypeEnum.JOBTICKETS) {
 
             showFinancialData = true;
-            userId = null;
+            userId = req.getSelect().getUserId();
 
         } else if (req.getSelect().getAccountId() == null) {
 
@@ -106,7 +106,7 @@ public class DocLogPage extends AbstractListPage {
                  */
                 userId = SpSession.get().getUser().getId();
 
-                showFinancialData = ACCESS_CONTROL_SERVICE.hasUserAccess(
+                showFinancialData = ACCESS_CONTROL_SERVICE.hasAccess(
                         SpSession.get().getUser(), ACLOidEnum.U_FINANCIAL);
             }
         } else {

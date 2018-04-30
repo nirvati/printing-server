@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,10 @@ package org.savapage.server.pages;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.i18n.JobTicketNounEnum;
+import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.server.helpers.HtmlButtonEnum;
 
 /**
@@ -38,29 +42,63 @@ public final class PageJobTickets extends AbstractAuthPage {
      */
     private static final long serialVersionUID = 1L;
 
+    /** */
+    private static final String WICKET_ID_BUTTON_PRINT_ALL = "button-print-all";
+
     @Override
     protected boolean needMembership() {
         return false;
     }
 
     /**
-     * .
+     *
+     * @param parameters
+     *            The page parameters.
      */
     public PageJobTickets(final PageParameters parameters) {
 
         super(parameters);
 
+        final ConfigManager cm = ConfigManager.instance();
         final MarkupHelper helper = new MarkupHelper(this);
 
         addTitle(helper.addButton("button-refresh", HtmlButtonEnum.REFRESH));
         addTitle(helper.addButton("button-logout", HtmlButtonEnum.LOGOUT));
 
-        add(addTitle(new Label("button-print-all", String.format("%s%s",
-                localized("button-print-all"), HtmlButtonEnum.DOTTED_SUFFIX))));
+        if (cm.isConfigValue(Key.WEBAPP_JOBTICKETS_PRINT_ALL_ENABLE)) {
+            add(addTitle(new Label(WICKET_ID_BUTTON_PRINT_ALL,
+                    String.format("%s%s", localized("button-print-all"),
+                            HtmlButtonEnum.DOTTED_SUFFIX))));
+        } else {
+            helper.discloseLabel(WICKET_ID_BUTTON_PRINT_ALL);
+        }
 
         add(addTitle(new Label("button-cancel-all",
                 String.format("%s%s", localized("button-cancel-all"),
                         HtmlButtonEnum.DOTTED_SUFFIX))));
+
+        final Label slider = helper.addModifyLabelAttr("jobtickets-max-items",
+                MarkupHelper.ATTR_VALUE, String.valueOf(
+                        cm.getConfigInt(Key.WEBAPP_JOBTICKETS_LIST_SIZE, 0)));
+
+        MarkupHelper.modifyLabelAttr(slider, MarkupHelper.ATTR_SLIDER_MIN,
+                String.valueOf(cm
+                        .getConfigInt(Key.WEBAPP_JOBTICKETS_LIST_SIZE_MIN, 0)));
+
+        MarkupHelper.modifyLabelAttr(slider, MarkupHelper.ATTR_SLIDER_MAX,
+                String.valueOf(cm
+                        .getConfigInt(Key.WEBAPP_JOBTICKETS_LIST_SIZE_MAX, 0)));
+
+        //
+        helper.addLabel("prompt-ticket",
+                JobTicketNounEnum.TICKET.uiText(getLocale()));
+        //
+        helper.encloseLabel("mini-sys-maintenance",
+                SystemModeEnum.MAINTENANCE.uiText(getLocale()),
+                ConfigManager.isSysMaintenance());
+
+        add(new CommunityStatusFooterPanel("community-status-footer-panel",
+                true));
     }
 
     /**

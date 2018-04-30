@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -40,14 +40,19 @@ import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.PrinterAttrDao;
 import org.savapage.core.dao.PrinterDao;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.AccessControlScopeEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.PrinterAttrEnum;
 import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.AbstractPagerReq;
 import org.savapage.core.dao.helpers.JsonUserGroupAccess;
+import org.savapage.core.dao.helpers.ProxyPrinterSnmpInfoDto;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.ipp.IppSyntaxException;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jpa.Device;
@@ -56,17 +61,21 @@ import org.savapage.core.jpa.PrinterGroupMember;
 import org.savapage.core.json.JsonRollingTimeSeries;
 import org.savapage.core.json.TimeSeriesInterval;
 import org.savapage.core.print.proxy.JsonProxyPrinter;
+import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.DeviceService;
 import org.savapage.core.services.PrinterService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.PrinterAttrLookup;
 import org.savapage.core.services.helpers.ThirdPartyEnum;
+import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.papercut.PaperCutHelper;
 import org.savapage.server.WebApp;
+import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
+import org.savapage.server.session.SpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,40 +91,34 @@ public final class PrintersPage extends AbstractAdminListPage {
      */
     private static final long serialVersionUID = 1L;
 
-    /**
-     *
-     */
+    /** */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(PrintersPage.class);
 
-    /**
-     *
-     */
+    /** */
+    private static final AccessControlService ACCESS_CONTROL_SERVICE =
+            ServiceContext.getServiceFactory().getAccessControlService();
+
+    /** */
     private static final DeviceService DEVICE_SERVICE =
             ServiceContext.getServiceFactory().getDeviceService();
 
-    /**
-     *
-     */
+    /** */
     private static final PrinterService PRINTER_SERVICE =
             ServiceContext.getServiceFactory().getPrinterService();
 
-    /**
-     *
-     */
+    /** */
     private static final PrinterAttrDao PRINTER_ATTR_DAO =
             ServiceContext.getDaoContext().getPrinterAttrDao();
 
-    /**
-    *
-    */
+    /** */
     private static final ProxyPrintService PROXY_PRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
     /**
-     *
+     * Note: must be odd number.
      */
-    private static final int MAX_PAGES_IN_NAVBAR = 5; // must be odd number
+    private static final int MAX_PAGES_IN_NAVBAR = 5;
 
     /**
      * Bean for mapping JSON page request.
@@ -213,9 +216,53 @@ public final class PrintersPage extends AbstractAdminListPage {
 
         private static final long serialVersionUID = 1L;
 
-        public PrintersListView(final String id,
-                final List<Printer> entryList) {
+        /** */
+        private static final String WID_BUTTON_EDIT = "button-edit";
+
+        /** */
+        private static final String WID_BUTTON_LOG = "button-log";
+
+        /** */
+        private static final String WID_BUTTON_CUPS = "button-cups";
+
+        /** */
+        private static final String WID_TICKET_GROUP = "ticketGroup";
+
+        /** */
+        private static final String WID_PRINTER_SPARKLINE = "printer-sparkline";
+
+        /** */
+        private static final String WID_PRINTER_SNMP = "printer-snmp";
+
+        /** */
+        private final boolean isEditor;
+        /** */
+        private final boolean hasAccessDoc;
+        /** */
+        private final boolean showSnmp;
+        /** */
+        private final boolean showCups;
+
+        /**
+         *
+         * @param id
+         * @param entryList
+         * @param isEditor
+         */
+        public PrintersListView(final String id, final List<Printer> entryList,
+                final boolean isEditor) {
+
             super(id, entryList);
+
+            this.isEditor = isEditor;
+            this.hasAccessDoc = ACCESS_CONTROL_SERVICE.hasAccess(
+                    SpSession.get().getUser(), ACLOidEnum.A_DOCUMENTS);
+
+            this.showSnmp = ConfigManager.instance()
+                    .isConfigValue(Key.PRINTER_SNMP_ENABLE);
+
+            this.showCups = InetUtils.isIntranetBrowserHost(
+                    this.getRequest().getClientUrl().getHost());
         }
 
         private String getProxyPrintAuthMode(final Device device) {
@@ -269,13 +316,21 @@ public final class PrintersPage extends AbstractAdminListPage {
             /*
              * Sparklines: pie-chart.
              */
-            String sparklineData = printer.getTotalPages().toString() + ","
-                    + printer.getTotalSheets();
-
-            item.add(new Label("printer-pie", sparklineData));
-
+            MarkupHelper
+                    .modifyLabelAttr(
+                            helper.addModifyLabelAttr("printer-pie",
+                                    SparklineHtml.valueString(
+                                            printer.getTotalPages().toString(),
+                                            printer.getTotalSheets()
+                                                    .toString()),
+                                    SparklineHtml.ATTR_SLICE_COLORS,
+                                    SparklineHtml.arrayAttr(
+                                            SparklineHtml.COLOR_PRINTER,
+                                            SparklineHtml.COLOR_SHEET)),
+                            MarkupHelper.ATTR_CLASS,
+                            SparklineHtml.CSS_CLASS_PRINTER);
             /*
-             * The sparkline.
+             * Sparklines: line.
              */
             final Date observationTime = new Date();
             final JsonRollingTimeSeries<Integer> series =
@@ -290,21 +345,35 @@ public final class PrintersPage extends AbstractAdminListPage {
                 throw new SpException(e);
             }
 
-            sparklineData = "";
+            final StringBuilder sparklineData = new StringBuilder();
 
             final List<Integer> data = series.getData();
-            for (int i = data.size(); i > 0; i--) {
-                if (i < data.size()) {
-                    sparklineData += ",";
+
+            if (data.size() > 1
+                    || data.size() == 1 && data.get(0).intValue() > 0) {
+
+                for (int i = data.size(); i > 0; i--) {
+                    if (i < data.size()) {
+                        sparklineData.append(",");
+                    }
+                    sparklineData.append(data.get(i - 1));
                 }
-                sparklineData += data.get(i - 1).toString();
             }
+            final boolean hasLine = sparklineData.length() > 0;
+            labelWrk = helper.encloseLabel(WID_PRINTER_SPARKLINE,
+                    sparklineData.toString(), hasLine);
 
-            item.add(new Label("printer-sparkline", sparklineData));
-
-            /*
-             *
-             */
+            if (hasLine) {
+                MarkupHelper.modifyLabelAttr(labelWrk,
+                        SparklineHtml.ATTR_LINE_COLOR,
+                        SparklineHtml.COLOR_PRINTER);
+                MarkupHelper.modifyLabelAttr(labelWrk,
+                        SparklineHtml.ATTR_FILL_COLOR,
+                        SparklineHtml.COLOR_PRINTER);
+                MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
+                        SparklineHtml.CSS_CLASS_PRINTER);
+            }
+            //
             item.add(new Label("displayName"));
 
             labelWrk = new Label("printerName");
@@ -322,8 +391,18 @@ public final class PrintersPage extends AbstractAdminListPage {
             final Map<String, Device> readerDevices = new HashMap<>();
 
             if (isJobTicketPrinter) {
+
                 imageSrc = "printer-jobticket-32x32.png";
+
+                helper.addLabel("ticketGroupPrompt",
+                        NounEnum.GROUP.uiText(getLocale()));
+
+                helper.addLabel(WID_TICKET_GROUP,
+                        PRINTER_SERVICE.getAttributeValue(printer,
+                                PrinterAttrEnum.JOBTICKET_PRINTER_GROUP));
+
             } else {
+
                 final MutableBoolean terminalSecured = new MutableBoolean();
                 final MutableBoolean readerSecured = new MutableBoolean();
 
@@ -347,7 +426,10 @@ public final class PrintersPage extends AbstractAdminListPage {
                 } else {
                     imageSrc = "printer-terminal-none-16x16.png";
                 }
+
+                helper.discloseLabel(WID_TICKET_GROUP);
             }
+
             labelWrk = new Label("printerImage", "");
 
             labelWrk.add(new AttributeModifier("src",
@@ -494,6 +576,44 @@ public final class PrintersPage extends AbstractAdminListPage {
             //
             final PrinterAttrLookup attrLookup = new PrinterAttrLookup(printer);
 
+            /*
+             * SNMP
+             */
+            final ProxyPrinterSnmpInfoDto snmpDto;
+            final Date snmpDate;
+
+            if (this.showSnmp) {
+
+                snmpDate = PRINTER_ATTR_DAO.getSnmpDate(attrLookup);
+
+                final String json = PRINTER_ATTR_DAO.getSnmpJson(attrLookup);
+                if (json == null) {
+                    snmpDto = null;
+                } else {
+                    snmpDto = PRINTER_SERVICE.getSnmpInfo(json);
+                    if (snmpDto == null) {
+                        this.removeSnmpAttr(printer);
+                    }
+                }
+            } else {
+                snmpDto = null;
+                snmpDate = null;
+            }
+
+            if (snmpDate == null && snmpDto == null) {
+                helper.discloseLabel(WID_PRINTER_SNMP);
+            } else {
+                final Long printerID;
+                if (this.isEditor) {
+                    printerID = printer.getId();
+                } else {
+                    printerID = null;
+                }
+                item.add(new PrinterSnmpPanel("printer-snmp", printerID,
+                        snmpDate, snmpDto, false));
+            }
+
+            //
             final boolean isInternal =
                     PRINTER_ATTR_DAO.isInternalPrinter(attrLookup);
 
@@ -612,43 +732,72 @@ public final class PrintersPage extends AbstractAdminListPage {
              * Set the uid in 'data-savapage' attribute, so it can be picked up
              * in JavaScript for editing.
              */
-            labelWrk = new Label("button-edit",
-                    getLocalizer().getString("button-edit", this));
-            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
-                    printer.getId()));
-            item.add(labelWrk);
+            if (this.isEditor) {
+                labelWrk = new Label(WID_BUTTON_EDIT,
+                        getLocalizer().getString("button-edit", this));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, printer.getId()));
+                item.add(labelWrk);
+            } else {
+                helper.discloseLabel(WID_BUTTON_EDIT);
+            }
 
-            /*
-             *
-             */
-            labelWrk = new Label("button-log",
-                    getLocalizer().getString("button-log", this));
-            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
-                    printer.getId()));
-            item.add(labelWrk);
+            if (this.hasAccessDoc) {
+                labelWrk = new Label(WID_BUTTON_LOG,
+                        getLocalizer().getString("button-log", this));
+                labelWrk.add(new AttributeModifier(
+                        MarkupHelper.ATTR_DATA_SAVAPAGE, printer.getId()));
+                item.add(labelWrk);
+            } else {
+                helper.discloseLabel(WID_BUTTON_LOG);
+            }
 
-            /*
-             *
-             */
-            labelWrk = new Label("button-cups",
-                    getLocalizer().getString("button-cups", this)) {
-                private static final long serialVersionUID = 1L;
+            //
+            final boolean showButtonCups =
+                    this.showCups && this.isEditor && cupsPrinter != null;
 
-                @Override
-                public boolean isVisible() {
-                    return cupsPrinter != null;
-                }
-            };
+            if (showButtonCups) {
+                MarkupHelper
+                        .modifyLabelAttr(
+                                helper.encloseLabel(WID_BUTTON_CUPS,
+                                        getLocalizer().getString("button-cups",
+                                                this),
+                                        true),
+                                MarkupHelper.ATTR_HREF,
+                                getCupsPrinterUrl(printer.getPrinterName()));
+            } else {
+                helper.discloseLabel(WID_BUTTON_CUPS);
+            }
 
-            labelWrk.add(new AttributeModifier("href",
-                    getCupsPrinterUrl(printer.getPrinterName())));
-            item.add(labelWrk);
+            helper.addTransparantInvisible("sect-buttons",
+                    !this.isEditor && !this.hasAccessDoc);
+        }
 
+        /**
+         * Removes SNMP attributes from printer.
+         *
+         * @param printer
+         *            The printer.
+         */
+        private void removeSnmpAttr(final Printer printer) {
+            final DaoContext ctx = ServiceContext.getDaoContext();
+
+            ctx.beginTransaction();
+            try {
+                PRINTER_SERVICE.removeSnmpAttr(printer);
+                ctx.commit();
+                LOGGER.warn("Removed SNMP info from printer {} ({}).",
+                        printer.getPrinterName(), printer.getDisplayName());
+            } catch (Exception e) {
+                LOGGER.error(e.getMessage());
+                ctx.rollback();
+            }
         }
     }
 
     /**
-     *
+     * @param parameters
+     *            The page parameters.
      */
     public PrintersPage(final PageParameters parameters) {
 
@@ -656,22 +805,13 @@ public final class PrintersPage extends AbstractAdminListPage {
 
         /*
          * Check for new/changed printers.
-         *
-         * We need a transaction because of the lazy creation of Printer
-         * objects.
          */
-        ServiceContext.getDaoContext().beginTransaction();
-
         try {
-
             PROXY_PRINT_SERVICE.lazyInitPrinterCache();
             handlePage();
-
         } catch (IppConnectException e) {
-
             setResponsePage(new MessageContent(AppLogLevelEnum.WARN,
                     localized("ipp-connect-error", e.getMessage())));
-
         } catch (IppSyntaxException e) {
             throw new SpException(e);
         }
@@ -701,7 +841,8 @@ public final class PrintersPage extends AbstractAdminListPage {
                 req.calcStartPosition(), req.getMaxResults(),
                 PrinterDao.Field.DISPLAY_NAME, req.getSort().getAscending());
 
-        add(new PrintersListView("printers-view", entryList));
+        add(new PrintersListView("printers-view", entryList,
+                this.probePermissionToEdit(ACLOidEnum.A_PRINTERS)));
 
         /*
          * Display the navigation bars and write the response.

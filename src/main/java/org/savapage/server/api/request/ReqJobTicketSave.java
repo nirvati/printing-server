@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.SpException;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dto.AbstractDto;
@@ -40,6 +41,7 @@ import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.pdf.PdfPrintCollector;
 import org.savapage.core.print.proxy.JsonProxyPrinter;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.JobTicketWrapperDto;
 import org.savapage.core.services.helpers.PrinterAttrLookup;
 import org.savapage.core.services.helpers.ProxyPrintCostDto;
 import org.savapage.core.services.helpers.ProxyPrintCostParms;
@@ -108,8 +110,10 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
 
         } else {
 
+            final JobTicketWrapperDto wrapper = new JobTicketWrapperDto(dto);
+
             try {
-                this.saveJobTicket(dtoReq, dto);
+                this.saveJobTicket(dtoReq, wrapper);
             } catch (IllegalStateException e) {
                 this.setApiResultText(ApiResultCodeEnum.WARN, e.getMessage());
                 return;
@@ -127,12 +131,15 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
      *
      * @param dtoReq
      *            The changes.
-     * @param dto
-     *            The current ticket.
+     * @param wrapper
+     *            The ticket wrapper.
      * @throws IllegalStateException
      *             When IPP option choice context is invalid.
      */
-    private void saveJobTicket(final DtoReq dtoReq, final OutboxJobDto dto) {
+    private void saveJobTicket(final DtoReq dtoReq,
+            final JobTicketWrapperDto wrapper) {
+
+        final OutboxJobDto dto = wrapper.getTicket();
 
         /*
          * In a Delegated Print, copies are fixed, because determined by number
@@ -152,20 +159,47 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
             optionValuesTmp.put(entry.getKey(), entry.getValue());
         }
 
+        //
+        if (dto.getFillerPages() > 0) {
+
+            final String kwSides = IppDictJobTemplateAttr.ATTR_SIDES;
+            final String kwNup = IppDictJobTemplateAttr.ATTR_NUMBER_UP;
+
+            for (final String kw : new String[] { kwSides, kwNup }) {
+
+                if (!StringUtils.defaultString(optionValuesTmp.get(kw))
+                        .equals(StringUtils.defaultString(
+                                dto.getOptionValues().get(kw)))) {
+
+                    throw new IllegalStateException(String.format(
+                            "Document is prepared for \"%s\" or \"%s\", "
+                                    + "so these options can not be changed.",
+                            PROXY_PRINT_SERVICE.localizePrinterOpt(getLocale(),
+                                    kwSides),
+                            PROXY_PRINT_SERVICE.localizePrinterOpt(getLocale(),
+                                    kwNup)));
+                }
+            }
+        }
+
         /*
-         * media from media-source
+         * TODO: media from media-source
          */
 
-        // TODO
-
         /*
-         * Validate combinations.
+         * Validate constraints.
          */
         final JsonProxyPrinter proxyPrinter =
                 PROXY_PRINT_SERVICE.getCachedPrinter(dto.getPrinter());
 
-        final String userMsg = PROXY_PRINT_SERVICE.validateCustomCostRules(
-                proxyPrinter, optionValuesTmp, getLocale());
+        //
+        String userMsg = PROXY_PRINT_SERVICE.validateContraintsMsg(proxyPrinter,
+                optionValuesTmp, getLocale());
+
+        if (userMsg == null) {
+            userMsg = PROXY_PRINT_SERVICE.validateCustomCostRules(proxyPrinter,
+                    optionValuesTmp, getLocale());
+        }
 
         if (userMsg != null) {
             throw new IllegalStateException(userMsg);
@@ -185,7 +219,7 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
          * Update.
          */
         try {
-            JOBTICKET_SERVICE.updateTicket(dto);
+            JOBTICKET_SERVICE.updateTicket(wrapper);
         } catch (IOException e) {
             throw new SpException(e.getMessage());
         }
@@ -229,9 +263,6 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
         final Printer printer = ServiceContext.getDaoContext().getPrinterDao()
                 .findByName(dto.getPrinter());
 
-        costParms.setNumberOfCopies(dto.getCopies());
-        costParms.setNumberOfPages(dto.getPages());
-
         // Retrieve the regular media source cost.
         final PrinterAttrLookup printerAttrLookup =
                 new PrinterAttrLookup(printer);
@@ -244,16 +275,21 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
 
         costParms.setMediaSourceCost(mediaSourceCost);
 
-        // Calculate print cost.
+        // Set number of sheets first ...
+        dto.setSheets(PdfPrintCollector.calcNumberOfPrintedSheets(
+                dto.getPages(), dto.getCopies(), costParms.isDuplex(),
+                costParms.getPagesPerSide(), false, false, false));
+
+        // .. and set ...
+        costParms.setNumberOfCopies(dto.getCopies());
+        costParms.setNumberOfPages(dto.getPages());
+        costParms.setNumberOfSheets(dto.getSheets());
+
+        // .. and finally calculate print cost.
         final ProxyPrintCostDto costResult =
                 ACCOUNTING_SERVICE.calcProxyPrintCost(printer, costParms);
 
         dto.setCostResult(costResult);
-
-        // Number of sheets
-        dto.setSheets(PdfPrintCollector.calcNumberOfPrintedSheets(
-                dto.getPages(), dto.getCopies(), costParms.isDuplex(),
-                costParms.getPagesPerSide(), false, false, false));
     }
 
     /**

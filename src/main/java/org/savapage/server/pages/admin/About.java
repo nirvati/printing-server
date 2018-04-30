@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -32,11 +32,11 @@ import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.savapage.core.SpException;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.UserDao;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.doc.XpsToPdf;
 import org.savapage.core.doc.soffice.SOfficeHelper;
 import org.savapage.core.jpa.tools.DbVersionInfo;
@@ -55,9 +55,7 @@ import org.savapage.server.pages.PrinterDriverDownloadPanel;
  */
 public final class About extends AbstractAdminPage {
 
-    /**
-     * .
-     */
+    /** */
     private static final ProxyPrintService PROXY_PRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
@@ -78,18 +76,8 @@ public final class About extends AbstractAdminPage {
 
         super(parameters);
 
-        try {
-            handlePage();
-        } catch (Exception e) {
-            throw new SpException(e);
-        }
-    }
-
-    /**
-     * @throws Exception
-     *
-     */
-    private void handlePage() throws Exception {
+        final boolean hasEditorAccess =
+                this.probePermissionToEdit(ACLOidEnum.A_ABOUT);
 
         final MemberCard memberCard = MemberCard.instance();
 
@@ -293,6 +281,7 @@ public final class About extends AbstractAdminPage {
 
         // ---------
         String validDays = null;
+        Long validDaysLeft = 0L;
         String txtStatus = null;
         String signalColor = null;
 
@@ -323,15 +312,6 @@ public final class About extends AbstractAdminPage {
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
             break;
 
-        case WRONG_VERSION_WITH_GRACE:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus =
-                    localized("membership-status-wrong-version-grace-period",
-                            CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                            memberCard.getDaysLeftInVisitorPeriod(refDate),
-                            CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            break;
-
         case VALID:
 
             signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
@@ -339,13 +319,14 @@ public final class About extends AbstractAdminPage {
             if (memberCard.isVisitorCard()) {
                 txtStatus = CommunityDictEnum.VISITOR.getWord(getLocale());
             } else {
-                txtStatus = CommunityDictEnum.FELLOW.getWord(getLocale());
+                txtStatus = CommunityDictEnum.CARD_HOLDER.getWord(getLocale());
             }
 
             if (memberCard.getExpirationDate() != null) {
+                validDaysLeft = memberCard.getDaysTillExpiry();
                 validDays = localized("membership-valid-till-msg",
                         localizedDate(memberCard.getExpirationDate()),
-                        memberCard.getDaysTillExpiry());
+                        validDaysLeft);
             }
             break;
 
@@ -359,9 +340,10 @@ public final class About extends AbstractAdminPage {
             signalColor = MarkupHelper.CSS_TXT_WARN;
             txtStatus = localized("membership-status-expired",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
+            validDaysLeft = memberCard.getDaysTillExpiry();
             validDays = localized("membership-expired-msg",
                     localizedDate(memberCard.getExpirationDate()),
-                    memberCard.getDaysTillExpiry());
+                    validDaysLeft);
             break;
 
         case VISITOR_EDITION:
@@ -394,6 +376,9 @@ public final class About extends AbstractAdminPage {
         // -------------
         final String styleInfo = String.format("class=\"%s %s\"",
                 MarkupHelper.CSS_TXT_WRAP, signalColor);
+
+        final String styleInfoWarn = String.format("class=\"%s %s\"",
+                MarkupHelper.CSS_TXT_WRAP, MarkupHelper.CSS_TXT_WARN);
 
         final String styleInfoValid = String.format("class=\"%s %s\"",
                 MarkupHelper.CSS_TXT_WRAP, MarkupHelper.CSS_TXT_COMMUNITY);
@@ -434,8 +419,15 @@ public final class About extends AbstractAdminPage {
 
             //
             if (validDays != null) {
+                final String styleWlk;
+                if (validDaysLeft
+                        .longValue() > MemberCard.DAYS_WARN_BEFORE_EXPIRE) {
+                    styleWlk = styleInfo;
+                } else {
+                    styleWlk = styleInfoWarn;
+                }
                 htmlMembership += String.format(liFormat,
-                        localized("membership-valid-till"), styleInfo,
+                        localized("membership-valid-till"), styleWlk,
                         validDays);
             }
             //
@@ -471,10 +463,10 @@ public final class About extends AbstractAdminPage {
         labelWrk.add(new AttributeModifier("class", signalColor));
         add(labelWrk);
 
-        add(new Label("button-import-membercard",
+        helper.encloseLabel("button-import-membercard",
                 localized("button-import-membercard",
-                        CommunityDictEnum.MEMBER_CARD.getWord(getLocale()))));
-
+                        CommunityDictEnum.MEMBER_CARD.getWord(getLocale())),
+                hasEditorAccess);
         //
         final String urlHelpDesk =
                 CommunityDictEnum.SAVAPAGE_SUPPORT_URL.getWord();

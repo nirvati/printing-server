@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -39,9 +39,11 @@ import org.savapage.core.jpa.PrinterGroup;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.SOfficeService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.JobTicketTagCache;
 import org.savapage.core.services.helpers.SOfficeConfigProps;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
+import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,9 +61,7 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
     private static final Logger LOGGER =
             LoggerFactory.getLogger(ReqConfigPropsSet.class);
 
-    /**
-     * .
-     */
+    /** */
     private static final SOfficeService SOFFICE_SERVICE =
             ServiceContext.getServiceFactory().getSOfficeService();
 
@@ -139,27 +139,6 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                 case SYS_DEFAULT_LOCALE:
                     ConfigManager.setDefaultLocale(value);
                     break;
-
-                case SCHEDULE_HOURLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_DAILY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_WEEKLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_MONTHLY:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
-                case SCHEDULE_DAILY_MAINT:
-                    SpJobScheduler.instance().scheduleJobs(configKey);
-                    nJobsRescheduled++;
-                    break;
                 case PRINT_IMAP_ENABLE:
                     preValue = cm.isConfigValue(configKey);
                     isSOfficeTrigger = true;
@@ -176,10 +155,25 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
 
                 /*
                  * TODO: This updates the cache while database is not committed
-                 * yet! When database transaction is rollback back the cache is
-                 * dirty.
+                 * yet! When database transaction is rolled back back the cache
+                 * is dirty.
                  */
                 cm.updateConfigKey(configKey, value, requestingUser);
+
+                // Reschedule.
+                switch (configKey) {
+
+                case SCHEDULE_HOURLY:
+                case SCHEDULE_DAILY:
+                case SCHEDULE_WEEKLY:
+                case SCHEDULE_MONTHLY:
+                case SCHEDULE_DAILY_MAINT:
+                    SpJobScheduler.instance().scheduleJobs(configKey);
+                    nJobsRescheduled++;
+                    break;
+                default:
+                    break;
+                }
 
                 nValid++;
 
@@ -209,6 +203,15 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                 } else if (configKey == Key.DOC_CONVERT_LIBRE_OFFICE_ENABLED
                         || configKey == Key.SOFFICE_ENABLE) {
                     isSOfficeUpdate = true;
+
+                } else if (configKey == Key.WEB_PRINT_FILE_EXT_EXCLUDE) {
+                    // Provoke errors/warnings in server.log.
+                    WebPrintHelper.getExcludeTypes();
+
+                } else if (configKey == Key.JOBTICKET_TAGS
+                        && StringUtils.isNotBlank(value)) {
+                    JobTicketTagCache.setTicketTags(
+                            JobTicketTagCache.parseTicketTags(value));
                 }
 
             } else {
@@ -243,7 +246,6 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
 
             setApiResult(ApiResultCodeEnum.OK, msgKey);
         }
-
     }
 
     /**
@@ -289,7 +291,8 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
      * @return {@code null} when NO validation error, or the userData object
      *         filled with the error message when an error is encountered..
      */
-    private boolean customConfigPropValidate(Key key, String value) {
+    private boolean customConfigPropValidate(final Key key,
+            final String value) {
 
         if (key == Key.PROXY_PRINT_NON_SECURE_PRINTER_GROUP
                 && StringUtils.isNotBlank(value)) {
@@ -323,6 +326,15 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                             "msg-printer-not-found", value);
                     return false;
                 }
+            }
+        }
+
+        if (key == Key.JOBTICKET_TAGS && StringUtils.isNotBlank(value)) {
+            try {
+                JobTicketTagCache.parseTicketTags(value);
+            } catch (IllegalArgumentException e) {
+                setApiResultText(ApiResultCodeEnum.ERROR, e.getMessage());
+                return false;
             }
         }
 

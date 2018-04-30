@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -59,10 +59,13 @@ import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.impl.DaoContextImpl;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.imap.ImapPrinter;
 import org.savapage.core.print.proxy.ProxyPrintJobStatusMonitor;
 import org.savapage.core.services.AppLogService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.DateUtil;
@@ -120,17 +123,17 @@ public final class SystemStatusPanel extends Panel {
      */
     private static String retrieveNewsHtml;
 
-    /**
-     * .
-     */
+    /** */
     private static final AppLogService APP_LOG_SERVICE =
             ServiceContext.getServiceFactory().getAppLogService();
 
-    /**
-     * .
-     */
+    /** */
     private static final QueueService QUEUE_SERVICE =
             ServiceContext.getServiceFactory().getQueueService();
+
+    /** */
+    private static final JobTicketService TICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
 
     /**
      * @param panelId
@@ -142,8 +145,10 @@ public final class SystemStatusPanel extends Panel {
 
     /**
      *
+     * @param hasEditorAccess
+     *            {@code true} If editor access.
      */
-    public void populate() {
+    public void populate(final boolean hasEditorAccess) {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
@@ -160,6 +165,9 @@ public final class SystemStatusPanel extends Panel {
         if (!cm.isAppReadyToUse()) {
             cssColor = MarkupHelper.CSS_TXT_ERROR;
             msg = getLocalizer().getString("sys-status-setup-needed", this);
+        } else if (ConfigManager.isTempUnavailable()) {
+            cssColor = MarkupHelper.CSS_TXT_WARN;
+            msg = getLocalizer().getString("sys-status-not-available", this);
         } else if (memberCard.isMembershipDesirable()) {
             cssColor = MarkupHelper.CSS_TXT_WARN;
             msg = MessageFormat.format(getLocalizer()
@@ -170,10 +178,36 @@ public final class SystemStatusPanel extends Panel {
             msg = getLocalizer().getString("sys-status-ready", this);
         }
 
+        //
         labelWrk = new Label("sys-status", msg);
-
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
+
+        //
+        add(new Label("sys-mode-prompt", NounEnum.MODE.uiText(getLocale())));
+
+        final SystemModeEnum systemMode;
+
+        if (ConfigManager.isSysMaintenance()) {
+            cssColor = MarkupHelper.CSS_TXT_WARN;
+            systemMode = SystemModeEnum.MAINTENANCE;
+        } else {
+            cssColor = MarkupHelper.CSS_TXT_VALID;
+            systemMode = SystemModeEnum.PRODUCTION;
+        }
+
+        if (hasEditorAccess) {
+            MarkupHelper.modifyLabelAttr(
+                    helper.addLabel("sys-mode-btn",
+                            systemMode.uiText(getLocale())),
+                    MarkupHelper.ATTR_CLASS, cssColor);
+            helper.discloseLabel("sys-mode");
+        } else {
+            helper.discloseLabel("sys-mode-btn");
+            MarkupHelper.modifyLabelAttr(
+                    helper.addLabel("sys-mode", systemMode.uiText(getLocale())),
+                    MarkupHelper.ATTR_CLASS, cssColor);
+        }
 
         //
         add(new Label("sys-uptime", DateUtil.formatDuration(
@@ -234,7 +268,8 @@ public final class SystemStatusPanel extends Panel {
             }
 
             labelWrk = helper.encloseLabel("mailprint-status", msgText, true);
-            MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
+            MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
+                    cssColor);
 
             labelWrk = helper.addCheckbox("flipswitch-mailprint-online",
                     ImapPrinter.isOnline());
@@ -281,7 +316,8 @@ public final class SystemStatusPanel extends Panel {
             labelWrk = helper.encloseLabel("gcp-status", msgText, true);
 
             if (msgKey != null) {
-                MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
+                MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
+                        cssColor);
             }
 
             labelWrk = helper.addCheckbox("flipswitch-gcp-online", isGcpOnline);
@@ -390,7 +426,8 @@ public final class SystemStatusPanel extends Panel {
             labelWrk = helper.encloseLabel("smartschool-print-status", msgText,
                     true);
 
-            MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
+            MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
+                    cssColor);
 
             labelWrk = helper.addCheckbox("flipswitch-smartschool-online",
                     SmartschoolPrinter.isOnline());
@@ -443,7 +480,7 @@ public final class SystemStatusPanel extends Panel {
         } else {
             labelWrk = helper.encloseLabel("cups-connection",
                     circuit.getCircuitState().uiText(getLocale()), true);
-            labelWrk.add(new AttributeModifier("class",
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS,
                     String.format("%s %s", MarkupHelper.CSS_TXT_WRAP, clazz)));
         }
 
@@ -527,7 +564,7 @@ public final class SystemStatusPanel extends Panel {
             if (memberCard.isVisitorCard()) {
                 memberStat = CommunityDictEnum.VISITOR.getWord();
             } else {
-                memberStat = CommunityDictEnum.FELLOW.getWord();
+                memberStat = CommunityDictEnum.CARD_HOLDER.getWord(getLocale());
             }
             break;
 
@@ -549,12 +586,6 @@ public final class SystemStatusPanel extends Panel {
                     .getString("membership-status-wrong-version", this);
             break;
 
-        case WRONG_VERSION_WITH_GRACE:
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            memberStat = getLocalizer()
-                    .getString("membership-status-wrong-version", this);
-            break;
-
         default:
             throw new SpException(CommunityDictEnum.MEMBERSHIP.getWord()
                     + " status [" + memberCard.getStatus() + "] not handled");
@@ -566,18 +597,18 @@ public final class SystemStatusPanel extends Panel {
                         CommunityDictEnum.MEMBER.getWord().toLowerCase())));
         labelWrk =
                 new Label("membership-org", memberCard.getMemberOrganisation());
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
 
         //
         labelWrk = new Label("membership-status", memberStat);
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
 
         //
         labelWrk = new Label("membership-participants",
                 helper.localizedNumber(memberCard.getMemberParticipants()));
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
 
         //
@@ -590,18 +621,21 @@ public final class SystemStatusPanel extends Panel {
         labelWrk = MarkupHelper.createEncloseLabel("membership-valid-till",
                 enclosedValue, enclosedValue != null);
 
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
 
         //
         if (memberCard.getDaysTillExpiry() != null) {
-            enclosedValue = helper.localizedNumber(
-                    memberCard.getDaysTillExpiry().longValue());
+            final long daysLeft = memberCard.getDaysTillExpiry().longValue();
+            if (daysLeft <= MemberCard.DAYS_WARN_BEFORE_EXPIRE) {
+                cssColor = MarkupHelper.CSS_TXT_WARN;
+            }
+            enclosedValue = helper.localizedNumber(daysLeft);
         }
         labelWrk = MarkupHelper.createEncloseLabel(
                 "membership-valid-days-remaining", enclosedValue,
                 enclosedValue != null);
-        labelWrk.add(new AttributeModifier("class", cssColor));
+        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
         add(labelWrk);
 
         /*
@@ -613,8 +647,8 @@ public final class SystemStatusPanel extends Panel {
         Label labelErr =
                 new Label("error-count", helper.localizedNumber(errors));
         if (errors > 0) {
-            labelErr.add(
-                    new AttributeModifier("class", MarkupHelper.CSS_TXT_ERROR));
+            labelErr.add(new AttributeModifier(MarkupHelper.ATTR_CLASS,
+                    MarkupHelper.CSS_TXT_ERROR));
         }
         add(labelErr);
 
@@ -625,8 +659,8 @@ public final class SystemStatusPanel extends Panel {
         Label labelWarn =
                 new Label("warning-count", helper.localizedNumber(warnings));
         if (warnings > 0) {
-            labelWarn.add(
-                    new AttributeModifier("class", MarkupHelper.CSS_TXT_WARN));
+            labelWarn.add(new AttributeModifier(MarkupHelper.ATTR_CLASS,
+                    MarkupHelper.CSS_TXT_WARN));
         }
         add(labelWarn);
 
@@ -657,7 +691,8 @@ public final class SystemStatusPanel extends Panel {
         labelWrk =
                 helper.encloseLabel("ssl-expiry", certText, certText != null);
         if (certClass != null) {
-            labelWrk.add(AttributeAppender.append("class", certClass));
+            labelWrk.add(AttributeAppender.append(MarkupHelper.ATTR_CLASS,
+                    certClass));
         }
 
         /*
@@ -738,8 +773,16 @@ public final class SystemStatusPanel extends Panel {
         if (showTechInfo) {
             size = ProxyPrintJobStatusMonitor.getPendingJobs();
         }
-
         helper.encloseLabel("proxy-print-queue-size", String.valueOf(size),
+                showTechInfo);
+
+        /*
+         * Job Tickets
+         */
+        if (showTechInfo) {
+            size = TICKET_SERVICE.getJobTicketQueueSize();
+        }
+        helper.encloseLabel("job-tickets-queue-size", String.valueOf(size),
                 showTechInfo);
 
         /*
@@ -792,6 +835,7 @@ public final class SystemStatusPanel extends Panel {
 
         add(labelNews);
 
+        helper.addTransparantDisabled("sect-services", !hasEditorAccess);
     }
 
     /**
@@ -801,11 +845,7 @@ public final class SystemStatusPanel extends Panel {
      *            The flipswitch {@link Label}.
      */
     private void setFlipswitchOnOffText(final Label label) {
-
-        MarkupHelper.modifyLabelAttr(label, "data-on-text",
-                getLocalizer().getString("flipswitch-on", this));
-        MarkupHelper.modifyLabelAttr(label, "data-off-text",
-                getLocalizer().getString("flipswitch-off", this));
+        MarkupHelper.setFlipswitchOnOffText(label, getLocale());
     }
 
     /**
@@ -843,7 +883,7 @@ public final class SystemStatusPanel extends Panel {
                         url.append("&v_revision=")
                                 .append(VersionInfo.VERSION_C_REVISION);
                         url.append("&v_build=")
-                                .append(VersionInfo.VERSION_D_BUILD);
+                                .append(VersionInfo.VERSION_E_BUILD);
 
                         return new HttpGet(url.toString());
                     }

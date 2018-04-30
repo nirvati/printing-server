@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ..|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein.......| 
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein.......| 
     |........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify ......|
     | it under the terms of the GNU Affero General Public License as ........|
@@ -26,8 +27,8 @@
 <div wicket:id="job-entry" class="sp-outbox-job-entry">
 
 	<h4 style="margin-top: 15px; margin-bottom: 10px;">
-		<span wicket:id="printout-pie" class="sparkline-printout-pie" />&nbsp;<span
-			wicket:id="printer" />
+		<span wicket:id="printout-pie" sparkType="pie" sparkSliceColors="[]"
+			class="" />&nbsp;<span wicket:id="printer" />
 		<wicket:enclosure child="jobticket-type-copy">
 			<span class="sp-jobticket-type-copy-ind"
 				wicket:id="jobticket-type-copy" />
@@ -58,7 +59,8 @@
 
 	<div class="sp-txt-wrap">
 		<img wicket:id="img-job" src="" height="16"
-			class="sp-outbox-item-type-???" />
+			style="margin-bottom: -1px;" class="sp-outbox-item-type-???" />
+		&nbsp;
 		<wicket:enclosure child="owner-user-id">
 			<wicket:enclosure child="owner-user-name">
 				<span wicket:id="owner-user-name" />
@@ -71,13 +73,23 @@
 			</wicket:enclosure>
 			<p />
 		</wicket:enclosure>
+
 		<wicket:enclosure child="jobticket-nr">
-			<span class="sp-txt-info" wicket:id="jobticket-nr" /> &bull; 
+			<wicket:enclosure child="img-job-sheet">
+				<img wicket:id="img-job-sheet" src="" height="14" />
+			</wicket:enclosure>
+			<span class="sp-txt-info" wicket:id="jobticket-nr" />
+			<wicket:enclosure child="jobticket-tag">
+                &bull; <span class="sp-txt-info"
+					wicket:id="jobticket-tag" />
+			</wicket:enclosure>
+            &bull; 
 		</wicket:enclosure>
 		<span wicket:id="timeSubmit" />
 		<wicket:enclosure child="timeExpiry">
 			 &bull; <span class="sp-outbox-remaining-time" wicket:id="timeExpiry" />
 		</wicket:enclosure>
+
 		&bull; <span wicket:id="totals" />
 		<wicket:enclosure child="color"> &bull; <span
 				class="sp-txt-warn" wicket:id="color" />
@@ -88,9 +100,9 @@
 			<span wicket:id="job-id" /> &bull; <span wicket:id="job-state" />
 		</wicket:enclosure>
 
-        <wicket:enclosure child="job-completed-time"> &bull; <span
-                wicket:id="job-completed-time" />
-        </wicket:enclosure>
+		<wicket:enclosure child="job-completed-time"> &bull; <span
+				wicket:id="job-completed-time" />
+		</wicket:enclosure>
 
 		<wicket:enclosure child="grayscale"> &bull; <span
 				class="sp-txt-valid" wicket:id="grayscale" />
@@ -127,6 +139,9 @@
 				class="sp-txt-valid" wicket:id="removeGraphics" />
 		</wicket:enclosure>
 
+		<wicket:enclosure child="pageRotate180"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="pageRotate180" />
+		</wicket:enclosure>
 		<wicket:enclosure child="punch"> &bull; <span
 				class="sp-txt-job-finishing" wicket:id="punch" />
 		</wicket:enclosure>
@@ -173,12 +188,32 @@
 
 	<p />
 
+	<wicket:enclosure child="msg-invalid">
+		<div class="sp-txt-wrap sp-txt-error" wicket:id="msg-invalid" />
+		<p />
+	</wicket:enclosure>
+
+
 	<div data-role="controlgroup" data-type="horizontal">
 
 		<wicket:enclosure child="button-settings-outbox-jobticket">
 			<button data-savapage="the-unique-filename"
 				class="sp-jobticket-settings ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-info"
 				wicket:id="button-settings-outbox-jobticket" />
+		</wicket:enclosure>
+
+		<wicket:enclosure child="button-account-trx-info-job">
+			<button data-savapage="the-unique-filename" data-rel="popup"
+				data-position-to="window" data-transition="pop"
+				class="sp-outbox-account-trx-info-job ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-user"
+				wicket:id="button-account-trx-info-job" />
+		</wicket:enclosure>
+
+		<wicket:enclosure child="button-account-trx-info-jobticket">
+			<button data-savapage="the-unique-filename" data-rel="popup"
+				data-position-to="window" data-transition="pop"
+				class="sp-outbox-account-trx-info-jobticket ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-user"
+				wicket:id="button-account-trx-info-jobticket" />
 		</wicket:enclosure>
 
 		<wicket:enclosure child="button-edit-outbox-jobticket">
@@ -245,5 +280,5 @@
 		</wicket:enclosure>
 
 	</div>
-
 </div>
+</html>

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@ package org.savapage.server.api.request;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.Map;
 
 import javax.servlet.http.HttpSession;
@@ -67,13 +68,13 @@ import org.savapage.core.users.conf.UserAliasList;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.Messages;
-import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.auth.ClientAppUserAuthManager;
 import org.savapage.server.auth.UserAuthToken;
 import org.savapage.server.auth.WebAppUserAuthManager;
 import org.savapage.server.cometd.UserEventService;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,6 +186,8 @@ public final class ReqLogin extends ApiRequestMixin {
 
         final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
 
+        MemberCard.instance().recalcStatus(new Date());
+
         reqLogin(UserAuth.mode(dtoReq.getAuthMode()), dtoReq.getAuthId(),
                 dtoReq.getAuthPw(), dtoReq.getAuthToken(),
                 dtoReq.getAssocCardNumber(), dtoReq.getWebAppType());
@@ -248,8 +251,6 @@ public final class ReqLogin extends ApiRequestMixin {
                     + userAgentHelper.isSafariBrowserMobile() + "] UserAgent ["
                     + userAgentHelper.getUserAgentHeader() + "]");
         }
-
-        // final Map<String, Object> userData = new HashMap<String, Object>();
 
         final ConfigManager cm = ConfigManager.instance();
         final SpSession session = SpSession.get();
@@ -417,9 +418,29 @@ public final class ReqLogin extends ApiRequestMixin {
                 }
             }
         }
+
+        /*
+         * INVARIANT: If system maintenance the only login possible is as admin.
+         */
+        if (ConfigManager.isSysMaintenance() && session.getUser() != null
+                && !session.getUser().getAdmin().booleanValue()) {
+            setApiResult(ApiResultCodeEnum.ERROR, "msg-login-not-possible");
+            return;
+        }
+
         getUserData().put("sessionid", SpSession.get().getId());
 
-        if (isApiResultOk()) {
+        //
+        final EnumSet<ApiResultCodeEnum> validResultCodes;
+
+        if (webAppType == WebAppTypeEnum.ADMIN) {
+            validResultCodes = EnumSet.of(ApiResultCodeEnum.OK,
+                    ApiResultCodeEnum.INFO, ApiResultCodeEnum.WARN);
+        } else {
+            validResultCodes = EnumSet.of(ApiResultCodeEnum.OK);
+        }
+
+        if (isApiResultCode(validResultCodes)) {
             this.setSessionTimeoutSeconds(webAppType);
             session.setWebAppType(webAppType);
             session.incrementAuthWebApp();
@@ -651,11 +672,27 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (userDb == null) {
 
-                    getUserData().put("authCardSelfAssoc",
-                            Boolean.valueOf(theUserAuth.isAuthCardSelfAssoc()));
+                    if (ConfigManager.isSysMaintenance()) {
+                        setApiResult(ApiResultCodeEnum.ERROR,
+                                "msg-login-not-possible");
+                    } else {
+                        final boolean selfAssoc =
+                                webAppType == WebAppTypeEnum.USER
+                                        && Boolean.valueOf(theUserAuth
+                                                .isAuthCardSelfAssoc());
 
-                    setApiResult(ApiResultCodeEnum.ERROR,
-                            "msg-login-unregistered-card");
+                        getUserData().put("authCardSelfAssoc", selfAssoc);
+
+                        if (selfAssoc) {
+                            setApiResult(ApiResultCodeEnum.ERROR,
+                                    "msg-login-unregistered-card");
+                        } else {
+                            onLoginFailed("msg-login-card-unknown",
+                                    webAppType.getUiText(),
+                                    UserAuth.getUiText(authMode),
+                                    normalizedCardNumber);
+                        }
+                    }
                     return;
                 }
                 uid = userDb.getUserId();
@@ -1497,7 +1534,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
         final MemberCard memberCard = MemberCard.instance();
 
-        Long daysLeft = memberCard.getDaysLeftInVisitorPeriod(
+        final Long daysLeft = memberCard.getDaysLeftInVisitorPeriod(
                 ServiceContext.getTransactionDate());
 
         switch (memberCard.getStatus()) {
@@ -1537,12 +1574,6 @@ public final class ReqLogin extends ApiRequestMixin {
             setApiResult(ApiResultCodeEnum.INFO, "msg-membership-version",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-            break;
-        case WRONG_VERSION_WITH_GRACE:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-version-grace",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    daysLeft.toString(),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
             break;
         case VISITOR_EDITION:

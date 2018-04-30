@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -31,7 +31,7 @@ import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.server.SpSession;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -54,19 +54,7 @@ public final class AccountTrxBase extends AbstractAuthPage {
 
         super(parameters);
 
-        if (isAuthErrorHandled()) {
-            return;
-        }
-
         final WebAppTypeEnum webAppType = this.getSessionWebAppType();
-
-        /**
-         * If this page is displayed in the Admin WebApp context, we check the
-         * admin authentication (including the need for a valid Membership).
-         */
-        if (webAppType == WebAppTypeEnum.ADMIN) {
-            checkAdminAuthorization();
-        }
 
         handlePage(webAppType == WebAppTypeEnum.ADMIN);
     }
@@ -162,6 +150,10 @@ public final class AccountTrxBase extends AbstractAuthPage {
         }
         hiddenLabel.add(new AttributeModifier("value", hiddenValue));
         add(hiddenLabel);
+
+        //
+        add(new JrExportFileExtButtonPanel("report-button-panel",
+                "sp-btn-accounttrx-report"));
 
         //
         final MarkupHelper helper = new MarkupHelper(this);

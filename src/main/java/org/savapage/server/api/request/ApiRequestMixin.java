@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 package org.savapage.server.api.request;
 
 import java.io.IOException;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -54,8 +55,8 @@ import org.savapage.core.services.UserGroupService;
 import org.savapage.core.services.UserService;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.papercut.services.PaperCutService;
-import org.savapage.server.SpSession;
 import org.savapage.server.api.UserAgentHelper;
+import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
@@ -237,6 +238,15 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
     }
 
     /**
+     * Gets the {@link User} from {@link SpSession}.
+     *
+     * @return The {@link User}.
+     */
+    protected final User getSessionUser() {
+        return SpSession.get().getUser();
+    }
+
+    /**
      * @deprecated
      * @return The response {@link Map}.
      */
@@ -389,13 +399,30 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
     /**
      * @param code
      *            The {@link #ApiResultCodeEnum}.
-     * @return
+     * @return {@code true} if the result code equals the enum value.
      */
     protected boolean isApiResultCode(final ApiResultCodeEnum code) {
+        return isApiResultCode(EnumSet.of(code));
+    }
+
+    /**
+     *
+     * @param set
+     *            The {@link EnumSet} of codes to checks.
+     * @return {@code true} if the result code equals one of the codes in the
+     *         {@link EnumSet}.
+     */
+    protected boolean isApiResultCode(final EnumSet<ApiResultCodeEnum> set) {
         @SuppressWarnings("unchecked")
         final Map<String, Object> result =
                 (Map<String, Object>) responseMap.get("result");
-        return result.get("code").equals(code.getValue());
+
+        for (final ApiResultCodeEnum code : set) {
+            if (result.get("code").equals(code.getValue())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -438,7 +465,7 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
                 final boolean hasMessage = text.length() > 0;
 
                 if (hasMessage) {
-                    text.append(" :");
+                    text.append(" : ");
                 }
                 text.append(errorData.getReason());
             }

@@ -45,13 +45,13 @@ import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentMethodEnum;
 import org.savapage.ext.payment.PaymentMethodInfo;
 import org.savapage.ext.payment.bitcoin.BitcoinGateway;
-import org.savapage.server.SpSession;
 import org.savapage.server.WebApp;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
 import org.savapage.server.pages.StatsEnvImpactPanel;
 import org.savapage.server.pages.StatsPageTotalPanel;
+import org.savapage.server.session.SpSession;
 
 /**
  *
@@ -110,7 +110,7 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
         final String keyTitleFinancial = "title-financial";
 
-        final Integer financialPriv = ACCESS_CONTROL_SERVICE.getUserPrivileges(
+        final Integer financialPriv = ACCESS_CONTROL_SERVICE.getPrivileges(
                 SpSession.get().getUser(), ACLOidEnum.U_FINANCIAL);
 
         if (financialPriv == null

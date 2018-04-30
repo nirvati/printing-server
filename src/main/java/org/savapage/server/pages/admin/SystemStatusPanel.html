@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ..|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein.......| 
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein.......| 
     |........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify ......|
     | it under the terms of the GNU Affero General Public License as ........|
@@ -75,10 +76,27 @@
 					</wicket:enclosure>
 
 					<tr>
+						<th wicket:id="sys-mode-prompt" style="vertical-align: middle;" />
+						<td>
+							<wicket:enclosure child="sys-mode-btn">
+								<button class="ui-btn ui-mini ui-btn-inline ui-btn-icon-text"
+									id="sp-btn-sys-mode" style="margin-left: 0px;">
+									<span wicket:id="sys-mode-btn" />
+								</button>
+							</wicket:enclosure>
+							<wicket:enclosure child="sys-mode">
+								<span wicket:id="sys-mode" />
+							</wicket:enclosure>
+						</td>
+					</tr>
+
+					<tr>
 						<th>
 							<wicket:message key="sys-status" />
 						</th>
-						<td wicket:id="sys-status" />
+						<td>
+							<span wicket:id="sys-status" />
+						</td>
 					</tr>
 
 					<tr>
@@ -171,6 +189,14 @@
 							<td class="sp-txt-wrap" wicket:id="proxy-print-queue-size" />
 						</tr>
 					</wicket:enclosure>
+					<wicket:enclosure child="job-tickets-queue-size">
+						<tr>
+							<th class="sp-txt-wrap">
+								<wicket:message key="job-tickets-queue" />
+							</th>
+							<td class="sp-txt-wrap" wicket:id="job-tickets-queue-size" />
+						</tr>
+					</wicket:enclosure>
 				</tbody>
 			</table>
 		</li>
@@ -179,7 +205,7 @@
 		<li data-role="list-divider">
 			<wicket:message key="header-services" />
 		</li>
-		<li>
+		<li wicket:id="sect-services">
 			<table data-role="table" data-mode="reflow"
 				class="ui-responsive table-stroke">
 				<thead>
@@ -192,10 +218,10 @@
 
 					<tr>
 						<th style="vertical-align: middle;" wicket:id="prompt-proxy-print" />
-						<td>
+						<td><span class="sp-disabled">
 							<input type="checkbox" wicket:id="flipswitch-proxyprint-online"
 								data-mini="true" data-role="flipswitch" data-on-text="On"
-								data-off-text="Off" data-disabled="true" />
+								data-off-text="Off" data-disabled="true" /></span>
 							<wicket:enclosure child="cups-connection">
 								<span style="margin-left: 20px; vertical-align: middle;"
 									wicket:id="cups-connection" />
@@ -305,3 +331,4 @@
 
 	</ul>
 </wicket:panel>
+</html>

@@ -26,6 +26,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
@@ -37,17 +38,21 @@ import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dto.IppMediaSourceCostDto;
 import org.savapage.core.dto.RedirectPrinterDto;
+import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.ipp.helpers.IppOptionMap;
 import org.savapage.core.jpa.Printer;
+import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.print.proxy.JsonProxyPrinterOpt;
 import org.savapage.core.print.proxy.JsonProxyPrinterOptChoice;
-import org.savapage.core.services.JobTicketService;
+import org.savapage.core.print.proxy.TicketJobSheetDto;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.PrinterAttrLookup;
 import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.ext.papercut.PaperCutHelper;
 import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.session.JobTicketSession;
+import org.savapage.server.session.SpSession;
 
 /**
  *
@@ -71,14 +76,11 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
      */
     private static final String PARM_RETRY = "retry";
 
-    /**
-     * .
-     */
-    private static final JobTicketService JOBTICKET_SERVICE =
-            ServiceContext.getServiceFactory().getJobTicketService();
-
     private static final String WICKET_ID_CHOICE = "choice";
+
     private static final String WICKET_ID_MEDIA_SOURCE = "media-source";
+    private static final String WICKET_ID_MEDIA_SOURCE_JOB_SHEET =
+            WICKET_ID_MEDIA_SOURCE + "-job-sheet";
 
     private static final String WICKET_ID_OUTPUT_BIN = "output-bin";
     private static final String WICKET_ID_JOG_OFFSET = "jog-offset";
@@ -148,6 +150,14 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
          */
         private final boolean isSettlement;
 
+        /**
+         *
+         */
+        private final TicketJobSheetDto jobSheetDto;
+
+        /**
+         *
+         */
         private int tabindexWlk;
 
         /**
@@ -158,9 +168,12 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
          * @param settlement
          */
         RedirectPrinterListView(final String id,
-                final List<RedirectPrinterDto> list, final boolean settlement) {
+                final List<RedirectPrinterDto> list, final boolean settlement,
+                final TicketJobSheetDto jobSheet) {
+
             super(id, list);
             this.isSettlement = settlement;
+            this.jobSheetDto = jobSheet;
             this.tabindexWlk = 9;
         }
 
@@ -176,6 +189,81 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             return StringUtils.replace(
                     StringUtils.replace(vanilla, "-", "&#8209;"), " ",
                     "&nbsp;");
+        }
+
+        /**
+         * Gets the last {@link JobTicketSession.PrinterOpt} choice from server
+         * session.
+         *
+         * @param printerId
+         *            The printer primary database key.
+         * @param printerOpt
+         *            The {@link JobTicketSession.PrinterOpt}.
+         * @param choices
+         *            The list of options.
+         * @param dfltChoice
+         *            The default choice when not found in session.
+         * @return The last choice.
+         */
+        private JsonProxyPrinterOptChoice getLastIppChoice(final Long printerId,
+                final JobTicketSession.PrinterOpt printerOpt,
+                final ArrayList<JsonProxyPrinterOptChoice> choices,
+                final JsonProxyPrinterOptChoice dfltChoice) {
+
+            final JobTicketSession session =
+                    SpSession.get().getJobTicketSession();
+
+            if (session == null) {
+                return dfltChoice;
+            }
+
+            final Map<Long, Map<JobTicketSession.PrinterOpt, String>> opts =
+                    session.getRedirectPrinterOptions();
+
+            if (opts != null && opts.containsKey(printerId)) {
+
+                final String lastChoice = opts.get(printerId).get(printerOpt);
+
+                if (lastChoice == null) {
+                    return dfltChoice;
+                }
+
+                for (final JsonProxyPrinterOptChoice choice : choices) {
+                    if (choice.getChoice().equals(lastChoice)) {
+                        return choice;
+                    }
+                }
+            }
+            return dfltChoice;
+        }
+
+        /**
+         * Gets the last
+         * {@link IppDictJobTemplateAttr#ORG_SAVAPAGE_ATTR_FINISHINGS_JOG_OFFSET}
+         * choice from server session.
+         *
+         * @param choices
+         * @param dfltChoice
+         *            The default choice when not found in session.
+         * @return The last choice.
+         */
+        private JsonProxyPrinterOptChoice getLastJogOffsetChoice(
+                final ArrayList<JsonProxyPrinterOptChoice> choices,
+                final JsonProxyPrinterOptChoice dfltChoice) {
+
+            final JobTicketSession session =
+                    SpSession.get().getJobTicketSession();
+
+            if (session != null
+                    && StringUtils.isNotBlank(session.getJogOffsetOption())) {
+                for (final JsonProxyPrinterOptChoice choice : choices) {
+                    if (choice.getChoice()
+                            .equals(session.getJogOffsetOption())) {
+                        return choice;
+                    }
+                }
+            }
+            return dfltChoice;
         }
 
         @Override
@@ -222,6 +310,7 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             final MarkupHelper helper = new MarkupHelper(item);
 
             if (this.isSettlement) {
+                helper.discloseLabel(WICKET_ID_MEDIA_SOURCE_JOB_SHEET);
                 helper.discloseLabel(WICKET_ID_MEDIA_SOURCE);
                 helper.discloseLabel(WICKET_ID_OUTPUT_BIN);
                 helper.discloseLabel(WICKET_ID_JOG_OFFSET);
@@ -245,10 +334,29 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             final Printer dbPrinter = ServiceContext.getDaoContext()
                     .getPrinterDao().findById(item.getModelObject().getId());
 
+            final PrinterAttrLookup printerAttrLookup =
+                    new PrinterAttrLookup(dbPrinter);
+
+            if (this.jobSheetDto == null || !this.jobSheetDto.isEnabled()) {
+                helper.discloseLabel(WICKET_ID_MEDIA_SOURCE_JOB_SHEET);
+            } else {
+                item.add(new PrinterOptListView(
+                        WICKET_ID_MEDIA_SOURCE_JOB_SHEET,
+                        filterMediaSourcesForUser(printerAttrLookup,
+                                printer.getMediaSourceOpt().getChoices()),
+                        this.getLastIppChoice(printer.getId(),
+                                JobTicketSession.PrinterOpt.MEDIA_SOURCE_SHEET,
+                                printer.getMediaSourceOpt().getChoices(),
+                                printer.getMediaSourceJobSheetOptChoice())));
+
+            }
             item.add(new PrinterOptListView(WICKET_ID_MEDIA_SOURCE,
-                    filterMediaSourcesForUser(new PrinterAttrLookup(dbPrinter),
+                    filterMediaSourcesForUser(printerAttrLookup,
                             printer.getMediaSourceOpt().getChoices()),
-                    printer.getMediaSourceOptChoice()));
+                    this.getLastIppChoice(printer.getId(),
+                            JobTicketSession.PrinterOpt.MEDIA_SOURCE,
+                            printer.getMediaSourceOpt().getChoices(),
+                            printer.getMediaSourceJobSheetOptChoice())));
 
             //
             final JsonProxyPrinterOpt outputBinOpt = printer.getOutputBinOpt();
@@ -259,7 +367,10 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             } else {
                 item.add(new PrinterOptListView(WICKET_ID_OUTPUT_BIN,
                         outputBinOpt.getChoices(),
-                        printer.getOutputBinOptChoice()));
+                        this.getLastIppChoice(printer.getId(),
+                                JobTicketSession.PrinterOpt.OUTPUT_BIN,
+                                outputBinOpt.getChoices(),
+                                printer.getOutputBinOptChoice())));
 
                 final JsonProxyPrinterOpt jogOffsetOpt =
                         printer.getJogOffsetOpt();
@@ -269,10 +380,10 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
                 } else {
                     item.add(new PrinterOptListView(WICKET_ID_JOG_OFFSET,
                             jogOffsetOpt.getChoices(),
-                            printer.getJogOffsetOptChoice()));
+                            getLastJogOffsetChoice(jogOffsetOpt.getChoices(),
+                                    printer.getJogOffsetOptChoice())));
                 }
             }
-
         }
 
         /**
@@ -344,35 +455,39 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
 
         super(parameters);
 
-        final String jobFileName = this.getParmValue(PARM_JOBFILENAME);
+        final String jobFileName = this.getJobFileName();
+
+        final TicketJobSheetDto jobSheetDto;
+        final List<RedirectPrinterDto> printerList;
 
         if (StringUtils.isBlank(jobFileName)) {
+
             setResponsePage(new MessageContent(AppLogLevelEnum.ERROR, String
                     .format("\"%s\" parameter missing", PARM_JOBFILENAME)));
+            printerList = null;
+            jobSheetDto = null;
+
+        } else {
+
+            final OutboxJobDto job = JOBTICKET_SERVICE.getTicket(jobFileName);
+
+            jobSheetDto = JOBTICKET_SERVICE
+                    .getTicketJobSheet(job.createIppOptionMap());
+
+            printerList = JOBTICKET_SERVICE.getRedirectPrinters(job,
+                    IppOptionMap.createVoid(), getLocale());
+        }
+
+        final MarkupHelper helper = new MarkupHelper(this);
+
+        if (printerList == null) {
+            setResponsePage(JobTicketNotFound.class);
+            helper.discloseLabel("printer-radio");
+            return;
         }
 
         final boolean isSettlement = this.getParmBoolean(PARM_SETTLE, false);
         final boolean isRetry = this.getParmBoolean(PARM_RETRY, false);
-
-        //
-        final List<RedirectPrinterDto> printerList;
-
-        try {
-            printerList = JOBTICKET_SERVICE.getRedirectPrinters(jobFileName,
-                    IppOptionMap.createVoid(), getLocale());
-        } catch (Exception e) {
-            setResponsePage(
-                    new MessageContent(AppLogLevelEnum.ERROR, e.getMessage()));
-            return;
-        }
-
-        if (printerList == null) {
-            setResponsePage(new MessageContent(AppLogLevelEnum.WARN,
-                    localized("msg-jobticket-not-found")));
-            return;
-        }
-
-        final MarkupHelper helper = new MarkupHelper(this);
 
         //
         final String prompt;
@@ -410,7 +525,7 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
 
         //
         add(new RedirectPrinterListView("printer-radio", printerList,
-                isSettlement));
+                isSettlement, jobSheetDto));
     }
 
 }

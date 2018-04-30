@@ -2,8 +2,8 @@
 <wicket:remove>
 	<!-- 
     +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
+    | This file is part of the SavaPage project <https://savapage.org> ..|
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein...| 
     |....................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify ..|
     | it under the terms of the GNU Affero General Public License as ....|
@@ -26,10 +26,11 @@ hidden input is void.
 	<form id="sp-file-download-api-form" action="/api" method="get"
 		target="_blank">
 		<input type="hidden" name="" value="" wicket:id="webAppType" />
-		<input type="hidden" name="request" />
-		<input type="hidden" name="request-sub" />
-		<input type="hidden" name="user" />
-		<input type="hidden" name="data" />
+		<input type="hidden" name="request" wicket:id="request" />
+		<input type="hidden" name="request-sub" wicket:id="request-sub" />
+		<input type="hidden" name="request-parm" wicket:id="request-parm" />
+		<input type="hidden" name="user" wicket:id="user" />
+		<input type="hidden" name="data" wicket:id="data" />
 	</form>
 
 </wicket:panel>

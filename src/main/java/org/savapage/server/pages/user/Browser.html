@@ -1,14 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <http://savapage.org> ...|
-    | Copyright (c) 2011-2016 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
+    +=========================================================================+ 
+    | This file is part of the SavaPage project <https://www.savapage.org> ...|
+    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
+    |.........................................................................| 
+    | SavaPage is free software: you can redistribute it and/or modify .......|
+    | it under the terms of the GNU Affero General Public License as .........|
+    | published by the Free Software Foundation, either version 3 of .........|
+    | the License, or (at your option) any later version. ....................|
+    +=========================================================================+ 
     -->
 </wicket:remove>
 <div class="ui-content" id="content-browser">
@@ -29,16 +31,19 @@
 		<ul>
 			<li>
 				<a href="#" id="browser-back" data-icon="back" data-rel="back"
-					data-direction="reverse"></a>
+					data-direction="reverse" />
 			</li>
 			<li>
-				<a href="#" id="browser-delete" data-icon="delete"></a>
+				<button id="browser-delete"
+					class="ui-btn ui-btn-icon-top ui-icon-delete"></button>
 			</li>
 			<li>
-				<a href="#" id="browser-nav-left" data-icon="arrow-l"></a>
+				<button id="browser-nav-left"
+					class="ui-btn ui-btn-icon-top ui-icon-arrow-l"></button>
 			</li>
 			<li>
-				<a href="#" id="browser-nav-right" data-icon="arrow-r"></a>
+				<button id="browser-nav-right"
+					class="ui-btn ui-btn-icon-top ui-icon-arrow-r"></button>
 			</li>
 		</ul>
 	</div>
@@ -51,3 +56,5 @@ THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG
 </wicket:remove>
 <div data-role="popup" data-position-to="window"
 	class="sp-msg-popup ui-content" />
+
+</html>

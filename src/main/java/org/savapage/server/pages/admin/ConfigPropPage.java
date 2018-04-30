@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -36,9 +36,11 @@ import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.dao.ConfigPropertyDao;
+import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.helpers.AbstractPagerReq;
 import org.savapage.core.jpa.ConfigProperty;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.MarkupHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,18 +136,79 @@ public final class ConfigPropPage extends AbstractAdminListPage {
 
     }
 
+    private final class ConfigPropListView
+            extends PropertyListView<ConfigProperty> {
+
+        private static final long serialVersionUID = 1L;
+
+        private final ConfigManager cm = ConfigManager.instance();
+        private final boolean isEditor;
+
+        /**
+         *
+         * @param id
+         * @param list
+         * @param editor
+         */
+        public ConfigPropListView(final String id,
+                final List<ConfigProperty> list, final boolean editor) {
+            super(id, list);
+            this.isEditor = editor;
+        }
+
+        @Override
+        protected void populateItem(final ListItem<ConfigProperty> item) {
+            final ConfigProperty prop = item.getModelObject();
+
+            final IConfigProp.Key configKey =
+                    cm.getConfigKey(prop.getPropertyName());
+
+            final boolean showAsUserEncrypted =
+                    StringUtils.isNotBlank(cm.getConfigValue(configKey))
+                            && cm.isUserEncrypted(configKey);
+
+            item.add(new Label("propertyName"));
+
+            if (showAsUserEncrypted) {
+                item.add(new Label("value", "* * * * * * * *"));
+            } else {
+                item.add(new Label("value"));
+            }
+
+            item.add(new Label("modifiedBy"));
+
+            final Label labelWrk;
+
+            if (this.isEditor) {
+                labelWrk = MarkupHelper.createEncloseLabel("button-edit",
+                        HtmlButtonEnum.EDIT.uiText(getLocale()), this.isEditor);
+                /*
+                 * Set the uid in 'data-savapage' attribute, so it can be picked
+                 * up in JavaScript for editing.
+                 */
+                labelWrk.add(
+                        new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
+                                prop.getPropertyName()));
+            } else {
+                labelWrk = MarkupHelper.createEncloseLabel("button-edit", "",
+                        false);
+            }
+            item.add(labelWrk);
+        }
+
+    }
+
     /**
-     *
+     * @param parameters
+     *            The page parameters.
      */
     public ConfigPropPage(final PageParameters parameters) {
 
         super(parameters);
-
-        // this.openServiceContext();
-
-        Req req = readReq();
-
-        // final String containingText = req.getSelect().getContainingText();
+        final boolean hasEditorAccess =
+                this.probePermissionToEdit(ACLOidEnum.A_CONFIG_EDITOR);
+        //
+        final Req req = readReq();
 
         final ConfigPropertyDao.ListFilter filter =
                 new ConfigPropertyDao.ListFilter();
@@ -160,55 +223,12 @@ public final class ConfigPropPage extends AbstractAdminListPage {
         /*
          * Display the requested page.
          */
-
-        // add(new Label("applog-count", Long.toString(logCount)));
-
         final List<ConfigProperty> entryList = dao.getListChunk(filter,
                 req.calcStartPosition(), req.getMaxResults(),
                 ConfigPropertyDao.Field.NAME, req.getSort().getAscending());
 
-        add(new PropertyListView<ConfigProperty>("config-entry-view",
-                entryList) {
-            private static final long serialVersionUID = 1L;
-
-            private final ConfigManager cm = ConfigManager.instance();
-
-            @Override
-            protected void populateItem(final ListItem<ConfigProperty> item) {
-
-                final ConfigProperty prop = item.getModelObject();
-
-                final IConfigProp.Key configKey =
-                        cm.getConfigKey(prop.getPropertyName());
-
-                final boolean showAsUserEncrypted =
-                        StringUtils.isNotBlank(cm.getConfigValue(configKey))
-                                && cm.isUserEncrypted(configKey);
-
-                item.add(new Label("propertyName"));
-
-                if (showAsUserEncrypted) {
-                    item.add(new Label("value", "* * * * * * * *"));
-                } else {
-                    item.add(new Label("value"));
-                }
-
-                item.add(new Label("modifiedBy"));
-
-                /*
-                 * Set the uid in 'data-savapage' attribute, so it can be picked
-                 * up in JavaScript for editing.
-                 */
-                Label labelWrk = new Label("button-edit",
-                        getLocalizer().getString("button-edit", this));
-                labelWrk.add(
-                        new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
-                                prop.getPropertyName()));
-                item.add(labelWrk);
-
-            }
-        });
-
+        add(new ConfigPropListView("config-entry-view", entryList,
+                hasEditorAccess));
         /*
          * Display the navigation bars and write the response.
          */
