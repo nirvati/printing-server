@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,20 +25,29 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.markup.html.panel.Fragment;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.doc.store.DocStoreBranchEnum;
+import org.savapage.core.doc.store.DocStoreTypeEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.json.JsonPrinterDetail;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.print.proxy.JsonProxyPrinterOpt;
 import org.savapage.core.print.proxy.JsonProxyPrinterOptChoice;
 import org.savapage.core.print.proxy.JsonProxyPrinterOptGroup;
+import org.savapage.core.services.DocStoreService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.PrintScalingEnum;
+import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
 
 /**
@@ -53,11 +62,17 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
      */
     private static final long serialVersionUID = 1L;
 
-    /**
-     * .
-     */
+    /** */
     private static final ProxyPrintService PROXY_PRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
+
+    /** */
+    private static final DocStoreService DOC_STORE_SERVICE =
+            ServiceContext.getServiceFactory().getDocStoreService();
+
+    /** */
+    private static final JobTicketService JOB_TICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
 
     /**
      * .
@@ -72,6 +87,8 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
 
         private final OutboxJobDto jobTicket;
 
+        private final boolean isReopenedTicket;
+
         /**
          *
          * @param id
@@ -80,12 +97,16 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
          *            The item list.
          * @param job
          *            The job.
+         * @param reopenedTicket
+         *            If {@code true}, this ticket is reopened.
          */
         PrinterOptionsView(final String id,
-                final List<JsonProxyPrinterOpt> list, final OutboxJobDto job) {
+                final List<JsonProxyPrinterOpt> list, final OutboxJobDto job,
+                final boolean reopenedTicket) {
 
             super(id, list);
             this.jobTicket = job;
+            this.isReopenedTicket = reopenedTicket;
         }
 
         @Override
@@ -100,10 +121,17 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
             final Fragment optionFragment =
                     new Fragment("ipp-option-div", "ipp-option-select", this);
 
-            optionFragment.add(new AttributeModifier("id", "todo"));
+            optionFragment
+                    .add(new AttributeModifier(MarkupHelper.ATTR_ID, "todo"));
 
             labelWlk = new Label("label", printerOption.getUiText());
             MarkupHelper.modifyLabelAttr(labelWlk, "for", id);
+
+            if (this.isReopenedTicket) {
+                MarkupHelper.appendLabelAttr(labelWlk, MarkupHelper.ATTR_CLASS,
+                        MarkupHelper.CSS_TXT_INFO);
+            }
+
             optionFragment.add(labelWlk);
 
             // How to to this the proper wicket:fragment way?
@@ -129,10 +157,15 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
             labelWlk = new Label("select", choices);
             labelWlk.setEscapeModelStrings(false);
 
-            MarkupHelper.modifyLabelAttr(labelWlk, "id", id);
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_ID, id);
             MarkupHelper.modifyLabelAttr(labelWlk,
                     MarkupHelper.ATTR_DATA_SAVAPAGE,
                     printerOption.getKeyword());
+
+            if (this.isReopenedTicket) {
+                MarkupHelper.modifyLabelAttr(labelWlk,
+                        MarkupHelper.ATTR_DISABLED, MarkupHelper.ATTR_DISABLED);
+            }
 
             optionFragment.add(labelWlk);
 
@@ -154,13 +187,17 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
 
         super(parameters);
 
+        final MarkupHelper helper = new MarkupHelper(this);
+
         final OutboxJobDto job = this.getJobTicket();
 
         if (job == null) {
-            final MarkupHelper helper = new MarkupHelper(this);
             helper.discloseLabel("btn-save");
             return;
         }
+
+        final boolean isReopenedTicket =
+                JOB_TICKET_SERVICE.isReopenedTicket(job);
 
         final JsonPrinterDetail printer =
                 PROXY_PRINT_SERVICE.getPrinterDetailUserCopy(
@@ -177,8 +214,12 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
                 optionList.add(option);
             }
         }
+        // Extra
+        optionList.add(createPrintScalingOpt(job));
 
-        add(new PrinterOptionsView("ipp-option-list", optionList, job));
+        //
+        add(new PrinterOptionsView("ipp-option-list", optionList, job,
+                isReopenedTicket));
 
         //
         final String jobFileName = this.getJobFileName();
@@ -190,18 +231,75 @@ public final class JobTicketEditAddIn extends JobTicketAddInBase {
         add(label);
 
         //
-        label = MarkupHelper.createEncloseLabel("jobticket-copies", "",
-                !job.isDelegatedPrint());
+        final boolean isSingleAccountPrint = job.isSingleAccountPrint();
 
-        if (!job.isDelegatedPrint()) {
-            MarkupHelper.modifyLabelAttr(label, "value",
+        label = MarkupHelper.createEncloseLabel("jobticket-copies", "",
+                isSingleAccountPrint);
+
+        if (isSingleAccountPrint) {
+            MarkupHelper.modifyLabelAttr(label, MarkupHelper.ATTR_VALUE,
                     String.valueOf(job.getCopies()));
         }
 
         add(label);
 
+        if (!isReopenedTicket && DOC_STORE_SERVICE.isEnabled(
+                DocStoreTypeEnum.ARCHIVE, DocStoreBranchEnum.OUT_PRINT)) {
+
+            helper.addLabel("cb-archive-label", NounEnum.ARCHIVE);
+            helper.addCheckbox("cb-archive",
+                    BooleanUtils.isTrue(job.getArchive()));
+
+            final StringBuilder imgSrc = new StringBuilder();
+            imgSrc.append(WebApp.PATH_IMAGES).append('/')
+                    .append("archive-32x32.png");
+
+            helper.addModifyLabelAttr("img-archive", MarkupHelper.ATTR_SRC,
+                    imgSrc.toString());
+
+        } else {
+            helper.discloseLabel("cb-archive");
+        }
+
         //
         add(new Label("btn-cancel", HtmlButtonEnum.CANCEL.uiText(getLocale())));
+    }
+
+    /**
+     * Create print-scaling option.
+     *
+     * @param job
+     *            The job.
+     * @return The option.
+     */
+    private JsonProxyPrinterOpt createPrintScalingOpt(final OutboxJobDto job) {
+
+        final JsonProxyPrinterOpt opt = new JsonProxyPrinterOpt();
+
+        opt.setKeyword(PrintScalingEnum.IPP_NAME);
+        // opt.setUiText("Scaling");
+
+        final ArrayList<JsonProxyPrinterOptChoice> choices = new ArrayList<>();
+
+        JsonProxyPrinterOptChoice wlk;
+
+        wlk = new JsonProxyPrinterOptChoice();
+        wlk.setChoice(PrintScalingEnum.NONE.getIppValue());
+        choices.add(wlk);
+
+        wlk = new JsonProxyPrinterOptChoice();
+        wlk.setChoice(PrintScalingEnum.FIT.getIppValue());
+        choices.add(wlk);
+
+        opt.setChoices(choices);
+
+        opt.setDefchoice(StringUtils.defaultString(
+                job.getOptionValues().get(PrintScalingEnum.IPP_NAME),
+                PrintScalingEnum.NONE.getIppValue()));
+
+        PROXY_PRINT_SERVICE.localizePrinterOpt(getLocale(), opt);
+
+        return opt;
     }
 
 }

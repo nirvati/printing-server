@@ -1,9 +1,9 @@
-/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2017 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2019 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -85,12 +85,8 @@
             },
 
             getBatch : function() {
-                var sel = $('#sp-voucher-batch')
-                //
-                ,
-                    present = (sel.val() !== "0")
-                //
-                ;
+                var sel = $('#sp-voucher-batch'),
+                    present = (sel.val() !== "0");
                 return ( present ? sel && sel.val() : null);
             },
 
@@ -132,18 +128,10 @@
             },
 
             v2m : function(my) {
-                var _view = _ns.PanelCommon.view
-                //
-                ,
-                    val
-                //
-                ,
-                    sel = $('#sp-voucher-date-from')
-                //
-                ,
-                    date = _view.mobipickGetDate(sel)
-                //
-                ,
+                var _view = _ns.PanelCommon.view,
+                    val,
+                    sel = $('#sp-voucher-date-from'),
+                    date = _view.mobipickGetDate(sel),
                     present = (sel.val().length > 0);
 
                 my.input.select.dateFrom = ( present ? date.getTime() : null);
@@ -316,18 +304,10 @@
             },
 
             v2m : function(my) {
-                var _view = _ns.PanelCommon.view
-                //
-                ,
-                    level = _view.getRadioValue('sp-applog-select-level')
-                //
-                ,
-                    sel = $('#sp-applog-date-from')
-                //
-                ,
-                    date = _view.mobipickGetDate(sel)
-                //
-                ,
+                var _view = _ns.PanelCommon.view,
+                    level = _view.getRadioValue('sp-applog-select-level'),
+                    sel = $('#sp-applog-date-from'),
+                    date = _view.mobipickGetDate(sel),
                     present = (sel.val().length > 0);
 
                 my.input.select.date_from = ( present ? date.getTime() : null);
@@ -445,12 +425,8 @@
             },
 
             m2v : function(my) {
-                var val = my.input.select.text
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                var val = my.input.select.text,
+                    _view = _ns.PanelCommon.view;
                 $('#sp-config-containing-text').val(val || '');
 
                 _view.checkRadio('sp-config-sort-dir', 'sp-config-sort-dir-asc');
@@ -458,12 +434,8 @@
 
             v2m : function(my) {
                 var sel = $('#sp-config-containing-text'),
-                    present = (sel.val().length > 0)
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    present = (sel.val().length > 0),
+                    _view = _ns.PanelCommon.view;
                 my.input.select.text = ( present ? sel.val() : null);
 
                 my.input.sort.ascending = _view.isRadioIdSelected('sp-config-sort-dir', 'sp-config-sort-dir-asc');
@@ -710,12 +682,8 @@
             },
 
             onResize : function(my) {
-                var selXyChart = $('#dashboard-xychart')
-                //
-                ,
-                    selPieChart = $('#dashboard-piechart')
-                //
-                ;
+                var selXyChart = $('#dashboard-xychart'),
+                    selPieChart = $('#dashboard-piechart');
 
                 if (selXyChart && selPieChart) {
 
@@ -766,12 +734,8 @@
 
             m2v : function(my) {
                 var id,
-                    val
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    val,
+                    _view = _ns.PanelCommon.view;
                 $('#sp-device-containing-text').val(my.input.select.text);
 
                 val = my.input.select.disabled;
@@ -787,15 +751,9 @@
 
             v2m : function(my) {
                 var val,
-                    sel = $('#sp-device-containing-text')
-                //
-                ,
-                    present = (sel.val().length > 0)
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    sel = $('#sp-device-containing-text'),
+                    present = (sel.val().length > 0),
+                    _view = _ns.PanelCommon.view;
 
                 my.input.select.text = ( present ? sel.val() : null);
 
@@ -882,7 +840,6 @@
         _ns.PanelOptions = {
 
             onAuthMethodSelect : function(method) {
-                //
                 var _view = _ns.PanelCommon.view;
 
                 _view.visible($('.ldap-parms'), method === 'ldap');
@@ -907,26 +864,12 @@
             },
 
             onAuthModeLocalEnabled : function() {
-                var
-                //
-                _view = _ns.PanelCommon.view
-                //
-                ,
-                    userPw = _view.isCbChecked($("#auth-mode\\.name"))
-                //
-                ,
-                    idNumber = _view.isCbChecked($("#auth-mode\\.id"))
-                //
-                ,
-                    cardNumber = _view.isCbChecked($("#auth-mode\\.card-local"))
-                //
-                ,
-                    yubikey = _view.isCbChecked($("#auth-mode\\.yubikey"))
-                //
-                ,
-                    nMode = 0
-                //
-                ;
+                var _view = _ns.PanelCommon.view,
+                    userPw = _view.isCbChecked($("#auth-mode\\.name")),
+                    idNumber = _view.isCbChecked($("#auth-mode\\.id")),
+                    cardNumber = _view.isCbChecked($("#auth-mode\\.card-local")),
+                    yubikey = _view.isCbChecked($("#auth-mode\\.yubikey")),
+                    nMode = 0;
 
                 $('#auth-mode-default-user').checkboxradio( userPw ? 'enable' : 'disable');
                 $('#auth-mode-default-number').checkboxradio( idNumber ? 'enable' : 'disable');
@@ -1009,6 +952,7 @@
                 var _view = _ns.PanelCommon.view;
                 _view.visible($('.sp-proxyprint-delegate-enable-enabled'), enabled);
                 this.onProxyPrintDelegatePaperCutEnabled( enabled ? _view.isCbChecked($("#proxy-print\\.delegate\\.papercut\\.enable")) : false);
+                _view.visibleCheckboxRadio($('#proxy-print\\.personal\\.papercut\\.enable'), !enabled);
             },
 
             onProxyPrintDelegatePaperCutEnabled : function(enabled) {
@@ -1027,21 +971,11 @@
             },
 
             onGcpRefresh : function(my) {
-                var _view = _ns.PanelCommon.view
-                //
-                ,
-                    _model = my.model
-                //
-                ,
-                    enabled = _view.isCbChecked($('#gcp\\.enable'))
-                //
-                ,
-                    state = _model.gcp.state || $('#gcp-printer-state').text()
-                //
-                ,
-                    isPresent = (state === 'ON_LINE' || state === 'OFF_LINE')
-                //
-                ,
+                var _view = _ns.PanelCommon.view,
+                    _model = my.model,
+                    enabled = _view.isCbChecked($('#gcp\\.enable')),
+                    state = _model.gcp.state || $('#gcp-printer-state').text(),
+                    isPresent = (state === 'ON_LINE' || state === 'OFF_LINE'),
                     notPresent = !isPresent;
 
                 $('#gcp-printer-state-display').attr('class', (state === 'ON_LINE') ? 'sp-txt-valid' : 'sp-txt-warn');
@@ -1140,18 +1074,10 @@
             },
 
             v2m : function(my) {
-                var val
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ,
-                    sel = $('#sp-printer-containing-text')
-                //
-                ,
-                    present = (sel.val().length > 0)
-                //
-                ;
+                var val,
+                    _view = _ns.PanelCommon.view,
+                    sel = $('#sp-printer-containing-text'),
+                    present = (sel.val().length > 0);
 
                 my.input.select.text = ( present ? sel.val() : null);
 
@@ -1202,7 +1128,6 @@
             },
 
             onOutput : function(my, output) {
-                var _view = _ns.PanelCommon.view;
 
                 my.output = output;
                 /*
@@ -1268,12 +1193,8 @@
 
             m2v : function(my) {
                 var id,
-                    val = my.input.select.text
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    val = my.input.select.text,
+                    _view = _ns.PanelCommon.view;
                 $('#sp-queue-containing-text').val(val || '');
 
                 //
@@ -1294,16 +1215,10 @@
             },
 
             v2m : function(my) {
-                var val
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ,
+                var val,
+                    _view = _ns.PanelCommon.view,
                     sel = $('#sp-queue-containing-text'),
-                    present = (sel.val().length > 0)
-                //
-                ;
+                    present = (sel.val().length > 0);
 
                 my.input.select.text = ( present ? sel.val() : null);
 
@@ -1363,8 +1278,6 @@
 
             onOutput : function(my, output) {
 
-                var _view = _ns.PanelCommon.view;
-
                 my.output = output;
 
                 /*
@@ -1410,7 +1323,7 @@
                 my.input.page = 1;
                 my.input.maxResults = 10;
 
-                my.input.select.id_text = null;
+                my.input.select.name_id_text = null;
                 my.input.select.email_text = null;
 
                 my.input.select.usergroup_id = null;
@@ -1440,14 +1353,10 @@
 
             m2v : function(my) {
                 var val,
-                    id
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    id,
+                    _view = _ns.PanelCommon.view;
 
-                $('#sp-user-id-containing-text').val(my.input.select.id_text);
+                $('#sp-user-id-containing-text').val(my.input.select.name_id_text);
                 $('#sp-user-email-containing-text').val(my.input.select.email_text);
 
                 $('#sp-user-select-group').val(my.input.select.usergroup_id).selectmenu('refresh');
@@ -1475,15 +1384,10 @@
             },
 
             v2m : function(my) {
-
                 var val,
                     sel,
-                    present
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    present,
+                    _view = _ns.PanelCommon.view;
 
                 val = _view.getRadioValue('sp-user-select-type');
                 my.input.select.person = (val === "" ? null : (val === "1"));
@@ -1499,7 +1403,7 @@
 
                 sel = $('#sp-user-id-containing-text');
                 present = (sel.val().length > 0);
-                my.input.select.id_text = ( present ? sel.val() : null);
+                my.input.select.name_id_text = ( present ? sel.val() : null);
 
                 sel = $('#sp-user-email-containing-text');
                 present = (sel.val().length > 0);
@@ -1520,7 +1424,7 @@
                 maxResults : 10,
 
                 select : {
-                    id_text : null,
+                    name_id_text : null,
                     email_text : null,
                     admin : null,
                     person : null,
@@ -1558,8 +1462,6 @@
             },
 
             onOutput : function(my, output) {
-
-                var _view = _ns.PanelCommon.view;
 
                 my.output = output;
                 /*
@@ -1624,12 +1526,8 @@
 
             m2v : function(my) {
                 var val,
-                    id
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    id,
+                    _view = _ns.PanelCommon.view;
 
                 $('#sp-shared-account-name-containing-text').val(my.input.select.name_text);
 
@@ -1649,12 +1547,8 @@
 
                 var val,
                     sel,
-                    present
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    present,
+                    _view = _ns.PanelCommon.view;
 
                 val = _view.getRadioValue('sp-shared-account-select-deleted');
                 my.input.select.deleted = (val === "" ? null : (val === "1"));
@@ -1767,30 +1661,20 @@
             },
 
             m2v : function(my) {
-                var id
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                var id,
+                    _view = _ns.PanelCommon.view;
 
                 $('#sp-user-group-name-containing-text').val(my.input.select.name_text);
 
-                //
                 id = 'sp-user-group-sort-dir';
                 _view.checkRadio(id, my.input.sort.ascending ? id + '-asc' : id + '-desc');
 
             },
 
             v2m : function(my) {
-
                 var sel,
-                    present
-                //
-                ,
-                    _view = _ns.PanelCommon.view
-                //
-                ;
+                    present,
+                    _view = _ns.PanelCommon.view;
 
                 sel = $('#sp-user-group-name-containing-text');
                 present = (sel.val().length > 0);

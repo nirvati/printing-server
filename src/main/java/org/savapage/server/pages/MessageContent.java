@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -44,25 +44,10 @@ public class MessageContent extends AbstractPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
-        final StringBuilder clazz =
-                new StringBuilder().append(MarkupHelper.CSS_TXT_WRAP).append(
-                        " ");
-
-        switch (level) {
-        case ERROR:
-            clazz.append(MarkupHelper.CSS_TXT_ERROR);
-            break;
-
-        case WARN:
-            clazz.append(MarkupHelper.CSS_TXT_WARN);
-            break;
-
-        default:
-            clazz.append(MarkupHelper.CSS_TXT_INFO);
-            break;
-        }
-
-        helper.addModifyLabelAttr("msg", msg, "class", clazz.toString());
+        helper.addModifyLabelAttr("msg", msg, MarkupHelper.ATTR_CLASS,
+                new StringBuilder().append(MarkupHelper.CSS_TXT_WRAP)
+                        .append(" ").append(MarkupHelper.getCssTxtClass(level))
+                        .toString());
     }
 
 }

@@ -44,12 +44,15 @@ import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserGroupMember;
 import org.savapage.core.services.AccessControlService;
-import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
+import org.savapage.core.services.helpers.account.UserAccountContext;
+import org.savapage.core.services.helpers.account.UserAccountContextEnum;
+import org.savapage.core.services.helpers.account.UserAccountContextFactory;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.helpers.SparklineHtml;
+import org.savapage.server.helpers.account.UserAccountContextHtmlFactory;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.session.SpSession;
 
@@ -70,11 +73,6 @@ public final class UsersPage extends AbstractAdminListPage {
             ServiceContext.getServiceFactory().getAccessControlService();
 
     /** */
-    private static final AccountingService ACCOUNTING_SERVICE =
-            ServiceContext.getServiceFactory().getAccountingService();
-    /**
-     *
-     */
     private static final UserService USER_SERVICE =
             ServiceContext.getServiceFactory().getUserService();
 
@@ -115,6 +113,12 @@ public final class UsersPage extends AbstractAdminListPage {
         private final String currencySymbol;
 
         /** */
+        private final UserAccountContext accountCtxSavaPage;
+
+        /** */
+        private final UserAccountContext accountCtxPaperCut;
+
+        /** */
         private static final String WID_BUTTON_LOG = "button-log";
         /** */
         private static final String WID_BUTTON_TRX = "button-transaction";
@@ -144,6 +148,12 @@ public final class UsersPage extends AbstractAdminListPage {
 
             this.hasAccessTrx = ACCESS_CONTROL_SERVICE.hasAccess(reqUser,
                     ACLOidEnum.A_TRANSACTIONS);
+
+            this.accountCtxSavaPage =
+                    UserAccountContextFactory.getContextSavaPage();
+
+            this.accountCtxPaperCut =
+                    UserAccountContextFactory.getContextPaperCut();
         }
 
         /**
@@ -174,7 +184,6 @@ public final class UsersPage extends AbstractAdminListPage {
             final MarkupHelper helper = new MarkupHelper(item);
 
             final Map<String, String> mapVisible = new HashMap<>();
-            mapVisible.put("balance-currency", null);
 
             final User user = item.getModelObject();
 
@@ -278,10 +287,30 @@ public final class UsersPage extends AbstractAdminListPage {
             /*
              * Balance
              */
-            mapVisible.put("balance-currency", this.currencySymbol);
+            item.add(new Label("balance-amount",
+                    this.accountCtxSavaPage.getFormattedUserBalance(user,
+                            getLocale(), this.currencySymbol)));
 
-            item.add(new Label("balance-amount", ACCOUNTING_SERVICE
-                    .getFormattedUserBalance(user, getLocale(), null)));
+            if (this.accountCtxPaperCut == null) {
+                mapVisible.put("balance-amount-papercut", null);
+            } else {
+                helper.addTransparant("balance-papercut-icon")
+                        .add(new AttributeModifier(MarkupHelper.ATTR_SRC,
+                                UserAccountContextHtmlFactory
+                                        .getContext(
+                                                UserAccountContextEnum.PAPERCUT)
+                                        .getImgUrl()));
+                mapVisible.put("balance-amount-papercut",
+                        this.accountCtxPaperCut.getFormattedUserBalance(user,
+                                getLocale(), this.currencySymbol));
+
+                helper.addTransparant("balance-savapage-icon")
+                        .add(new AttributeModifier(MarkupHelper.ATTR_SRC,
+                                UserAccountContextHtmlFactory
+                                        .getContext(
+                                                UserAccountContextEnum.SAVAPAGE)
+                                        .getImgUrl()));
+            }
 
             /*
              * Period + Totals
@@ -459,7 +488,8 @@ public final class UsersPage extends AbstractAdminListPage {
         }
 
         //
-        filter.setContainingIdText(req.getSelect().getIdContainingText());
+        filter.setContainingNameOrIdText(
+                req.getSelect().getNameIdContainingText());
         filter.setContainingEmailText(req.getSelect().getEmailContainingText());
         filter.setAdmin(req.getSelect().getAdmin());
         filter.setPerson(req.getSelect().getPerson());

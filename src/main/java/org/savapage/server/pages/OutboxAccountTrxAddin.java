@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,12 +21,15 @@
  */
 package org.savapage.server.pages;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.jpa.AccountTrx;
+import org.savapage.core.jpa.User;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.server.session.SpSession;
@@ -52,6 +55,11 @@ public final class OutboxAccountTrxAddin extends AbstractAccountTrxAddin {
      * Boolean.
      */
     private static final String PARM_JOBTICKET = "jobticket";
+
+    /**
+     * Optional
+     */
+    private static final String PARM_USER_DB_ID = "userDbId";
 
     /**
      * Gets the job ticket.
@@ -85,9 +93,19 @@ public final class OutboxAccountTrxAddin extends AbstractAccountTrxAddin {
                 setResponsePage(JobTicketNotFound.class);
             }
         } else {
+
+            final String userid;
+
+            if (getSessionWebAppType() == WebAppTypeEnum.USER) {
+                userid = SpSession.get().getUser().getUserId();
+            } else {
+                final User user = ServiceContext.getDaoContext().getUserDao()
+                        .findActiveUserById(this.getParmLong(PARM_USER_DB_ID));
+                userid = user.getUserId();
+            }
+
             job = ServiceContext.getServiceFactory().getOutboxService()
-                    .getOutboxJob(SpSession.get().getUser().getUserId(),
-                            jobFileName);
+                    .getOutboxJob(userid, jobFileName);
         }
         return job;
     }
@@ -103,8 +121,13 @@ public final class OutboxAccountTrxAddin extends AbstractAccountTrxAddin {
         final OutboxJobDto outboxJob = this.getOutboxJob();
         final List<AccountTrx> trxList;
 
+        final BigDecimal totalAmount;
+        final int totalCopies;
+
         if (outboxJob == null) {
             trxList = null;
+            totalCopies = 0;
+            totalAmount = BigDecimal.ZERO;
         } else {
             if (outboxJob.getAccountTransactions() == null
                     && outboxJob.getUserId() == null) {
@@ -112,8 +135,10 @@ public final class OutboxAccountTrxAddin extends AbstractAccountTrxAddin {
             }
             trxList = ServiceContext.getServiceFactory().getAccountingService()
                     .createAccountTrxsUI(outboxJob);
+            totalCopies = outboxJob.getCopies();
+            totalAmount = outboxJob.getCostTotal();
         }
-        populate(trxList);
+        populate(totalAmount, totalCopies, trxList);
     }
 
 }

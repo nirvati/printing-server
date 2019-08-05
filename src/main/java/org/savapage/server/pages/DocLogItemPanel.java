@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,13 +22,16 @@
 package org.savapage.server.pages;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DateFormat;
 import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
@@ -37,10 +40,12 @@ import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.IModel;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
-import org.savapage.core.dto.JobTicketTagDto;
+import org.savapage.core.doc.DocContent;
+import org.savapage.core.i18n.AdjectiveEnum;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutAdjectiveEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
@@ -56,14 +61,13 @@ import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.services.helpers.JobTicketSupplierData;
+import org.savapage.core.services.helpers.PrintSupplierData;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.CurrencyUtil;
 import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  *
@@ -90,15 +94,33 @@ public class DocLogItemPanel extends Panel {
     private final DateFormat dfShortTime = DateFormat
             .getTimeInstance(DateFormat.SHORT, getSession().getLocale());
 
-    /**
-     *
-     */
+    /** */
     private static final long serialVersionUID = 1L;
 
-    /**
-     * Number of decimals for decimal scaling.
-     */
-    final int scale;
+    /** */
+    private static final String WID_BTN_GROUP = "btn-group";
+    /** */
+    private static final String WID_BTN_ACCOUNT_TRX_INFO =
+            "btn-account-trx-info";
+    /** */
+    private static final String WID_BTN_ACCOUNT_TRX_REFUND =
+            "btn-account-trx-refund";
+    /** */
+    private static final String WID_BTN_ARCHIVE_DOWNLOAD =
+            "btn-doclog-docstore-archive-download";
+    /** */
+    private static final String WID_BTN_JOURNAL_DOWNLOAD =
+            "btn-doclog-docstore-journal-download";
+    /** */
+    private static final String WID_BTN_TICKET_REOPEN = "btn-ticket-reopen";
+    /** */
+    private static final String WID_IMG_ARCHIVE = "img-archive";
+    /** */
+    private static final String WID_IMG_JOURNAL = "img-journal";
+    /** */
+    private static final String WID_IMG_COPY_JOB = "img-copy-job";
+    /** */
+    private static final String WID_IMG_JOB_SHEET = "img-job-sheet";
 
     /**
      * Number of currency decimals to display.
@@ -108,19 +130,25 @@ public class DocLogItemPanel extends Panel {
     //
     private final boolean showDocLogCost;
 
+    //
+    private final boolean showTicketReopen;
+
     /**
      *
      * @param id
      * @param model
+     * @param showFinancialData
+     * @param isTicketReopenEnabled
      */
     public DocLogItemPanel(String id, IModel<DocLogItem> model,
-            final boolean showFinancialData) {
+            final boolean showFinancialData,
+            final boolean isTicketReopenEnabled) {
 
         super(id, model);
 
-        this.scale = ConfigManager.getFinancialDecimalsInDatabase();
         this.currencyDecimals = ConfigManager.getUserBalanceDecimals();
         this.showDocLogCost = showFinancialData;
+        this.showTicketReopen = isTicketReopenEnabled;
     }
 
     /**
@@ -138,16 +166,16 @@ public class DocLogItemPanel extends Panel {
 
         for (final String attr : new String[] { "user-name", "title",
                 "log-comment", "printoutMode", "signature", "destination",
-                "letterhead", "author", "subject", "keywords", "drm", "userpw",
-                "ownerpw", "duplex", "simplex", "color", "grayscale",
+                "letterhead", "author", "subject", "keywords", "drm", "pdfpgp",
+                "userpw", "ownerpw", "duplex", "simplex", "color", "grayscale",
                 "papersize", "media-source", "output-bin", "jog-offset",
                 "cost-currency", "cost", "job-id", "job-state",
                 "job-completed-date", "print-in-denied-reason-hyphen",
                 "print-in-denied-reason", "collate", "ecoPrint",
                 "removeGraphics", "pageRotate180", "punch", "staple", "fold",
-                "booklet", "jobticket-media", "jobticket-copy",
-                "jobticket-finishing-ext", "jobticket-custom-ext",
-                "landscape" }) {
+                "booklet", "jobticket-tag-plain", "jobticket-media",
+                "jobticket-copy", "jobticket-finishing-ext",
+                "jobticket-custom-ext", "landscape", "scaled" }) {
             mapVisible.put(attr, null);
         }
 
@@ -160,7 +188,7 @@ public class DocLogItemPanel extends Panel {
             final ExtSupplierStatusPanel panel =
                     new ExtSupplierStatusPanel("extSupplierPanel");
             panel.populate(obj.getExtSupplier(), obj.getExtSupplierStatus(),
-                    null);
+                    null, null, locale);
             add(panel);
         } else {
             helper.discloseLabel("extSupplierPanel");
@@ -177,19 +205,61 @@ public class DocLogItemPanel extends Panel {
         // Account Transactions
         final StringBuilder sbAccTrx = new StringBuilder();
 
+        int countButtons = 0;
+
         if (obj.getTransactions().isEmpty()) {
             helper.discloseLabel("account-trx");
-            helper.discloseLabel("btn-account-trx-info");
+            helper.discloseLabel(WID_BTN_ACCOUNT_TRX_INFO);
         } else {
             final String currencySymbol = CurrencyUtil
                     .getCurrencySymbol(obj.getCurrencyCode(), getLocale());
 
-            int totWeightDelegators = 0;
-            int copiesDelegatorsImplicit = 0;
+            BigDecimal totCopiesDelegators = BigDecimal.ZERO;
+            BigDecimal totCopiesPersonal = BigDecimal.ZERO;
 
+            BigDecimal totCopiesDelegatorsRefund = BigDecimal.ZERO;
+            BigDecimal totCopiesPersonalRefund = BigDecimal.ZERO;
+
+            BigDecimal amountCopiesDelegators = BigDecimal.ZERO;
+            BigDecimal amountCopiesPersonal = BigDecimal.ZERO;
+
+            BigDecimal amountCopiesDelegatorsRefund = BigDecimal.ZERO;
+            BigDecimal amountCopiesPersonalRefund = BigDecimal.ZERO;
+
+            final BigDecimal costPerCopy =
+                    ACCOUNTING_SERVICE.calcCostPerPrintedCopy(
+                            obj.getCostOriginal().negate(), obj.getCopies());
+
+            // Create lookup of group accounts with personal invoicing.
+            final Set<String> groupsPersonal = new HashSet<>();
+            final Set<String> groupsPersonalRefund = new HashSet<>();
+            for (final AccountTrx trx : obj.getTransactions()) {
+                if (trx.getExtDetails() != null) {
+                    final boolean isRefund =
+                            trx.getAmount().compareTo(BigDecimal.ZERO) == 1;
+                    if (isRefund) {
+                        groupsPersonalRefund.add(trx.getExtDetails());
+                    } else {
+                        groupsPersonal.add(trx.getExtDetails());
+                    }
+                }
+            }
+            //
             for (final AccountTrx trx : obj.getTransactions()) {
 
                 final Account account = trx.getAccount();
+
+                final boolean isRefund =
+                        trx.getAmount().compareTo(BigDecimal.ZERO) == 1;
+
+                final BigDecimal trxCopies;
+
+                if (costPerCopy.compareTo(BigDecimal.ZERO) != 0) {
+                    trxCopies = ACCOUNTING_SERVICE
+                            .calcPrintedCopies(trx.getAmount(), costPerCopy, 2);
+                } else {
+                    trxCopies = BigDecimal.valueOf(trx.getTransactionWeight());
+                }
 
                 final AccountTypeEnum accountType =
                         AccountTypeEnum.valueOf(account.getAccountType());
@@ -197,70 +267,139 @@ public class DocLogItemPanel extends Panel {
                 if (accountType != AccountTypeEnum.SHARED
                         && accountType != AccountTypeEnum.GROUP) {
 
-                    final boolean isRefund =
-                            trx.getAmount().compareTo(BigDecimal.ZERO) == 1;
-                    if (!isRefund) {
-                        totWeightDelegators +=
-                                trx.getTransactionWeight().intValue();
+                    if (trx.getAccount().getName()
+                            .equalsIgnoreCase(obj.getUserId())) {
+
+                        if (isRefund) {
+                            totCopiesPersonalRefund =
+                                    totCopiesPersonalRefund.add(trxCopies);
+                            amountCopiesPersonalRefund =
+                                    amountCopiesPersonalRefund
+                                            .add(trx.getAmount());
+                        } else {
+                            totCopiesPersonal =
+                                    totCopiesPersonal.add(trxCopies);
+                            amountCopiesPersonal =
+                                    amountCopiesPersonal.add(trx.getAmount());
+                        }
+                    } else {
+                        if (isRefund) {
+                            totCopiesDelegatorsRefund =
+                                    totCopiesDelegatorsRefund.add(trxCopies);
+                            amountCopiesDelegatorsRefund =
+                                    amountCopiesDelegatorsRefund
+                                            .add(trx.getAmount());
+                        } else {
+                            totCopiesDelegators =
+                                    totCopiesDelegators.add(trxCopies);
+                            amountCopiesDelegators =
+                                    amountCopiesDelegators.add(trx.getAmount());
+                        }
                     }
                     continue;
                 }
 
-                copiesDelegatorsImplicit +=
-                        trx.getTransactionWeight().intValue();
-
                 final Account accountParent = account.getParent();
 
-                sbAccTrx.append(" &bull; ");
+                sbAccTrx.append(" &bull; <span style=\"white-space:nowrap\">");
+
+                if (accountType == AccountTypeEnum.SHARED) {
+                    sbAccTrx.append(MarkupHelper.HTML_IMG_ACCOUNT_SHARED);
+                } else if (accountType == AccountTypeEnum.GROUP) {
+                    sbAccTrx.append(MarkupHelper.HTML_IMG_ACCOUNT_GROUP);
+                    if ((isRefund
+                            && groupsPersonalRefund.contains(account.getName()))
+                            || (!isRefund && groupsPersonal
+                                    .contains(account.getName()))) {
+                        sbAccTrx.append(MarkupHelper.HTML_IMG_ACCOUNT_PERSONAL);
+                    }
+                }
+                sbAccTrx.append("&nbsp;");
 
                 if (accountParent != null) {
                     sbAccTrx.append(accountParent.getName()).append('\\');
                 }
 
-                sbAccTrx.append(account.getName());
+                sbAccTrx.append(account.getName()).append("</span>");
 
                 if (trx.getAmount().compareTo(BigDecimal.ZERO) != 0) {
+
                     sbAccTrx.append(" ").append(currencySymbol).append("&nbsp;")
                             .append(localizedDecimal(trx.getAmount()));
-                }
 
-                sbAccTrx.append("&nbsp;(").append(trx.getTransactionWeight())
-                        .append(')');
-            }
-
-            final int copiesDelegatorsIndividual =
-                    obj.getCopies() - copiesDelegatorsImplicit;
-
-            if (copiesDelegatorsIndividual > 0 && obj.getCopies() > 1) {
-
-                final BigDecimal amount = ACCOUNTING_SERVICE.calcWeightedAmount(
-                        obj.getCost(), obj.getCopies(),
-                        copiesDelegatorsIndividual, this.scale);
-
-                if (amount.compareTo(BigDecimal.ZERO) != 0) {
-                    sbAccTrx.append(" &bull; ").append(currencySymbol)
-                            .append("&nbsp;")
-                            .append(localizedDecimal(amount.negate()));
-                    sbAccTrx.append("&nbsp;(")
-                            .append(copiesDelegatorsIndividual).append(")");
+                    sbAccTrx.append("&nbsp;(").append(
+                            trxCopies.setScale(0, RoundingMode.HALF_EVEN))
+                            .append(')');
                 }
             }
 
-            if (isExtSupplier && totWeightDelegators > 0) {
-                sbAccTrx.append(" &bull; ");
-                sbAccTrx.append(localized("delegators")).append(" (")
-                        .append(totWeightDelegators).append(")");
+            if (totCopiesDelegators.compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" &bull; <span style=\"white-space:nowrap\">")
+                        .append(MarkupHelper.HTML_IMG_ACCOUNT_PERSONAL)
+                        .append("&nbsp;")
+                        .append(NounEnum.DELEGATOR.uiText(locale, true))
+                        .append("</span> ");
+                if (amountCopiesDelegators.negate()
+                        .compareTo(obj.getCost()) != 0) {
+                    sbAccTrx.append(currencySymbol).append("&nbsp;")
+                            .append(localizedDecimal(amountCopiesDelegators))
+                            .append("&nbsp;");
+                }
+                sbAccTrx.append("(");
+                sbAccTrx.append(totCopiesDelegators.setScale(0,
+                        RoundingMode.HALF_EVEN));
+                sbAccTrx.append(")");
+            }
+
+            if (totCopiesDelegatorsRefund.compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" &bull; <span style=\"white-space:nowrap\">")
+                        .append(MarkupHelper.HTML_IMG_ACCOUNT_PERSONAL)
+                        .append("&nbsp;")
+                        .append(NounEnum.DELEGATOR.uiText(locale, true))
+                        .append("</span> ").append(currencySymbol)
+                        .append("&nbsp;")
+                        .append(localizedDecimal(amountCopiesDelegatorsRefund))
+                        .append("&nbsp;(").append(totCopiesDelegatorsRefund
+                                .setScale(0, RoundingMode.HALF_EVEN))
+                        .append(")");
             }
 
             // When no text accumulated, this must be a charge to personal
             // account only.
             if (sbAccTrx.length() == 0
                     && obj.getCost().compareTo(BigDecimal.ZERO) != 0) {
-                sbAccTrx.append(" &bull; ")
+                totCopiesPersonal = BigDecimal.valueOf(obj.getCopies());
+            }
+
+            if (totCopiesPersonal.compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" &bull; <span style=\"white-space:nowrap\">")
+                        .append(MarkupHelper.HTML_IMG_ACCOUNT_PERSONAL)
+                        .append("&nbsp;")
                         .append(PrintOutAdjectiveEnum.PERSONAL.uiText(locale))
-                        .append(" ").append(currencySymbol).append("&nbsp;")
-                        .append(localizedDecimal(obj.getCost().negate()))
-                        .append("&nbsp;(").append(obj.getCopies()).append(")");
+                        .append("</span> ");
+                if (amountCopiesPersonal.negate()
+                        .compareTo(obj.getCost()) != 0) {
+                    sbAccTrx.append(currencySymbol).append("&nbsp;")
+                            .append(localizedDecimal(amountCopiesPersonal))
+                            .append("&nbsp;");
+                }
+                sbAccTrx.append("(");
+                sbAccTrx.append(
+                        totCopiesPersonal.setScale(0, RoundingMode.HALF_EVEN));
+                sbAccTrx.append(")");
+            }
+
+            if (totCopiesPersonalRefund.compareTo(BigDecimal.ZERO) != 0) {
+                sbAccTrx.append(" &bull; <span style=\"white-space:nowrap\">")
+                        .append(MarkupHelper.HTML_IMG_ACCOUNT_PERSONAL)
+                        .append("&nbsp;")
+                        .append(PrintOutAdjectiveEnum.PERSONAL.uiText(locale))
+                        .append("</span> ").append(currencySymbol)
+                        .append("&nbsp;")
+                        .append(localizedDecimal(amountCopiesPersonalRefund))
+                        .append("&nbsp;(").append(totCopiesPersonalRefund
+                                .setScale(0, RoundingMode.HALF_EVEN))
+                        .append(")");
             }
 
             add(new Label("account-trx", sbAccTrx.toString())
@@ -275,7 +414,9 @@ public class DocLogItemPanel extends Panel {
                     || webAppType == WebAppTypeEnum.ADMIN
                     || webAppType == WebAppTypeEnum.USER) {
 
-                Label labelBtn = helper.encloseLabel("btn-account-trx-info",
+                countButtons++;
+
+                Label labelBtn = helper.encloseLabel(WID_BTN_ACCOUNT_TRX_INFO,
                         "&nbsp;", true);
                 labelBtn.setEscapeModelStrings(false);
 
@@ -289,7 +430,9 @@ public class DocLogItemPanel extends Panel {
                 if (webAppType == WebAppTypeEnum.JOBTICKETS && !obj.isRefunded()
                         && obj.getCost().compareTo(BigDecimal.ZERO) != 0) {
 
-                    labelBtn = helper.encloseLabel("btn-account-trx-refund",
+                    countButtons++;
+
+                    labelBtn = helper.encloseLabel(WID_BTN_ACCOUNT_TRX_REFUND,
                             "&nbsp;", true);
                     labelBtn.setEscapeModelStrings(false);
 
@@ -302,11 +445,11 @@ public class DocLogItemPanel extends Panel {
                             HtmlButtonEnum.REFUND.uiText(getLocale(), true));
 
                 } else {
-                    helper.discloseLabel("btn-account-trx-refund");
+                    helper.discloseLabel(WID_BTN_ACCOUNT_TRX_REFUND);
                 }
 
             } else {
-                helper.discloseLabel("btn-account-trx-info");
+                helper.discloseLabel(WID_BTN_ACCOUNT_TRX_INFO);
             }
         }
 
@@ -382,11 +525,15 @@ public class DocLogItemPanel extends Panel {
                 pieSliceColors =
                         SparklineHtml.arrayAttr(SparklineHtml.COLOR_PDF);
 
+                if (obj.getMimeType().equals(DocContent.MIMETYPE_PDF_PGP)) {
+                    mapVisible.put("pdfpgp", "PGP");
+                }
+
             } else {
 
                 final String ticketNumber;
                 final String ticketOperator;
-                final String ticketTag;
+                final String ticketLabel;
 
                 if (obj.getPrintMode() == PrintModeEnum.TICKET
                         || obj.getPrintMode() == PrintModeEnum.TICKET_C
@@ -394,13 +541,13 @@ public class DocLogItemPanel extends Panel {
 
                     ticketNumber = obj.getExtId();
 
-                    final JobTicketTagDto tag =
-                            JOBTICKET_SERVICE.getTicketNumberTag(ticketNumber);
+                    final String labelTmp = JOBTICKET_SERVICE
+                            .getTicketNumberLabel(ticketNumber);
 
-                    if (tag == null) {
-                        ticketTag = null;
+                    if (labelTmp == null) {
+                        ticketLabel = null;
                     } else {
-                        ticketTag = String.format("• %s", tag.getWord());
+                        ticketLabel = String.format("• %s", labelTmp);
                     }
 
                     // Just in case.
@@ -408,9 +555,8 @@ public class DocLogItemPanel extends Panel {
                         ticketOperator = null;
                     } else {
 
-                        final JobTicketSupplierData extData =
-                                JobTicketSupplierData
-                                        .createFromData(obj.getExtData());
+                        final PrintSupplierData extData = PrintSupplierData
+                                .createFromData(obj.getExtData());
                         if (extData == null || extData.getOperator() == null) {
                             ticketOperator = null;
                         } else {
@@ -424,18 +570,20 @@ public class DocLogItemPanel extends Panel {
                 } else {
                     ticketNumber = null;
                     ticketOperator = null;
-                    ticketTag = null;
-                    helper.discloseLabel("img-job-sheet");
+                    ticketLabel = null;
+
+                    mapVisible.put("jobticket-tag-plain", obj.getExtId());
+                    helper.discloseLabel(WID_IMG_JOB_SHEET);
                 }
 
-                mapVisible.put(
-                        "printoutMode", String
+                mapVisible
+                        .put("printoutMode", String
                                 .format("%s %s %s %s",
                                         obj.getPrintMode().uiText(getLocale()),
                                         StringUtils.defaultString(ticketNumber),
                                         StringUtils
                                                 .defaultString(ticketOperator),
-                                        StringUtils.defaultString(ticketTag))
+                                        StringUtils.defaultString(ticketLabel))
                                 .trim());
 
                 cssClass = MarkupHelper.CSS_PRINT_OUT_PRINTER;
@@ -462,24 +610,21 @@ public class DocLogItemPanel extends Panel {
                                     IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_INT_PAGE_ROTATE180));
                 }
                 if (obj.isFinishingPunch()) {
-                    mapVisible.put("punch",
-                            uiIppKeywordValue(locale,
-                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH,
-                                    obj));
+                    mapVisible.put("punch", uiIppKeywordValue(locale,
+                            IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_PUNCH,
+                            obj));
                 }
                 if (obj.isFinishingStaple()) {
-                    mapVisible.put("staple",
-                            uiIppKeywordValue(locale,
-                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE,
-                                    obj));
+                    mapVisible.put("staple", uiIppKeywordValue(locale,
+                            IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_STAPLE,
+                            obj));
                 }
                 if (obj.isFinishingFold()) {
-                    mapVisible.put("fold",
-                            String.format("%s %s",
-                                    helper.localized(PrintOutVerbEnum.FOLD),
-                                    uiIppKeywordValue(locale,
-                                            IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_FOLD,
-                                            obj)));
+                    mapVisible.put("fold", String.format("%s %s",
+                            helper.localized(PrintOutVerbEnum.FOLD),
+                            uiIppKeywordValue(locale,
+                                    IppDictJobTemplateAttr.ORG_SAVAPAGE_ATTR_FINISHINGS_FOLD,
+                                    obj)));
                 }
                 if (obj.isFinishingBooklet()) {
                     mapVisible.put("booklet",
@@ -586,6 +731,20 @@ public class DocLogItemPanel extends Panel {
                 localizedShortDateTime(obj.getCreatedDate())));
 
         //
+        final boolean isReopenedTicketNumber =
+                JOBTICKET_SERVICE.isReopenedTicketNumber(obj.getExtId());
+
+        countButtons += addDocStoreImg(helper, obj);
+        countButtons += addTicketReopenBtn(helper, obj, isReopenedTicketNumber);
+
+        //
+        helper.encloseLabel("jobticket-reopened",
+                AdjectiveEnum.REOPENED.uiText(locale), isReopenedTicketNumber);
+
+        //
+        this.addCopyJobImg(helper, obj);
+
+        //
         String title = null;
         if (ConfigManager.instance()
                 .isConfigValue(Key.WEBAPP_DOCLOG_SHOW_DOC_TITLE)) {
@@ -674,6 +833,17 @@ public class DocLogItemPanel extends Panel {
                     helper.localized(PrintOutNounEnum.LANDSCAPE));
         }
 
+        if (obj.getIppOptionMap() != null
+                && obj.getIppOptionMap().hasPrintScaling()) {
+            mapVisible.put("scaled", AdjectiveEnum.SCALED.uiText(locale));
+        }
+
+        if (countButtons > 0) {
+            helper.addTransparant(WID_BTN_GROUP);
+        } else {
+            helper.discloseLabel(WID_BTN_GROUP);
+        }
+
         /*
          * Hide/Show
          */
@@ -722,11 +892,154 @@ public class DocLogItemPanel extends Panel {
             final StringBuilder imgSrc = new StringBuilder();
             imgSrc.append(WebApp.PATH_IMAGES).append('/');
             imgSrc.append("copy-jobticket-128x128.png");
-            helper.addModifyLabelAttr("img-job-sheet", MarkupHelper.ATTR_SRC,
+            helper.addModifyLabelAttr(WID_IMG_JOB_SHEET, MarkupHelper.ATTR_SRC,
                     imgSrc.toString());
         } else {
-            helper.discloseLabel("img-job-sheet");
+            helper.discloseLabel(WID_IMG_JOB_SHEET);
         }
+    }
+
+    /**
+     * @param helper
+     *            HTML helper
+     * @param obj
+     *            Item.
+     */
+    private void addCopyJobImg(final MarkupHelper helper,
+            final DocLogItem obj) {
+
+        if (obj.getPrintMode() == PrintModeEnum.TICKET_C) {
+            final StringBuilder imgSrc = new StringBuilder();
+            imgSrc.append(WebApp.PATH_IMAGES).append('/');
+            imgSrc.append("scanner-32x32.png");
+            helper.addModifyLabelAttr(WID_IMG_COPY_JOB, MarkupHelper.ATTR_SRC,
+                    imgSrc.toString());
+        } else {
+            helper.discloseLabel(WID_IMG_COPY_JOB);
+        }
+    }
+
+    /**
+     * @param helper
+     *            HTML helper
+     * @param obj
+     *            Item.
+     * @return number of buttons added.
+     */
+    private int addDocStoreImg(final MarkupHelper helper,
+            final DocLogItem obj) {
+
+        int countButtons = 0;
+
+        if (obj.isPrintArchive() || obj.isPrintJournal()) {
+
+            final StringBuilder imgSrc = new StringBuilder();
+            imgSrc.setLength(0);
+            imgSrc.append(WebApp.PATH_IMAGES).append('/');
+
+            final String png;
+            final String widImg;
+            final String widBtn;
+            final NounEnum nounTitle;
+
+            if (obj.isPrintArchive()) {
+                widImg = WID_IMG_ARCHIVE;
+                widBtn = WID_BTN_ARCHIVE_DOWNLOAD;
+                png = "archive-16x16.png";
+                nounTitle = NounEnum.ARCHIVE;
+                helper.discloseLabel(WID_IMG_JOURNAL);
+                helper.discloseLabel(WID_BTN_JOURNAL_DOWNLOAD);
+            } else {
+                widImg = WID_IMG_JOURNAL;
+                widBtn = WID_BTN_JOURNAL_DOWNLOAD;
+                png = "journal-16x16.png";
+                nounTitle = NounEnum.JOURNAL;
+                helper.discloseLabel(WID_IMG_ARCHIVE);
+                helper.discloseLabel(WID_BTN_ARCHIVE_DOWNLOAD);
+            }
+            imgSrc.append(png);
+
+            MarkupHelper.modifyLabelAttr(
+                    helper.addModifyLabelAttr(widImg, MarkupHelper.ATTR_SRC,
+                            imgSrc.toString()),
+                    MarkupHelper.ATTR_TITLE, nounTitle.uiText(getLocale()));
+
+            if (obj.getPrintMode() == PrintModeEnum.TICKET_C) {
+                helper.discloseLabel(widBtn);
+            } else {
+                final Label labelBtn =
+                        helper.encloseLabel(widBtn, "&nbsp;", true);
+                labelBtn.setEscapeModelStrings(false);
+
+                MarkupHelper.modifyLabelAttr(labelBtn,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        obj.getDocLogId().toString());
+
+                MarkupHelper.modifyLabelAttr(labelBtn, MarkupHelper.ATTR_TITLE,
+                        nounTitle.uiText(getLocale()));
+
+                countButtons++;
+            }
+
+        } else {
+            helper.discloseLabel(WID_IMG_ARCHIVE);
+            helper.discloseLabel(WID_IMG_JOURNAL);
+            helper.discloseLabel(WID_BTN_ARCHIVE_DOWNLOAD);
+            helper.discloseLabel(WID_BTN_JOURNAL_DOWNLOAD);
+        }
+        return countButtons;
+    }
+
+    /**
+     *
+     * @param helper
+     *            HTML helper
+     * @param obj
+     *            Item.
+     * @param isReopenedTicketNumber
+     *            If {@code true} ticket is reopened version
+     * @return number of buttons added.
+     */
+    private int addTicketReopenBtn(final MarkupHelper helper,
+            final DocLogItem obj, final boolean isReopenedTicketNumber) {
+
+        int countButtons = 0;
+
+        if (obj.isPrintArchive() || obj.isPrintJournal()) {
+
+            final String ticketNumber = obj.getExtId();
+
+            if (this.showTicketReopen && obj.isJobTicket() && !obj.isRefunded()
+                    && !isReopenedTicketNumber
+                    && obj.getTransactions().size() <= 1) {
+
+                final Label labelBtn = helper
+                        .encloseLabel(WID_BTN_TICKET_REOPEN, "&nbsp;", true);
+                labelBtn.setEscapeModelStrings(false);
+
+                MarkupHelper.modifyLabelAttr(labelBtn,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        obj.getDocLogId().toString());
+
+                MarkupHelper.modifyLabelAttr(labelBtn, MarkupHelper.ATTR_TITLE,
+                        localized("tooltip-ticket-reopen"));
+
+                if (JOBTICKET_SERVICE.isTicketReopened(ticketNumber)) {
+                    MarkupHelper.modifyLabelAttr(labelBtn,
+                            MarkupHelper.ATTR_DISABLED,
+                            MarkupHelper.ATTR_DISABLED);
+                }
+
+                countButtons++;
+
+            } else {
+                helper.discloseLabel(WID_BTN_TICKET_REOPEN);
+            }
+
+        } else {
+            helper.discloseLabel(WID_BTN_TICKET_REOPEN);
+        }
+        return countButtons;
     }
 
     /**

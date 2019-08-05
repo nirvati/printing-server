@@ -1,7 +1,7 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
- * Author: Rijk Ravestein.
+ * Copyright (c) 2011-2019 Datraverse B.V.
+ * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,8 +19,36 @@
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
+package org.savapage.server.api.request;
+
+import java.io.IOException;
+
+import org.savapage.core.jpa.User;
 
 /**
  *
+ * @author Rijk Ravestein
+ *
  */
-package org.savapage.server.webprint;
+public final class ReqInboxClear extends ApiRequestMixin {
+
+    @Override
+    protected void onRequest(final String requestingUser, final User lockedUser)
+            throws IOException {
+
+        final int nJobs = INBOX_SERVICE.deleteAllJobs(requestingUser);
+
+        final String msgKey;
+
+        if (nJobs == 0) {
+            msgKey = "msg-inbox-clear-none";
+        } else if (nJobs == 1) {
+            msgKey = "msg-inbox-clear-single";
+        } else {
+            msgKey = "msg-inbox-clear-multiple";
+        }
+
+        this.setApiResult(ApiResultCodeEnum.OK, msgKey);
+    }
+
+}

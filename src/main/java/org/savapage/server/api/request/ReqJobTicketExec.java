@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@ package org.savapage.server.api.request;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
@@ -33,12 +34,14 @@ import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.ipp.attribute.syntax.IppKeyword;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.ipp.helpers.IppOptionMap;
+import org.savapage.core.ipp.rules.IppRuleValidationException;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.jpa.User;
 import org.savapage.core.msg.UserMsgIndicator;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.JobTicketExecParms;
+import org.savapage.ext.notification.JobTicketCloseEvent;
 import org.savapage.server.session.JobTicketSession;
 import org.savapage.server.session.SpSession;
 
@@ -177,11 +180,13 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
          *            The operator.
          * @param printer
          *            The printer.
+         * @param locale
+         *            The {@link Locale}.
          * @return The parameter object.
          */
         @JsonIgnore
         public JobTicketExecParms createExecParms(final String operator,
-                final Printer printer) {
+                final Printer printer, final Locale locale) {
 
             final JobTicketExecParms parms = new JobTicketExecParms();
 
@@ -192,6 +197,7 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
             parms.setIppOutputBin(this.getOutputBin());
             parms.setIppJogOffset(this.getJogOffset());
             parms.setFileName(this.getJobFileName());
+            parms.setLocale(locale);
 
             return parms;
         }
@@ -268,8 +274,8 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
                     return;
                 }
 
-                final JobTicketExecParms parms =
-                        dtoReq.createExecParms(requestingUser, printer);
+                final JobTicketExecParms parms = dtoReq
+                        .createExecParms(requestingUser, printer, getLocale());
 
                 /*
                  * INVARIANT: When org.savapage-job-sheet is specified,
@@ -310,7 +316,7 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
                         dtoReq.getJobFileName());
 
                 if (dto != null) {
-                    notifySettlement(dto);
+                    notifySettlement(requestingUser, dto);
                 }
             }
 
@@ -330,6 +336,8 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
 
         } catch (IppConnectException e) {
             this.setApiResultText(ApiResultCodeEnum.ERROR, e.getMessage());
+        } catch (IppRuleValidationException e) {
+            this.setApiResultText(ApiResultCodeEnum.WARN, e.getMessage());
         }
     }
 
@@ -374,12 +382,15 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
     /**
      * Notifies the settlement to the requesting user.
      *
+     * @param requestingUser
+     *            The userid of the ticket operator.
      * @param dto
      *            The {@link OutboxJobDto} of the settlement.
      * @throws IOException
      *             When error sending the notification.
      */
-    private void notifySettlement(final OutboxJobDto dto) throws IOException {
+    private void notifySettlement(final String requestingUser,
+            final OutboxJobDto dto) throws IOException {
 
         final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
 
@@ -397,6 +408,11 @@ public final class ReqJobTicketExec extends ApiRequestMixin {
 
             UserMsgIndicator.write(user.getUserId(),
                     ServiceContext.getTransactionDate(), msg, null);
+        }
+
+        if (hasNotificationListener()) {
+            getNotificationListener().onJobTicketEvent(fillEvent(
+                    new JobTicketCloseEvent(), requestingUser, user, dto));
         }
     }
 

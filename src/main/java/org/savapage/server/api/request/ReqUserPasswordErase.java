@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -59,7 +59,28 @@ public final class ReqUserPasswordErase extends ApiRequestMixin {
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
+        final DtoReq dtoReq =
+                DtoReq.create(DtoReq.class, this.getParmValueDto());
+
+        final boolean isAuth;
+
+        switch (getSessionWebAppType()) {
+        case USER:
+            isAuth = lockedUser.getId().equals(dtoReq.getUserDbId());
+            break;
+        case ADMIN:
+        case PRINTSITE:
+            isAuth = true;
+            break;
+        default:
+            isAuth = false;
+            break;
+        }
+
+        if (!isAuth) {
+            setApiResultText(ApiResultCodeEnum.ERROR, "not authorized");
+            return;
+        }
 
         final User user = ServiceContext.getDaoContext().getUserDao()
                 .findById(dtoReq.getUserDbId());

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.codehaus.jackson.map.ObjectMapper;
 import org.cometd.bayeux.server.BayeuxServer;
@@ -156,9 +157,14 @@ public final class UserEventService extends AbstractEventService {
             LoggerFactory.getLogger(UserEventService.class);
 
     /**
-     *
+     * Number of active User Client sessions.
      */
-    private static int clientAppCount = 0;
+    private static final AtomicInteger clientAppCount = new AtomicInteger();
+
+    /**
+     * Number of active User Web App sessions.
+     */
+    private static final AtomicInteger userWebAppCount = new AtomicInteger();
 
     /**
      *
@@ -179,44 +185,63 @@ public final class UserEventService extends AbstractEventService {
     }
 
     /**
-     *
-     * @return
+     * @return Number of active User Client sessions.
      */
     public static int getClientAppCount() {
-        synchronized (UserEventService.class) {
-            return clientAppCount;
-        }
+        return clientAppCount.get();
     }
 
     /**
-     *
+     * Increment active User Client sessions.
      */
     private static void incrementClientAppCount() {
-        synchronized (UserEventService.class) {
-            clientAppCount++;
-        }
+        clientAppCount.incrementAndGet();
     }
 
     /**
-     *
+     * Decrement active User Client sessions.
      */
     private static void decrementClientAppCount() {
-        synchronized (UserEventService.class) {
-            clientAppCount--;
-        }
+        clientAppCount.decrementAndGet();
+    }
+
+    /**
+     * @return Number of active User Web App sessions.
+     */
+    public static int getUserWebAppCount() {
+        return userWebAppCount.get();
+    }
+
+    /**
+     * Increment active User Web App sessions.
+     */
+    private static void incrementUserWebAppCount() {
+        userWebAppCount.incrementAndGet();
+    }
+
+    /**
+     * Decrement active User Web App sessions.
+     */
+    private static void decrementUserWebAppCount() {
+        userWebAppCount.decrementAndGet();
     }
 
     /**
      * Checks if any messages need to be notified since the previous check date
-     * (time)
+     * (time).
      *
+     * @param clientIpAddress
+     *            Client IP address.
      * @param msgPrevMonitorTime
      *            The previous date (time) since messages were monitored.
      * @param user
+     *            The user id.
      * @param locale
+     *            The user locale.
      * @return The messages to notify, or {@code null} when no user messages are
      *         waiting.
      * @throws IOException
+     *             If IO error.
      */
     private Map<String, Object> checkUserMsgIndicator(
             final String clientIpAddress, final Date msgPrevMonitorTime,
@@ -393,7 +418,9 @@ public final class UserEventService extends AbstractEventService {
         final boolean isWebAppClient =
                 webAppClient != null && webAppClient.booleanValue();
 
-        if (!isWebAppClient) {
+        if (isWebAppClient) {
+            incrementUserWebAppCount();
+        } else {
             /*
              * Replaces an existing token, so the creation time is refreshed.
              */
@@ -589,7 +616,9 @@ public final class UserEventService extends AbstractEventService {
 
             throw new SpException(e);
         } finally {
-            if (!isWebAppClient) {
+            if (isWebAppClient) {
+                decrementUserWebAppCount();
+            } else {
                 decrementClientAppCount();
             }
         }
@@ -601,8 +630,17 @@ public final class UserEventService extends AbstractEventService {
         }
     }
 
+    /**
+     * Cast event.
+     *
+     * @param <T>
+     *            Event class.
+     * @param event
+     *            The Event.
+     * @return The casted event.
+     */
     @SuppressWarnings("unchecked")
-    static <T> WatchEvent<T> cast(WatchEvent<?> event) {
+    static <T> WatchEvent<T> cast(final WatchEvent<?> event) {
         return (WatchEvent<T>) event;
     }
 

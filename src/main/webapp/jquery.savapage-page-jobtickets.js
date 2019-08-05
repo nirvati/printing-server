@@ -42,9 +42,8 @@
             var _this,
                 _quickCache = [],
                 _quickSelected,
-                _lastFilter
+                _lastFilter,
             //
-            ,
                 _onQuickSearch = function(target, filter) {
                 /* QuickSearchFilterJobTicketDto */
                 var res,
@@ -82,9 +81,7 @@
                     }
                 }
                 target.html(html).filterable("refresh");
-            }
-            //
-            ;
+            };
 
             this.onCreate = function(parent, filterId, onSelect, onClear, onQuickSearchBefore) {
                 var filterableTicket = $("#" + filterId);
@@ -121,40 +118,28 @@
          */
         _ns.PageJobTickets = function(_i18n, _view, _model, _api) {
 
-            var _page = new _ns.Page(_i18n, _view, "#page-jobtickets", "PageJobTickets")
-            //
-            ,
-                _self = _ns.derive(_page)
-            //
-            ,
+            var _page = new _ns.Page(_i18n, _view, "#page-jobtickets", "PageJobTickets"),
+                _self = _ns.derive(_page),
                 _pnlDocLog = _ns.PanelDocLogBase,
-                _pnlDocLogRefresh = true
-            //
-            ,
+                _pnlDocLogRefresh = true,
                 _countdownTimer,
                 _countdownCounter = 1,
-                _countdownPaused
-            //
-            ,
+                _countdownPaused,
+                _ticketsReopened,
                 _MODE_PRINT = '0',
-                _MODE_CANCEL = '1'
-            //
-            ,
+                _MODE_CANCEL = '1',
+                _MODE_CLOSE = '2',
                 _userKey,
                 _ticketKey,
-                _expiryAsc = true
-            //
-            ,
+                _ticketGroup,
+                _expiryAsc = true,
                 _quickUserSearch = new _ns.QuickUserSearch(_view, _api),
                 _quickUserSearchDocLog = new _ns.QuickUserSearch(_view, _api),
-                _quickTicketSearch = new _ns.QuickJobTicketSearch(_view, _api)
+                _quickTicketSearch = new _ns.QuickJobTicketSearch(_view, _api),
             //
-            ,
                 _maxItems = function() {
                 return $('#jobtickets-max-items').val();
-            }
-            //
-            ,
+            },
                 _refreshStats = function() {
                 var html = _view.getPageHtml('JobTicketQueueInfoAddIn', {
                 });
@@ -162,11 +147,16 @@
                 if (html) {
                     $('#div-ticket-queue-info').html(html);
                 }
-            }
-            //
-            ,
+            },
+                _stopCountdownTimer = function() {
+                if (_countdownTimer) {
+                    window.clearTimeout(_countdownTimer);
+                    _countdownTimer = null;
+                }
+            },
                 _refresh = function() {
-                var html;
+                var html,
+                    nCompleted;
 
                 _refreshStats();
 
@@ -175,6 +165,7 @@
                 html = _view.getUserPageHtml('OutboxAddin', {
                     jobTickets : true,
                     jobTicketId : _ticketKey,
+                    jobTicketGroupId : _ticketGroup,
                     userKey : _userKey,
                     expiryAsc : _expiryAsc,
                     maxItems : _maxItems()
@@ -187,7 +178,12 @@
                     });
                 }
 
-                _view.enable($('.sp-jobtickets-all'), $('.sp-outbox-job-entry').length > 0);
+                _view.enable($('#btn-jobtickets-cancel-all'), $('.sp-outbox-cancel-jobticket').length > 0);
+                _view.enable($('#btn-jobtickets-print-all'), $('.sp-jobticket-print').length > 0);
+
+                nCompleted = $('.sp-jobticket-print-completed').length;
+                _view.enable($('#btn-jobtickets-close-all'), nCompleted > 0);
+                $('#btn-jobtickets-close-all-count').html((nCompleted > 0 ? nCompleted : '&nbsp;'));
 
                 if (!_countdownPaused) {
                     _countdownCounter = 1;
@@ -195,17 +191,7 @@
                 }
 
                 return false;
-            }
-            //
-            ,
-                _stopCountdownTimer = function() {
-                if (_countdownTimer) {
-                    window.clearTimeout(_countdownTimer);
-                    _countdownTimer = null;
-                }
-            }
-            //
-            ,
+            },
                 _startCountdownTimer = function() {
                 var msecDelay = 3000,
                     refreshMsec = 60 * 1000;
@@ -218,81 +204,60 @@
                         _refresh();
                     }
                 }, msecDelay);
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterItem = function(inputRadio) {
                 return inputRadio.closest('.sp-jobticket-redirect-printer-item');
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterMediaType = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-media-type');
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterMediaSourceJobSheet = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-media-source-job-sheet');
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterMediaSource = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-media-source');
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterOutputBin = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-output-bin');
-            }
-            //
-            ,
+            },
                 _getRedirectPrinterJogOffset = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-jog-offset');
-            }
-            //
-            ,
+            },
                 _onSelectUser = function(quickUserSelected) {
                 $("#sp-jobticket-userid").val(quickUserSelected.text);
                 _userKey = quickUserSelected.key;
                 _refresh();
-            }
-            //
-            ,
+            },
                 _onClearUser = function() {
                 $("#sp-jobticket-userid").val('');
                 _userKey = null;
                 _refresh();
-            }
-            //
-            ,
+            },
                 _onSelectTicket = function(quickSelected) {
                 $("#sp-jobticket-search-ticket").val(quickSelected.text);
                 _ticketKey = quickSelected.text;
                 _refresh();
-            }
-            //
-            ,
+            },
                 _onClearTicket = function() {
                 $("#sp-jobticket-search-ticket").val('');
                 _ticketKey = null;
                 _refresh();
-            }
-            //
-            ,
+            },
+
                 _onSelectUserDocLog = function(quickUserSelected) {
                 $("#sp-doclog-select-userid").val(quickUserSelected.text);
+                // HACK: hidden field is present/set in THIS container.
                 $('#sp-doclog-hidden-user-id').val(quickUserSelected.key);
                 _pnlDocLog.page(_pnlDocLog, 1);
-            }
-            //
-            ,
+            },
+
                 _onClearUserDocLog = function() {
                 $("#sp-doclog-select-userid").val('');
+                // HACK: hidden field is present/set in THIS container.
                 $('#sp-doclog-hidden-user-id').val('');
                 _pnlDocLog.page(_pnlDocLog, 1);
-            }
-            //
-            ,
+            },
+
                 _onPrintPopup = function(jobFileName, positionTo, settle, retry) {
                 var html = _view.getPageHtml('JobTicketPrintAddIn', {
                     jobFileName : jobFileName,
@@ -308,23 +273,18 @@
                 if (!settle) {
                     _onRedirectPrinterRadio(_view.getRadioSelected('sp-jobticket-redirect-printer'));
                 }
-            }
-            //
-            ,
+            },
                 _onPrintRetry = function(jobFileName, positionTo) {
                 _onPrintPopup(jobFileName, positionTo, false, true);
-            }
+            },
             // For now ..
-            ,
                 _loadingIconFoo = function(foo, p1, p2, p3, p4, p5) {
                 $.mobile.loading("show");
                 window.setTimeout(function() {
                     foo(p1, p2, p3, p4, p5);
                     $.mobile.loading("hide");
                 }, 500);
-            }
-            //
-            ,
+            },
                 _onPrintCancel = function(jobFileName) {
 
                 _loadingIconFoo(function(jobfileName) {
@@ -341,20 +301,6 @@
                         _view.message(res.result.txt);
                     }
                 }, jobFileName);
-            },
-                _onPrintClose = function(jobFileName) {
-                var res = _api.call({
-                    request : 'jobticket-print-close',
-                    dto : JSON.stringify({
-                        jobFileName : jobFileName
-                    })
-                });
-                if (res.result.code === "0") {
-                    _view.showApiMsg(res);
-                    _refresh();
-                } else {
-                    _view.message(res.result.txt);
-                }
             },
                 _showPopUp = function(html, positionTo) {
                 $('#sp-jobticket-popup-addin').html(html);
@@ -399,6 +345,14 @@
                 }) || 'error';
                 _showPopUp(html, positionTo);
             },
+                _onDocLogTicketReopen = function(docLogId) {
+                return _api.call({
+                    request : 'doclog-ticket-reopen',
+                    dto : JSON.stringify({
+                        docLogId : docLogId
+                    })
+                });
+            },
                 _refundAccountTrx = function(docLogId) {
                 return _api.call({
                     request : 'doclog-refund',
@@ -416,6 +370,15 @@
                     })
                 });
             },
+                _closeJob = function(jobFileName) {
+                return _api.call({
+                    request : 'jobticket-print-close',
+                    dto : JSON.stringify({
+                        jobFileName : jobFileName
+                    })
+                });
+            },
+
                 _execJob = function(jobFileName, print, retry, printerId, mediaSource, mediaSourceJobSheet, outputBin, jogOffset) {
                 return _api.call({
                     request : 'jobticket-execute',
@@ -430,12 +393,11 @@
                         jogOffset : jogOffset
                     })
                 });
-            }
-            //
-            ,
+            },
                 _onSaveJob = function(jobFileName) {
                 var res,
-                    ippOptions = {};
+                    ippOptions = {},
+                    cbArchive = $('#sp-jobticket-edit-archive-cb');
 
                 $('#sp-jobticket-popup').find('select').each(function() {
                     ippOptions[$(this).attr('data-savapage')] = $(this).find(':selected').val();
@@ -446,7 +408,8 @@
                     dto : JSON.stringify({
                         jobFileName : jobFileName,
                         copies : $('#sp-jobticket-edit-copies').val(),
-                        ippOptions : ippOptions
+                        ippOptions : ippOptions,
+                        archive : cbArchive.length > 0 ? _view.isCbChecked(cbArchive) : null
                     })
                 });
 
@@ -456,9 +419,7 @@
                 }
                 //_view.showApiMsg(res);
                 _view.message(res.result.txt);
-            }
-            //
-            ,
+            },
                 _onExecJob = function(jobFileName, print, retry) {
                 _loadingIconFoo(function(jobFileName, print, retry) {
                     var res,
@@ -488,19 +449,14 @@
                     //_view.showApiMsg(res);
                     _view.message(res.result.txt);
                 }, jobFileName, print, retry);
-            }
-            //
-            ,
-                _onProcessAll = function(mode) {
+            },
 
-                var logPfx = (mode === _MODE_PRINT ? 'Print' : 'Cancel')
-                //
-                ,
-                    popup = (mode === _MODE_PRINT ? $('#sp-jobticket-popup-print-all') : $('#sp-jobticket-popup-cancel-all'))
+                _onProcessAll = function(mode) {
+                var logPfx = (mode === _MODE_PRINT ? 'Print' : mode === _MODE_CANCEL ? 'Cancel' : 'Close'),
+                    popup = (mode === _MODE_PRINT ? $('#sp-jobticket-popup-print-all') : mode === _MODE_CANCEL ? $('#sp-jobticket-popup-cancel-all') : $('#sp-jobticket-popup-close-all')),
                 // NOTE: Tickets with cancel button are candidates for batch
                 // processing.
-                ,
-                    tickets = $('.sp-outbox-cancel-jobticket');
+                    tickets = (mode === _MODE_CLOSE ? $('.sp-jobticket-print-completed') : $('.sp-outbox-cancel-jobticket'));
 
                 popup.find('.ui-content:eq(0)').hide();
                 popup.find('.ui-content:eq(1)').show();
@@ -515,6 +471,8 @@
 
                         if (mode === _MODE_PRINT) {
                             res = _execJob($(this).attr('data-savapage'), true);
+                        } else if (mode === _MODE_CLOSE) {
+                            res = _closeJob($(this).attr('data-savapage'));
                         } else {
                             res = _cancelJob($(this).attr('data-savapage'));
                         }
@@ -528,9 +486,8 @@
                     _refresh();
                     popup.popup('close');
                 }, 1500);
-            }
-            //
-            ,
+            },
+
                 _onRedirectPrinterRadio = function(inputRadio) {
                 var item = _getRedirectPrinterItem(inputRadio),
                     mediaSourceJobSheet = _getRedirectPrinterMediaSourceJobSheet(item),
@@ -558,9 +515,7 @@
                     $('.sp-jobticket-redirect-printer-item').attr('style', '');
                     item.attr('style', 'border: 4px solid silver;');
                 }
-            }
-            //
-            ;
+            };
 
             $(_self.id()).on('pagecreate', function(event) {
 
@@ -584,11 +539,24 @@
                     _api.download("pdf-jobticket", null, $(this).attr('data-savapage'));
                     return false;
 
+                }).on('click', '.sp-doclog-docstore-archive-download', null, function() {
+                    _api.download("pdf-docstore-archive", null, $(this).attr('data-savapage'));
+                    return false;
+                }).on('click', '.sp-doclog-docstore-journal-download', null, function() {
+                    _api.download("pdf-docstore-journal", null, $(this).attr('data-savapage'));
+                    return false;
+
                 }).on('click', '.sp-jobticket-print', null, function() {
                     _onPrintPopup($(this).attr('data-savapage'), $(this));
 
                 }).on('click', '.sp-jobticket-print-close', null, function() {
-                    _onPrintClose($(this).attr('data-savapage'));
+                    var res = _closeJob($(this).attr('data-savapage'));
+                    if (res.result.code === "0") {
+                        _view.showApiMsg(res);
+                        _refresh();
+                    } else {
+                        _view.message(res.result.txt);
+                    }
 
                 }).on('click', '.sp-jobticket-notfound-refresh', null, function() {
                     $('#sp-jobticket-popup').popup('close');
@@ -612,14 +580,36 @@
                 }).on('click', '.sp-doclog-accounttrx-refund', null, function() {
                     _onDocLogAccountTrxRefundPopup($(this).attr('data-savapage'), $(this));
 
+                }).on('click', '.sp-doclog-docstore-archive-download', null, function() {
+                    _api.download("pdf-docstore-archive", null, $(this).attr('data-savapage'));
+                    return false;
+                }).on('click', '.sp-doclog-docstore-journal-download', null, function() {
+                    _api.download("pdf-docstore-journal", null, $(this).attr('data-savapage'));
+                    return false;
+
                 }).on('click', '.sp-doclog-accounttrx-info', null, function() {
                     _onDocLogAccountTrxPopup($(this).attr('data-savapage'), $(this));
+
+                }).on('click', '.sp-doclog-ticket-reopen', null, function() {
+                    var res = _onDocLogTicketReopen($(this).attr('data-savapage'));
+                    if (res.result.code === "0") {
+                        _view.showApiMsg(res);
+                        _view.enable($(this), false);
+                        _ticketsReopened = true;
+                    } else {
+                        _view.message(res.result.txt);
+                    }
 
                 }).on('click', '.sp-outbox-account-trx-info-jobticket', null, function() {
                     _onJobTicketAccountTrxPopup($(this).attr('data-savapage'), $(this));
 
                 }).on('change', "input[name='sp-jobticket-sort-dir']", null, function() {
                     _expiryAsc = $(this).attr('id') === 'sp-jobticket-sort-dir-asc';
+                    _refresh();
+                    return false;
+
+                }).on('change', '#sp-jobticket-group', null, function() {
+                    _ticketGroup = $(this).val();
                     _refresh();
                     return false;
 
@@ -645,6 +635,17 @@
                     });
                     $("#sp-jobticket-popup-print-all-btn-no").focus();
 
+                }).on('click', '#btn-jobtickets-close-all', null, function() {
+                    var dlg = $('#sp-jobticket-popup-close-all');
+
+                    dlg.find('.ui-content:eq(1)').hide();
+                    dlg.find('.ui-content:eq(0)').show();
+
+                    dlg.popup('open', {
+                        positionTo : $(this)
+                    });
+                    $("#sp-jobticket-popup-close-all-btn-no").focus();
+
                 }).on('click', "#btn-jobtickets-close", null, function() {
                     if (_self.onClose) {
                         return _self.onClose();
@@ -665,6 +666,9 @@
 
                 }).on('click', '#sp-jobticket-popup-print-all-btn-yes', null, function() {
                     _onProcessAll(_MODE_PRINT);
+
+                }).on('click', '#sp-jobticket-popup-close-all-btn-yes', null, function() {
+                    _onProcessAll(_MODE_CLOSE);
 
                 }).on('change', "input[name='sp-jobticket-redirect-printer']", null, function() {
                     _onRedirectPrinterRadio($(this));
@@ -723,19 +727,12 @@
                 //--------------------------------------------
                 // Common Panel parameters.
                 //--------------------------------------------
-
                 _ns.PanelCommon.view = _view;
 
                 _ns.PanelCommon.refreshPanelCommon = function(wClass, skipBeforeLoad, thePanel) {
-                    var jqId = thePanel.jqId
-                    //
-                    ,
-                        data = thePanel.getInput(thePanel)
-                    //
-                    ,
-                        jsonData = JSON.stringify(data)
-                    //
-                    ;
+                    var jqId = thePanel.jqId,
+                        data = thePanel.getInput(thePanel),
+                        jsonData = JSON.stringify(data);
 
                     $.mobile.loading("show");
                     $.ajax({
@@ -783,6 +780,10 @@
                     }
 
                 }).on('click', '#sp-jobtickets-tab-open-button', null, function() {
+                    if (_ticketsReopened) {
+                        _refresh();
+                        _ticketsReopened = false;
+                    }
                     if (!_countdownPaused) {
                         _startCountdownTimer();
                     }
@@ -800,13 +801,14 @@
                     _pnlDocLog.setVisibility(_pnlDocLog);
                     return false;
                 }).on('click', '.sp-btn-about-org', function() {
-                    // About Dialog closess immediately, why?
+                    // About Dialog closes immediately, why?
                     //_view.showPageAsync('#page-info', 'AppAbout');
+                    $.noop();
                 });
 
                 $("#sp-a-content-button").click();
 
-                $('#sp-jobticket-popup,#sp-jobticket-popup-cancel-all,#sp-jobticket-popup-print-all').popup({
+                $('#sp-jobticket-popup,#sp-jobticket-popup-cancel-all,#sp-jobticket-popup-print-all,#sp-jobticket-popup-close-all').popup({
                     afteropen : function(event, ui) {
                         if (!_countdownPaused) {
                             _stopCountdownTimer();

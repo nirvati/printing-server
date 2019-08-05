@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -26,10 +26,11 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.SpException;
 import org.savapage.core.dto.AbstractDto;
-import org.savapage.core.dto.QuickSearchFilterDto;
+import org.savapage.core.dto.QuickSearchFilterPrinterDto;
 import org.savapage.core.dto.QuickSearchItemDto;
 import org.savapage.core.dto.QuickSearchPrinterItemDto;
 import org.savapage.core.ipp.IppSyntaxException;
@@ -81,7 +82,7 @@ public final class ReqPrinterQuickSearch extends ApiRequestMixin {
      *
      * @param userName
      *            The requesting user.
-     * @return The {@linkJsonPrinterList}.
+     * @return The {@link JsonPrinterList}.
      * @throws Exception
      */
     private JsonPrinterList getUserPrinterList(final String userName) {
@@ -104,8 +105,8 @@ public final class ReqPrinterQuickSearch extends ApiRequestMixin {
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final QuickSearchFilterDto dto = AbstractDto
-                .create(QuickSearchFilterDto.class, this.getParmValue("dto"));
+        final QuickSearchFilterPrinterDto dto = AbstractDto.create(
+                QuickSearchFilterPrinterDto.class, this.getParmValueDto());
 
         final List<QuickSearchItemDto> items = new ArrayList<>();
 
@@ -127,6 +128,14 @@ public final class ReqPrinterQuickSearch extends ApiRequestMixin {
         while (iter.hasNext()) {
 
             final JsonPrinter printer = iter.next();
+
+            final boolean isJobTicketPrinter =
+                    BooleanUtils.isTrue(printer.getJobTicket());
+
+            if (dto.getJobTicket() != null && dto.getJobTicket()
+                    .booleanValue() != isJobTicketPrinter) {
+                continue;
+            }
 
             if (printer.getAuthMode() != null
                     && printer.getAuthMode().isFast()) {

@@ -4,7 +4,7 @@
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -836,7 +836,7 @@
 					<input type="checkbox" id="papercut-enable" value="0"
 						wicket:id="papercut-enable" />
 					<div class="papercut-enabled">
-						<div data-role="collapsible" data-collapsed="false">
+						<div data-role="collapsible" data-collapsed="true">
 							<h3>
 								<wicket:message key="papercut-server-text" />
 							</h3>
@@ -853,7 +853,7 @@
 								autocomplete="off" autocorrect="off" autocapitalize="off"
 								spellcheck="false" />
 						</div>
-						<div data-role="collapsible" data-collapsed="false">
+						<div data-role="collapsible" data-collapsed="true">
 							<h3>
 								<wicket:message key="papercut-db-text" />
 							</h3>
@@ -1226,6 +1226,11 @@
 						wicket:id="proxyprint-max-pages" pattern="[0-9]*"
 						autocapitalize="off" />
 
+					<label for="proxyprint-check-repair"
+						wicket:id="proxyprint-check-repair-label" />
+					<input type="checkbox" id="proxyprint-check-repair" value="0"
+						wicket:id="proxyprint-check-repair" />
+
 					<label for="proxyprint-clear-inbox"
 						wicket:id="proxyprint-clear-inbox-label" />
 					<input type="checkbox" id="proxyprint-clear-inbox" value="0"
@@ -1316,12 +1321,28 @@
 							wicket:id="proxyprint-delegate-enable" />
 					</div>
 
+				</li>
+
+				<li>
+					<h3>
+						<wicket:message key="papercut-header-text" />
+					</h3>
+
 					<div class="sp-proxyprint-delegate-enable-enabled ui-mini">
+						<br />
 						<label for="proxyprint-delegate-papercut-enable"
 							wicket:id="proxyprint-delegate-papercut-enable-label" />
 						<input type="checkbox" id="proxyprint-delegate-papercut-enable"
 							value="0" wicket:id="proxyprint-delegate-papercut-enable" />
 					</div>
+
+					<div class="ui-mini">
+						<label for="proxyprint-personal-papercut-enable"
+							wicket:id="proxyprint-personal-papercut-enable-label" />
+						<input type="checkbox" id="proxyprint-personal-papercut-enable"
+							value="0" wicket:id="proxyprint-personal-papercut-enable" />
+					</div>
+
 
 					<div class="sp-download-papercut-delegator-cost-enabled ui-mini">
 						<br />
@@ -1936,6 +1957,19 @@
 						</li>
 					</wicket:enclosure>
 				</ul>
+
+				<ul data-role="listview" data-inset="true">
+					<li>
+						<h3>Document Store</h3>
+					</li>
+					<li>
+						<div class="sp-txt-wrap">The Document Store is an advanced
+							function for storing and retrieving incoming and outgoing
+							documents. Refer to the User Manual for information on how to
+							configure this function.</div>
+					</li>
+				</ul>
+
 				<wicket:enclosure child="btn-pagometer-reset">
 					<ul data-role="listview" data-inset="true">
 						<li>

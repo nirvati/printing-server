@@ -62,6 +62,7 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
 
         private String jobFileName;
         private int copies;
+        private Boolean archive;
         private Map<String, String> ippOptions;
 
         public String getJobFileName() {
@@ -82,6 +83,14 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
             this.copies = copies;
         }
 
+        public Boolean getArchive() {
+            return archive;
+        }
+
+        public void setArchive(Boolean archive) {
+            this.archive = archive;
+        }
+
         public Map<String, String> getIppOptions() {
             return ippOptions;
         }
@@ -97,7 +106,8 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
+        final DtoReq dtoReq =
+                DtoReq.create(DtoReq.class, this.getParmValueDto());
 
         final OutboxJobDto dto =
                 JOBTICKET_SERVICE.getTicket(dtoReq.getJobFileName());
@@ -141,13 +151,11 @@ public final class ReqJobTicketSave extends ApiRequestMixin {
 
         final OutboxJobDto dto = wrapper.getTicket();
 
-        /*
-         * In a Delegated Print, copies are fixed, because determined by number
-         * of delegators, and therefore cannot be edited/set.
-         */
-        if (!dto.isDelegatedPrint()) {
-            dto.setCopies(dtoReq.getCopies());
+        if (dto.isSingleAccountPrint()) {
+            dto.setSingleAccountPrintCopies(dtoReq.getCopies());
         }
+
+        dto.setArchive(dtoReq.getArchive());
 
         /*
          * Collect options in temporary map for validation.

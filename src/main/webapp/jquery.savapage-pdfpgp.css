@@ -1,7 +1,9 @@
+/*! SavaPage | (c) 2011-2018 Datraverse B.V. | GNU Affero General Public License */
+
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
- * Author: Rijk Ravestein.
+ * Copyright (c) 2011-2018 Datraverse B.V.
+ * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,35 +21,43 @@
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
-package org.savapage.server.webprint;
 
-import org.apache.wicket.request.resource.IResource;
-import org.apache.wicket.request.resource.ResourceReference;
-
-/**
- *
- * @author Rijk Ravestein
- *
- */
-public final class DropZoneResourceReference extends ResourceReference {
-
-    /**
-     *
-     */
-    private static final long serialVersionUID = 1L;
-
-    /**
-     *
-     * @param name
-     *            Reference name.
-     */
-    public DropZoneResourceReference(final String name) {
-        super(name);
-    }
-
-    @Override
-    public IResource getResource() {
-        return new DropZoneFileResource();
-    }
-
+#page-main .ui-dialog-contain {
+    width: 92.5%;
+    max-width: 800px;
+    margin: 15px auto 15px auto;
+    padding: 0;
+    position: relative;
+    top: 5px;
 }
+
+.sp-pdfpgp-file {
+    color: #2F4F4F;
+}
+
+.sp-pdfpgp-status-img {
+    height: 20px;
+    margin-bottom: -3px;
+}
+
+.sp-pdfpgp-verify-entry {
+    background-color: #fcfcfc;
+    padding: 15px;
+    margin: 10px;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+    -khtml-border-radius: 8px;
+    border-radius: 8px;
+}
+
+.sp-pdfpgp-verify-entry-valid {
+    border: 3px #8FBC8F dotted;
+}
+.sp-pdfpgp-verify-entry-warn {
+    border: 3px #F4A460 dotted;
+}
+.sp-pdfpgp-verify-entry-error {
+    border: 3px #FF6347 dotted;
+}
+
+/* end-of-file */

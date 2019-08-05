@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,6 +45,7 @@ import org.savapage.core.services.ServiceContext;
 import org.savapage.core.system.SystemInfo;
 import org.savapage.core.system.SystemInfo.SysctlEnum;
 import org.savapage.core.util.NumberUtil;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.PrinterDriverDownloadPanel;
 
@@ -147,7 +148,7 @@ public final class About extends AbstractAdminPage {
         add(new Label("jre-os-arch", System.getProperty("os.arch")));
 
         add(new Label("jre-java.io.tmpdir",
-                System.getProperty("java.io.tmpdir")));
+                System.getProperty(ConfigManager.SYS_PROP_JAVA_IO_TMPDIR)));
 
         add(new Label("app.dir.tmp-key",
                 ConfigManager.SERVER_PROP_APP_DIR_TMP));
@@ -161,6 +162,9 @@ public final class About extends AbstractAdminPage {
         add(new Label("app.dir.letterheads-key",
                 ConfigManager.SERVER_PROP_APP_DIR_LETTERHEADS));
         add(new Label("app.dir.letterheads", ConfigManager.getLetterheadDir()));
+
+        helper.encloseLabel("btn-i18n-cache-clear",
+                HtmlButtonEnum.CLEAR.uiText(getLocale()), hasEditorAccess);
 
         // ---------- CUPS
         version = PROXY_PRINT_SERVICE.getCupsVersion();
@@ -209,6 +213,21 @@ public final class About extends AbstractAdminPage {
         }
         add(labelWrk);
 
+        // ---------- pdftocairo
+        colorInstalled = null;
+        version = SystemInfo.getPdfToCairoVersion();
+        installed = StringUtils.isNotBlank(version);
+        if (!installed) {
+            version = localized("not-installed");
+            colorInstalled = MarkupHelper.CSS_TXT_ERROR;
+        }
+
+        labelWrk = new Label("version-pdftocairo", version);
+        if (colorInstalled != null) {
+            labelWrk.add(new AttributeModifier("class", colorInstalled));
+        }
+        add(labelWrk);
+
         // ---------- Ghostscript
         colorInstalled = null;
         version = SystemInfo.getGhostscriptVersion();
@@ -219,6 +238,21 @@ public final class About extends AbstractAdminPage {
         }
 
         labelWrk = new Label("version-ghostscript", version);
+        if (colorInstalled != null) {
+            labelWrk.add(new AttributeModifier("class", colorInstalled));
+        }
+        add(labelWrk);
+
+        // ---------- qpdf
+        colorInstalled = null;
+        version = SystemInfo.getQPdfVersion();
+        installed = StringUtils.isNotBlank(version);
+        if (!installed) {
+            version = localized("not-installed");
+            colorInstalled = MarkupHelper.CSS_TXT_ERROR;
+        }
+
+        labelWrk = new Label("version-qpdf", version);
         if (colorInstalled != null) {
             labelWrk.add(new AttributeModifier("class", colorInstalled));
         }

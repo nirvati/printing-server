@@ -4,7 +4,7 @@
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -53,6 +53,20 @@
 					<h3>
 						<wicket:message key="select-and-sort" />
 					</h3>
+
+					<wicket:enclosure child="label-jobticket-group">
+						<div class="ui-field-contain">
+							<label for="sp-jobticket-group" class="sp-txt-wrap ui-mini"
+								wicket:id="label-jobticket-group" />
+							<select name="sp-jobticket-group" id="sp-jobticket-group"
+								data-native-menu="false" data-mini="true">
+								<option value="0" wicket:id="option-jobticket-group-all" />
+								<wicket:panel wicket:id="option-list-jobticket-groups">
+									<option value="the-key" wicket:id="option-jobticket-group"></option>
+								</wicket:panel>
+							</select>
+						</div>
+					</wicket:enclosure>
 
 					<div class="ui-field-contain">
 						<label for="sp-jobticket-userid">
@@ -144,14 +158,25 @@
 					<button id="btn-jobtickets-refresh" wicket:id="button-refresh"
 						class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-refresh" />
 
-					<button id="btn-jobtickets-cancel-all" data-rel="popup"
-						wicket:id="button-cancel-all"
-						class="sp-jobtickets-all ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-delete" />
+					<wicket:enclosure child="button-cancel-all">
+						<button id="btn-jobtickets-cancel-all" data-rel="popup"
+							wicket:id="button-cancel-all"
+							class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-delete" />
+					</wicket:enclosure>
 
 					<wicket:enclosure child="button-print-all">
 						<button id="btn-jobtickets-print-all" data-rel="popup"
 							wicket:id="button-print-all"
-							class="sp-jobtickets-all ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-action" />
+							class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-action" />
+					</wicket:enclosure>
+
+					<wicket:enclosure child="button-close-all">
+						<button id="btn-jobtickets-close-all" data-rel="popup"
+							wicket:id="button-close-all"
+							class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check">
+							<span id="btn-jobtickets-close-all-count" style="font-size: 85%;"
+								class="sp-txt-valid">&nbsp;</span>
+						</button>
 					</wicket:enclosure>
 
 					<button id="btn-jobtickets-close" data-rel="back"
@@ -252,7 +277,7 @@
 	</div>
 
 	<div class="ui-content">
-		<wicket:message key="info-cancel-in progress" />
+		<wicket:message key="info-cancel-in-progress" />
 		&nbsp;...
 	</div>
 </div>
@@ -282,7 +307,37 @@
 	</div>
 
 	<div class="ui-content">
-		<wicket:message key="info-print-in progress" />
+		<wicket:message key="info-print-in-progress" />
+		&nbsp;...
+	</div>
+</div>
+
+<div data-role="popup" id="sp-jobticket-popup-close-all"
+	data-overlay-theme="a" data-theme="a" data-dismissible="false"
+	data-arrow="t">
+	    
+	<div class="ui-content">
+		<h4 class="ui-title">
+			<wicket:message key="prompt-close-all" />
+		</h4>
+
+		<p class="sp-txt-valid">
+			<wicket:message key="info-close-all" />
+		</p>
+
+		<a href="#" id="sp-jobticket-popup-close-all-btn-no"
+			class="ui-btn ui-btn-inline" data-rel="back"> <wicket:message
+				key="button-no-rather-not" />
+		</a>
+		<!--  -->
+		<button id="sp-jobticket-popup-close-all-btn-yes"
+			class="ui-btn ui-mini ui-btn-inline">
+			<wicket:message key="button-close-all-yes" />
+		</button>
+	</div>
+
+	<div class="ui-content">
+		<wicket:message key="info-close-in-progress" />
 		&nbsp;...
 	</div>
 </div>

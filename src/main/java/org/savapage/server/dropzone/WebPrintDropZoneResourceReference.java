@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,52 +14,40 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
-package org.savapage.server.webapp;
+package org.savapage.server.dropzone;
+
+import org.apache.wicket.request.resource.IResource;
+import org.apache.wicket.request.resource.ResourceReference;
 
 /**
- * The type of Web Application.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
-public enum WebAppTypeEnum {
-    /**
-     * The Admin WebApp.
-     */
-    ADMIN("Admin"),
+public final class WebPrintDropZoneResourceReference extends ResourceReference {
 
     /**
-     * The Point-of-Sale WebApp.
+     *
      */
-    JOBTICKETS("Job Tickets"),
+    private static final long serialVersionUID = 1L;
 
     /**
-     * The Point-of-Sale WebApp.
+     *
+     * @param name
+     *            Reference name.
      */
-    POS("POS"),
-
-    /**
-     * The User WebApp.
-     */
-    USER("User"),
-
-    /**
-     * The WebApp type is undefined (unknown).
-     */
-    UNDEFINED("Unknown");
-
-    private final String uiText;
-
-    WebAppTypeEnum(final String uiText) {
-        this.uiText = uiText;
+    public WebPrintDropZoneResourceReference(final String name) {
+        super(name);
     }
 
-    public String getUiText() {
-        return uiText;
+    @Override
+    public IResource getResource() {
+        return new WebPrintDropZoneFileResource();
     }
+
 }

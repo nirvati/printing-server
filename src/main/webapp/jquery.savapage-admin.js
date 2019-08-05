@@ -1,9 +1,9 @@
-/*! SavaPage jQuery Mobile Admin Web App | (c) 2011-2018 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Admin Web App | (c) 2011-2019 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -41,26 +41,16 @@
          */
         _ns.Controller = function(_i18n, _model, _view, _api, _cometd) {
 
-            var _this = this
-            //
-            ,
+            var _this = this,
                 _util = _ns.Utils,
-                i18nRefresh
-            //
-            ,
+                i18nRefresh,
                 _handleLoginResult,
-                _saveConfigProps
-            //
-            ,
+                _saveConfigProps,
                 _fillConfigPropsYN,
                 _fillConfigPropsText,
-                _fillConfigPropsRadio
-            //
-            ,
+                _fillConfigPropsRadio,
                 _userSync,
-                _updateGcpState
-            //
-            ;
+                _updateGcpState;
 
             /**
              *
@@ -130,7 +120,6 @@
                     _model.user.cometdToken = data.cometdToken;
 
                     _model.user.admin = data.admin;
-                    _model.user.role = data.role;
                     _model.user.mail = data.mail;
                     _model.user.mailDefault = data.mail;
 
@@ -180,21 +169,16 @@
              *
              */
             this.init = function() {
-
                 var res,
                     language,
-                    country
-                //
-                ,
+                    country,
                     authModeRequest = _util.getUrlParam(_ns.URL_PARM.LOGIN);
 
-                /*
-                 *
-                 */
                 _model.initAuth();
 
                 res = _api.call({
                     request : 'constants',
+                    webAppType : _ns.WEBAPP_TYPE,
                     authMode : authModeRequest
                 });
 
@@ -209,7 +193,7 @@
                     return;
                 }
 
-                _view.userChartColors = [res.colors.printOut, res.colors.printIn, res.colors.pdfOut];
+                _view.userChartColors = [res.colors.printIn, res.colors.printOut, res.colors.pdfOut];
 
                 _model.locale = res.locale;
                 _model.maxIdleSeconds = res.maxIdleSeconds;
@@ -437,7 +421,6 @@
             };
 
             _view.pages.admin.onUserSourceGroupEdit = function() {
-
                 var res,
                     html;
 
@@ -528,7 +511,10 @@
             _view.pages.admin.onTestMail = function() {
                 _view.showApiMsg(_api.call({
                     request : 'mail-test',
-                    mailto : $('#mail-test-address').val()
+                    dto : JSON.stringify({
+                        emailAddress : $('#mail-test-address').val()
+                    })
+
                 }));
             };
 
@@ -600,9 +586,7 @@
 
             _view.pages.admin.onApplySmartSchoolPaperCut = function(enable) {
                 var props = {};
-
                 props['smartschool.papercut.enable'] = enable ? 'Y' : 'N';
-
                 _saveConfigProps(props);
             };
 
@@ -636,7 +620,6 @@
             };
 
             _view.pages.admin.onApplyGcpEnable = function(_panel, enabled) {
-
                 var res = _api.call({
                     request : 'gcp-set-details',
                     enabled : enabled,
@@ -705,7 +688,6 @@
             };
 
             _view.pages.admin.onRefreshGcp = function(_panel) {
-
                 var res = _api.call({
                     request : 'gcp-get-details'
                 });
@@ -728,7 +710,6 @@
             };
 
             _view.pages.admin.onRegisterGcp = function() {
-
                 var res = _api.call({
                     request : 'gcp-register',
                     clientId : $('#gcp-client-id').val(),
@@ -744,11 +725,10 @@
             };
 
             _view.pages.admin.onApplyProxyPrint = function() {
-
                 var props = {},
                     key;
 
-                _fillConfigPropsYN(props, ['proxy-print.non-secure', 'proxy-print.delegate.enable', 'proxy-print.delegate.papercut.enable', 'webapp.user.proxy-print.clear-inbox.enable', 'webapp.user.proxy-print.clear-inbox.prompt']);
+                _fillConfigPropsYN(props, ['proxy-print.non-secure', 'proxy-print.delegate.enable', 'proxy-print.delegate.papercut.enable', 'proxy-print.personal.papercut.enable', 'proxy-print.repair.enable', 'webapp.user.proxy-print.clear-inbox.enable', 'webapp.user.proxy-print.clear-inbox.prompt']);
 
                 if (props['proxy-print.non-secure'] === 'Y') {
                     _fillConfigPropsText(props, ['proxy-print.non-secure-printer-group']);
@@ -775,9 +755,7 @@
             };
 
             _view.pages.admin.onApplyFinancialPos = function() {
-                var props = {}
-                //
-                ;
+                var props = {};
                 _fillConfigPropsText(props, ["financial.pos.payment-methods", "financial.pos.receipt-header"]);
                 _saveConfigProps(props);
             };
@@ -861,12 +839,8 @@
             };
 
             _view.pages.admin.onPagometerReset = function() {
-                var scope = []
-                //
-                ,
-                    sfxs = ['dashboard', 'queues', 'printers', 'users']
-                //
-                ,
+                var scope = [],
+                    sfxs = ['dashboard', 'queues', 'printers', 'users'],
                     i = 0;
 
                 $.each(sfxs, function(key, sfx) {
@@ -883,6 +857,12 @@
                         scope : JSON.stringify(scope)
                     }));
                 }
+            };
+
+            _view.pages.admin.onI18nCacheClear = function() {
+                _view.showApiMsg(_api.call({
+                    request : 'i18n-cache-clear'
+                }));
             };
 
             _view.pages.admin.onApplyLocale = function() {
@@ -997,7 +977,6 @@
             };
 
             _view.pages.userGroupsAddRemove.onUserGroupsAddRemove = function(added, removed) {
-
                 var res = _api.call({
                     request : 'usergroups-add-remove',
                     dto : JSON.stringify({
@@ -1020,6 +999,7 @@
                     request : 'usergroup-set',
                     dto : JSON.stringify({
                         id : group.id,
+                        fullName : group.fullName,
                         aclRoles : group.aclRoles,
                         aclOidsUser : group.aclOidsUser,
                         aclOidsUserReader : group.aclOidsUserReader,
@@ -1042,7 +1022,6 @@
              *
              */
             _view.pages.user.onSaveUser = function() {
-
                 var res = _api.call({
                     request : 'user-set',
                     dto : JSON.stringify(_model.editUser)
@@ -1075,7 +1054,6 @@
             };
 
             _view.pages.user.onDeleteUser = function() {
-
                 var res = _api.call({
                     request : 'user-delete',
                     id : _model.editUser.dbId,
@@ -1100,7 +1078,6 @@
              *
              */
             _view.pages.user.onEraseUserPw = function() {
-
                 var res = _api.call({
                     request : 'erase-user-pw',
                     dto : JSON.stringify({
@@ -1126,7 +1103,6 @@
              *
              */
             _view.pages.admin.onEditConfigProp = function(name) {
-
                 var res = _api.call({
                     request : 'config-get-prop',
                     dto : JSON.stringify({
@@ -1148,7 +1124,6 @@
             };
 
             _view.pages.voucherCreate.onCreateBatch = function(dto, design) {
-
                 var res = _api.call({
                     request : "account-voucher-batch-create",
                     dto : JSON.stringify(dto)
@@ -1166,14 +1141,9 @@
             };
 
             _view.pages.configProp.onSave = function() {
-
                 var prop = {},
-                    ok
-                //
-                ,
-                    sel = (_model.editConfigProp.multiline ? '#config-prop-value-multiline' : '#config-prop-value')
-                //
-                ;
+                    ok,
+                    sel = (_model.editConfigProp.multiline ? '#config-prop-value-multiline' : '#config-prop-value');
 
                 _model.editConfigProp.value = $(sel).val();
 
@@ -1208,7 +1178,6 @@
             };
 
             _view.pages.admin.onEditSharedAccount = function(id) {
-
                 var res = _api.call({
                     request : 'shared-account-get',
                     dto : JSON.stringify({
@@ -1227,7 +1196,6 @@
             };
 
             _view.pages.sharedAccount.onSaveSharedAccount = function() {
-
                 var res = _api.call({
                     request : 'shared-account-set',
                     dto : JSON.stringify(_model.editAccount)
@@ -1280,6 +1248,8 @@
             };
 
             _view.pages.queue.onSaveQueue = function() {
+                var res,
+                    sel;
 
                 _model.editQueue.urlpath = $('#queue-url-path').val();
                 _model.editQueue.ipallowed = $('#queue-ip-allowed').val();
@@ -1287,7 +1257,13 @@
                 _model.editQueue.deleted = $('#queue-deleted').is(':checked');
                 _model.editQueue.trusted = $('#queue-trusted').is(':checked');
 
-                var res = _api.call({
+                sel = $('#queue-ipp-routing-options');
+                if (sel.length > 0) {
+                    _model.editQueue.ippRouting = _view.getRadioValue('queue-ipp-routing-type');
+                    _model.editQueue.ippOptions = sel.val();
+                }
+
+                res = _api.call({
                     request : 'queue-set',
                     dto : JSON.stringify(_model.editQueue)
                 });
@@ -1371,7 +1347,6 @@
             };
 
             _view.pages.admin.onCreateDeviceTerminal = function() {
-
                 var res = _api.call({
                     request : 'device-new-terminal'
                 });
@@ -1443,19 +1418,28 @@
             };
 
             _view.pages.printer.onSavePrinter = function() {
+                var sel,
+                    res;
 
                 _model.editPrinter.displayName = $('#printer-displayname').val();
                 _model.editPrinter.location = $('#printer-location').val();
                 _model.editPrinter.printerGroups = $('#printer-printergroups').val();
                 _model.editPrinter.ppdExtFile = $('#printer-ppd-ext-file').val();
                 _model.editPrinter.disabled = $('#printer-disabled').is(':checked');
+                _model.editPrinter.archiveDisabled = $('#printer-archive-disabled').is(':checked');
+                _model.editPrinter.journalDisabled = $('#printer-journal-disabled').is(':checked');
                 _model.editPrinter.internal = $('#printer-internal').is(':checked');
                 _model.editPrinter.deleted = $('#printer-deleted').is(':checked');
                 _model.editPrinter.jobTicket = $('#printer-jobticket').is(':checked');
                 _model.editPrinter.jobTicketGroup = $('#printer-jobticket-group').val();
 
+                sel = $('#printer-jobticket-labels');
+                if (sel.length > 0) {
+                    _model.editPrinter.jobTicketLabelsEnabled = sel.is(':checked');
+                }
+
                 // ProxyPrinterDto
-                var res = _api.call({
+                res = _api.call({
                     request : 'printer-set',
                     dto : JSON.stringify(_model.editPrinter)
                 });
@@ -1483,29 +1467,15 @@
              *
              */
             _view.pages.printer.onSavePrinterMediaSources = function() {
-
-                var res
-                //
-                ,
+                var res,
                     SOURCE_AUTO = 'auto',
-                    SOURCE_MANUAL = 'manual'
-                // org.savapage.dto.ProxyPrinterMediaSourcesDto
-                ,
-                    dto = {}
-                //
-                ,
-                    sourceAuto = _view.isCbChecked($('#media-source\\.' + SOURCE_AUTO))
-                //
-                ,
-                    sourceManual = _view.isCbChecked($('#media-source\\.' + SOURCE_MANUAL))
-                //
-                ,
-                    selDefaultMonochrome = $('#sp-printer-use-monochrome-as-default')
-                //
-                ,
-                    selClientSideMonochrome = $('#sp-printer-client-side-monochrome')
-                //
-                ;
+                    SOURCE_MANUAL = 'manual',
+                    dto = {}, // org.savapage.dto.ProxyPrinterMediaSourcesDto
+                    sourceAuto = _view.isCbChecked($('#media-source\\.' + SOURCE_AUTO)),
+                    sourceManual = _view.isCbChecked($('#media-source\\.' + SOURCE_MANUAL)),
+                    selDefaultMonochrome = $('#sp-printer-use-monochrome-as-default'),
+                    selClientSideMonochrome = $('#sp-printer-client-side-monochrome'),
+                    ID_JOB_SHEETS_MEDIA_SOURCE = 'sp-printer-job-sheets-media-source';
 
                 dto.id = _model.editPrinter.id;
                 dto.language = _model.language;
@@ -1517,6 +1487,10 @@
 
                 if (selClientSideMonochrome) {
                     dto.clientSideMonochrome = _view.isCbChecked(selClientSideMonochrome);
+                }
+
+                if ($('#' + ID_JOB_SHEETS_MEDIA_SOURCE)) {
+                    dto.jobSheetsMediaSources = _view.selectedValues(ID_JOB_SHEETS_MEDIA_SOURCE);
                 }
 
                 if (sourceAuto) {
@@ -1537,29 +1511,18 @@
                 dto.sources = [];
 
                 $(".sp-printer-media-source-row").each(function() {
-
-                    var cb = $(this).find('.sp-printer-media-source')
-                    //
-                    ,
-                        active = _view.isCbChecked(cb)
-                    //
-                    ,
-                        source = cb.attr('id').substr("media-source.".length)
-                    //
-                    ,
-                        nextRow = $(this).next()
-                    //
-                    ,
-                        display = nextRow.find('input:text').val()
-                    //
-                    ,
-                        media = nextRow.find('select').val()
-                    //
-                    ;
+                    var cb = $(this).find('.sp-printer-media-source'),
+                        active = _view.isCbChecked(cb),
+                        source = cb.attr('id').substr("media-source.".length),
+                        nextRow = $(this).next(),
+                        preferred = _ns.PreferredButtonSwitch.isOn(nextRow.find('.sp-btn-preferred-switch')),
+                        display = nextRow.find('input:text').val(),
+                        media = nextRow.find('select').val();
 
                     // push: org.savapage.core.dto.IppMediaSourceDto
                     dto.sources.push({
                         active : active,
+                        preferred : preferred || null,
                         source : source,
                         display : display,
                         media : {
@@ -1580,12 +1543,9 @@
 
                 });
 
-                /*
-                 *
-                 */
                 res = _api.call({
                     request : 'printer-set-media-sources',
-                    j_media_sources : JSON.stringify(dto)
+                    dto : JSON.stringify(dto)
                 });
 
                 _view.showApiMsg(res);
@@ -1600,12 +1560,9 @@
              *
              */
             _view.pages.printer.onSavePrinterCost = function() {
-                var res
+                var res,
                 // org.savapage.dto.ProxyPrinterCostDto
-                ,
-                    dto = {}
-                //
-                ;
+                    dto = {};
 
                 dto.id = _model.editPrinter.id;
 
@@ -1617,13 +1574,8 @@
                 dto.mediaCost = [];
 
                 $(".sp-printer-cost-media-row").each(function() {
-
-                    var cb = $(this).find('.sp-printer-cost-media')
-                    //
-                    ,
-                        media = cb.attr('id').substr("cost.media.".length)
-                    //
-                    ;
+                    var cb = $(this).find('.sp-printer-cost-media'),
+                        media = cb.attr('id').substr("cost.media.".length);
 
                     dto.mediaCost.push({
                         media : media,
@@ -1658,7 +1610,6 @@
             };
 
             _view.pages.printer.onRenamePrinter = function(id, name, replace) {
-
                 var res = _api.call({
                     request : 'printer-rename',
                     j_printer : JSON.stringify({
@@ -1743,10 +1694,7 @@
             _cometd.onHandshakeSuccess = function() {
 
                 _cometd.subscribe('/admin/**', function(message) {
-                    //
-                    var nItems = _model.pubMsgStack.length
-                    //
-                    ,
+                    var nItems = _model.pubMsgStack.length,
                         data = $.parseJSON(message.data);
 
                     if ($('#user-sync-messages') && data.topic === 'user-sync') {
@@ -1793,19 +1741,10 @@
          *
          */
         _ns.Model = function(_i18n) {
-
-            var _LOC_AUTH_NAME = 'sp.auth.admin.name'
-            //
-            ,
-                _LOC_AUTH_TOKEN = 'sp.auth.admin.token'
-            //
-            ,
-                _LOC_LANG = 'sp.admin.language'
-            //
-            ,
-                _LOC_COUNTRY = 'sp.admin.country'
-            //
-            ;
+            var _LOC_AUTH_NAME = 'sp.auth.admin.name',
+                _LOC_AUTH_TOKEN = 'sp.auth.admin.token',
+                _LOC_LANG = 'sp.admin.language',
+                _LOC_COUNTRY = 'sp.admin.country';
 
             this.MAX_PUB_MSG = 20;
 
@@ -1895,22 +1834,11 @@
          *
          */
         $.SavaPageAdm = function(name) {
-
-            var _i18n = new _ns.I18n()
-            //
-            ,
-                _model = new _ns.Model(_i18n)
-            //
-            ,
-                _api = new _ns.Api(_i18n, _model.user)
-            //
-            ,
-                _view = new _ns.View(_i18n, _api)
-            //
-            ,
-                _nativeLogin
-            //
-            ,
+            var _i18n = new _ns.I18n(),
+                _model = new _ns.Model(_i18n),
+                _api = new _ns.Api(_i18n, _model.user),
+                _view = new _ns.View(_i18n, _api),
+                _nativeLogin,
                 _cometd,
                 _ctrl;
 
@@ -1920,7 +1848,7 @@
                 language : new _ns.PageLanguage(_i18n, _view, _model),
                 login : new _ns.PageLogin(_i18n, _view, _api),
                 sharedAccount : new _ns.PageSharedAccount(_i18n, _view, _model),
-                admin : new _ns.PageAdmin(_i18n, _view, _model),
+                admin : new _ns.PageAdmin(_i18n, _view, _model, _api),
                 membercard_upload : new _ns.PageMemberCardUpload(_i18n, _view, _model),
                 user : new _ns.PageUser(_i18n, _view, _model),
                 userGroup : new _ns.PageUserGroup(_i18n, _view, _model),
@@ -1951,7 +1879,6 @@
              *
              */
             this.init = function() {
-
                 var user = _ns.Utils.getUrlParam(_ns.URL_PARM.USER),
                     authMode = _ns.Utils.getUrlParam(_ns.URL_PARM.LOGIN);
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,10 +27,11 @@ import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.markup.html.form.AjaxButton;
 import org.apache.wicket.markup.html.basic.Label;
-import org.apache.wicket.markup.html.form.Form;
+import org.apache.wicket.markup.html.form.StatelessForm;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.server.WebAppParmEnum;
 
 /**
@@ -64,14 +65,15 @@ public final class ZeroPagePanel extends Panel {
     public void populate(final WebAppTypeEnum webAppType,
             final PageParameters webAppParms) {
 
-        final Form<?> form = new Form<Void>("refresh-page-form") {
-            private static final long serialVersionUID = 1L;
+        final StatelessForm<?> form =
+                new StatelessForm<Void>("refresh-page-form") {
+                    private static final long serialVersionUID = 1L;
 
-            @Override
-            protected void onSubmit() {
-                // no code intended
-            }
-        };
+                    @Override
+                    protected void onSubmit() {
+                        // no code intended
+                    }
+                };
 
         final AjaxButton continueButton =
                 new AjaxButton("refresh-page-submit") {
@@ -79,8 +81,7 @@ public final class ZeroPagePanel extends Panel {
                     private static final long serialVersionUID = 1L;
 
                     @Override
-                    protected void onSubmit(final AjaxRequestTarget target,
-                            final Form<?> form) {
+                    protected void onSubmit(final AjaxRequestTarget target) {
 
                         final PageParameters parms = new PageParameters();
                         parms.set(WebAppParmEnum.SP_ZERO.parm(), "1");
@@ -88,6 +89,9 @@ public final class ZeroPagePanel extends Panel {
                         switch (webAppType) {
                         case ADMIN:
                             setResponsePage(WebAppAdmin.class, parms);
+                            break;
+                        case PRINTSITE:
+                            setResponsePage(WebAppPrintSite.class, parms);
                             break;
                         case JOBTICKETS:
                             setResponsePage(WebAppJobTickets.class, parms);
@@ -102,8 +106,7 @@ public final class ZeroPagePanel extends Panel {
                     }
 
                     @Override
-                    protected void onError(AjaxRequestTarget target,
-                            Form<?> form) {
+                    protected void onError(AjaxRequestTarget target) {
                         // no code intended
                     }
                 };

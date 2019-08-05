@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,12 +25,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.wicket.Session;
 import org.apache.wicket.core.request.mapper.MountedMapper;
 import org.apache.wicket.markup.head.CssHeaderItem;
@@ -51,7 +52,9 @@ import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
-import org.savapage.core.config.RunMode;
+import org.savapage.core.config.RunModeEnum;
+import org.savapage.core.config.SslCertInfo;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.imaging.ImageUrl;
 import org.savapage.core.jpa.tools.DatabaseTypeEnum;
@@ -59,13 +62,18 @@ import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.core.services.helpers.UserAuth;
+import org.savapage.core.services.helpers.UserAuthModeEnum;
 import org.savapage.core.util.AppLogHelper;
+import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.payment.PaymentMethodEnum;
+import org.savapage.lib.pgp.pdf.PdfPgpVerifyUrl;
 import org.savapage.server.api.JsonApiServer;
 import org.savapage.server.cometd.AbstractEventService;
+import org.savapage.server.dropzone.PdfPgpDropZoneResourceReference;
+import org.savapage.server.dropzone.WebPrintDropZoneResourceReference;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.img.ImageServer;
 import org.savapage.server.ios.WebClipServer;
@@ -73,6 +81,7 @@ import org.savapage.server.ipp.IppPrintServer;
 import org.savapage.server.ipp.IppPrintServerHomePage;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.admin.AbstractAdminPage;
+import org.savapage.server.pages.printsite.AbstractPrintSitePage;
 import org.savapage.server.pages.user.AbstractUserPage;
 import org.savapage.server.raw.RawPrintServer;
 import org.savapage.server.session.SpSession;
@@ -80,10 +89,10 @@ import org.savapage.server.webapp.CustomStringResourceLoader;
 import org.savapage.server.webapp.OAuthRedirectPage;
 import org.savapage.server.webapp.WebAppAdmin;
 import org.savapage.server.webapp.WebAppJobTickets;
+import org.savapage.server.webapp.WebAppPdfPgp;
 import org.savapage.server.webapp.WebAppPos;
-import org.savapage.server.webapp.WebAppTypeEnum;
+import org.savapage.server.webapp.WebAppPrintSite;
 import org.savapage.server.webapp.WebAppUser;
-import org.savapage.server.webprint.DropZoneResourceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,6 +124,12 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * Used in this class to set mountPage() for {@link WebApp#PATH_PRINTERS}.
      */
     public static final String MOUNT_PATH_PRINTERS = "/" + PATH_PRINTERS;
+
+    /**
+     * Used in this class to set mountPage().
+     */
+    public static final String MOUNT_PATH_WEBAPP_PDFPGP =
+            PdfPgpVerifyUrl.MOUNT_PATH_WEBAPP;
 
     /**
      * Used in this class to set mountPage().
@@ -158,40 +173,43 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String MOUNT_PATH_WEBAPP_JOBTICKETS = "/jobtickets";
 
     /**
+     * The Print Site mount path.
+     */
+    public static final String MOUNT_PATH_WEBAPP_PRINTSITE = "/printsite";
+
+    /**
      * Used in this class to set mountPage().
      */
     private static final String MOUNT_PATH_API = "/api";
 
     /**
-     * Mount path for WenPrint drop zone.
+     * Mount path for WebPrint drop zone.
      */
     public static final String MOUNT_PATH_UPLOAD_WEBPRINT = "/upload/webprint";
 
     /**
-     *
+     * Mount path for PDF/PGP Verification drop zone.
      */
+    public static final String MOUNT_PATH_UPLOAD_PDF_VERIFY = "/upload/pdfpgp";
+
+    /** */
     public static final String WEBJARS_PATH_JQUERY_CORE_JS =
             "jquery/current/jquery.js";
 
-    /**
-     *
-     */
+    /** */
     public static final String PATH_IMAGES = "/images";
 
-    /**
-     *
-     */
+    /** */
+    public static final String PATH_IMAGES_FAMFAM = "/famfamfam-silk";
+
+    /** */
     public static final String PATH_IMAGES_PAYMENT = PATH_IMAGES + "/payment";
 
-    /**
-     * .
-     */
+    /** */
     public static final String PATH_IMAGES_EXT_SUPPLIER =
             PATH_IMAGES + "/ext-supplier";
 
-    /**
-     * .
-     */
+    /** */
     public static final String PATH_IMAGES_THIRDPARTY =
             PATH_IMAGES + "/thirdparty";
 
@@ -200,20 +218,17 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      */
     public static final String FILENAME_WEB_PROPERTIES = "web.properties";
 
-    /**
-     *
-     */
+    /** */
     private static Properties theServerProps = new Properties();
 
-    /**
-    *
-    */
+    /** */
     private static Properties theWebProps = new Properties();
 
-    /**
-     *
-     */
+    /** */
     private static final Logger LOGGER = LoggerFactory.getLogger(WebApp.class);
+
+    /** */
+    private static final Object MUTEX_DICT = new Object();
 
     /**
      * Dictionary with key IP-address, getting the User of an active
@@ -232,6 +247,15 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * authenticated WebApp Session.
      */
     private static Map<String, String> theDictIpAddrSession = new HashMap<>();
+
+    /**
+     * Last time the session dictionaries were pruned.
+     */
+    private static long theDictLastPruneTime;
+
+    /** 30 minutes. */
+    private static final long DICT_LAST_PRUNE_TIME_PERIOD =
+            30 * DateUtil.DURATION_MSEC_MINUTE;
 
     /**
      * The RAW Print Server.
@@ -331,17 +355,70 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      *            The IP address of the remote host.
      * @return {@code null} when user is NOT found.
      */
-    public static synchronized String getAuthUserByIpAddr(final String ipAddr) {
-        return theDictIpAddrUser.get(ipAddr);
+    public static String getAuthUserByIpAddr(final String ipAddr) {
+        synchronized (MUTEX_DICT) {
+            return theDictIpAddrUser.get(ipAddr);
+        }
     }
 
     /**
-     * Gets the number of authenticated user WebApp sessions.
+     * Removes IP addresses from the cache that have no authenticated session.
+     * <p>
+     * When DHCP lease expires <i>before</i> the HTTP session expires, the cache
+     * may contain IP addresses with orphaned Session ID, as exemplified in the
+     * following use-case:
+     * <ul>
+     * <li>User does not explicitly logout of the Web App</li>
+     * <li>After device reboot or wake-up from hibernation, a different IP
+     * address is acquired from the renewed DHCP lease.</li>
+     * <li>User open Web App again, and the client side auth token give him an
+     * automatic login, with the newly acquired IP address.</li>
+     * <li>As a result, the session and user related to the old IP address are
+     * orphaned.</li>
+     * </ul>
+     * </p>
+     *
+     * @return Number of IP addresses removed from cache.
+     */
+    private static int pruneOrphanedAuthIpAddr() {
+        synchronized (MUTEX_DICT) {
+            int removed = 0;
+
+            final Iterator<Entry<String, String>> iter =
+                    theDictIpAddrSession.entrySet().iterator();
+
+            while (iter.hasNext()) {
+                final Entry<String, String> entry = iter.next();
+                final String ipAddr = entry.getKey();
+                final String session = entry.getValue();
+                if (!theDictSessionIpAddr.containsKey(session)) {
+                    theDictIpAddrUser.remove(ipAddr);
+                    iter.remove();
+                    removed++;
+                }
+            }
+            return removed;
+        }
+    }
+
+    /**
+     * Gets the number of authenticated WebApp sessions.
      *
      * @return the number of sessions.
      */
-    public static synchronized int getAuthUserSessionCount() {
+    public static int getAuthSessionCount() {
+        // no synchronized needed
         return theDictSessionIpAddr.size();
+    }
+
+    /**
+     * Gets the number of IP addresses with authenticated WebApp sessions.
+     *
+     * @return the number of sessions.
+     */
+    public static int getAuthIpAddrCount() {
+        // no synchronized needed
+        return theDictIpAddrSession.size();
     }
 
     /**
@@ -351,8 +428,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
      * @param authMode
-     *            The {@link UserAuth.Mode}. {@code null} when authenticated by
-     *            (WebApp or Client) token.
+     *            The {@link UserAuthModeEnum}. {@code null} when authenticated
+     *            by (WebApp or Client) token.
      * @param sessionId
      *            The session ID as key.
      * @param ipAddr
@@ -360,93 +437,80 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * @param user
      *            The authenticated user.
      */
-    public synchronized void onAuthenticatedUser(
-            final WebAppTypeEnum webAppType, final UserAuth.Mode authMode,
-            final String sessionId, final String ipAddr, final String user) {
+    public void onAuthenticatedUser(final WebAppTypeEnum webAppType,
+            final UserAuthModeEnum authMode, final String sessionId,
+            final String ipAddr, final String user) {
 
-        /*
-         * Removing the old session on same IP address
-         */
-        final String oldUser = theDictIpAddrUser.remove(ipAddr);
-
-        if (oldUser == null) {
+        synchronized (MUTEX_DICT) {
             /*
-             * ADD first-time authenticated user on IP address
+             * Removing the old session on same IP address
              */
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("IP User Session [" + ipAddr + "] [" + user + "] ["
-                        + sessionId + "] added. Sessions ["
-                        + (theDictIpAddrUser.size() + 1) + "].");
-            }
+            final String oldUser = theDictIpAddrUser.remove(ipAddr);
 
-        } else {
-
-            /*
-             * REMOVE current authenticated user on IP address
-             */
-            final String oldSession = theDictIpAddrSession.remove(ipAddr);
-
-            if (oldSession == null) {
-
-                LOGGER.error(
-                        "addSessionIpUser: no session for " + "IP address ["
-                                + ipAddr + "] of old user [" + oldUser + "]");
+            if (oldUser == null) {
+                /*
+                 * ADD first-time authenticated user on IP address
+                 */
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug(
+                            "IP User Session [{}] [{}] [{}] added."
+                                    + " Sessions [{}]",
+                            ipAddr, user, sessionId,
+                            (theDictIpAddrUser.size() + 1));
+                }
 
             } else {
+                /*
+                 * REMOVE current authenticated user on IP address
+                 */
+                final String oldSession = theDictIpAddrSession.remove(ipAddr);
 
-                if (theDictSessionIpAddr.remove(oldSession) == null) {
-                    LOGGER.error("addSessionIpUser: no IP address for "
-                            + "old session [" + oldSession + "] of old user ["
-                            + oldUser + "]");
-                }
+                if (oldSession == null) {
+                    LOGGER.error(
+                            "addSessionIpUser: no session for "
+                                    + "IP address [{}] of old user [{}]",
+                            ipAddr, oldUser);
+                } else {
 
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("IP User Session [" + ipAddr + "] [" + user
-                            + "] [" + sessionId + "] replaced [" + oldUser
-                            + "] [" + oldSession + "]. Sessions ["
-                            + (theDictIpAddrUser.size() + 1) + "].");
+                    if (theDictSessionIpAddr.remove(oldSession) == null) {
+                        LOGGER.error(
+                                "addSessionIpUser: no IP address for "
+                                        + "old session [{}] of old user [{}]",
+                                oldSession, oldUser);
+                    }
+
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                                "IP User Session [{}] [{}] [{}]"
+                                        + " replaced [{}] [{}]. Sessions [{}]",
+                                ipAddr, user, sessionId, oldUser, oldSession,
+                                (theDictIpAddrUser.size() + 1));
+                    }
                 }
+            }
+
+            /*
+             * Add the new one.
+             */
+            theDictIpAddrUser.put(ipAddr, user);
+            theDictIpAddrSession.put(ipAddr, sessionId);
+            theDictSessionIpAddr.put(sessionId, ipAddr);
+
+            //
+            final long now = System.currentTimeMillis();
+            if (now - theDictLastPruneTime > DICT_LAST_PRUNE_TIME_PERIOD) {
+                final int pruned = pruneOrphanedAuthIpAddr();
+                if (pruned > 0) {
+                    SpInfo.instance().log(String.format(
+                            "Removed [%s] orphaned HTTP sessions.", pruned));
+                }
+                theDictLastPruneTime = now;
             }
         }
 
-        /*
-         * Add the new one.
-         */
-        theDictIpAddrUser.put(ipAddr, user);
-        theDictIpAddrSession.put(ipAddr, sessionId);
-        theDictSessionIpAddr.put(sessionId, ipAddr);
-
-        /*
-         *
-         */
         AdminPublisher.instance().publish(PubTopicEnum.USER, PubLevelEnum.INFO,
                 localize("pub-user-login-success", webAppType.getUiText(),
                         UserAuth.getUiText(authMode), user, ipAddr));
-        //
-        checkIpUserSessionCache("notifyAuthenticatedUser");
-    }
-
-    /**
-     * Checks if the IP User Session User cache is in-sync.
-     *
-     * @param action
-     *            Action string used for logging.
-     * @return {@code true} if the cache is in-sync.
-     */
-    private static synchronized boolean
-            checkIpUserSessionCache(final String action) {
-
-        boolean inSync = theDictIpAddrUser.size() == theDictSessionIpAddr.size()
-                && theDictSessionIpAddr.size() == theDictIpAddrSession.size();
-
-        if (!inSync) {
-            LOGGER.error(action + ": SessionIpUserCache is out-of-sync:"
-                    + " IPaddr->User [" + theDictIpAddrUser.size() + "]"
-                    + " IPaddr->SessionId [" + theDictIpAddrSession.size() + "]"
-                    + " SessionId->IPaddr [" + theDictSessionIpAddr.size()
-                    + "]");
-        }
-        return inSync;
     }
 
     /**
@@ -468,6 +532,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
+     * Sets the server properties in this class <i>and</i> in
+     * {@link ConfigManager}.
+     *
      * @param props
      *            The server properties.
      */
@@ -507,13 +574,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             return;
         }
 
-        FileInputStream fis = null;
-
-        try {
-            fis = new FileInputStream(file);
+        try (FileInputStream fis = new FileInputStream(file);) {
             theWebProps.load(fis);
-        } finally {
-            IOUtils.closeQuietly(fis);
         }
     }
 
@@ -571,6 +633,20 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     private static boolean theIsInitialized = false;
 
     /**
+     * {@code true} if {@link WebApp} encountered a fatal error at
+     * initialization.
+     */
+    private static boolean initializeError = false;
+
+    /**
+     * @return {@code true} if {@link WebApp} encountered a fatal error at
+     *         initialization.
+     */
+    public static boolean hasInitializeError() {
+        return initializeError;
+    }
+
+    /**
      * Initializes the WepApp.
      * <p>
      * Mounts (bookmarkable) page classes to a given path.
@@ -582,6 +658,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * </p>
      */
     private void myInitialize() {
+
+        theDictLastPruneTime = System.currentTimeMillis();
 
         java.io.FileInputStream fis = null;
 
@@ -599,7 +677,10 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              *
              */
             mountResource(MOUNT_PATH_UPLOAD_WEBPRINT,
-                    new DropZoneResourceReference("webprint"));
+                    new WebPrintDropZoneResourceReference("webprint"));
+
+            mountResource(MOUNT_PATH_UPLOAD_PDF_VERIFY,
+                    new PdfPgpDropZoneResourceReference("pdfpgp"));
 
             /*
              * Mount a page class to a given path
@@ -608,7 +689,10 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
              */
             mountPage(MOUNT_PATH_WEBAPP_ADMIN, WebAppAdmin.class);
             mountPage(MOUNT_PATH_WEBAPP_JOBTICKETS, WebAppJobTickets.class);
+            mountPage(MOUNT_PATH_WEBAPP_PRINTSITE, WebAppPrintSite.class);
             mountPage(MOUNT_PATH_WEBAPP_POS, WebAppPos.class);
+
+            mountPage(MOUNT_PATH_WEBAPP_PDFPGP, WebAppPdfPgp.class);
 
             mountPage(MOUNT_PATH_WEBAPP_USER, WebAppUser.class);
 
@@ -644,6 +728,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             mountPackage("/pages", AbstractPage.class);
             mountPackage("/pages/admin", AbstractAdminPage.class);
             mountPackage("/pages/user", AbstractUserPage.class);
+            mountPackage("/pages/printsite", AbstractPrintSitePage.class);
 
             //
             replaceJQueryCore();
@@ -651,7 +736,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              * Initialize the ConfigManager (use empty properties for now).
              */
-            ConfigManager.instance().init(RunMode.SERVER,
+            ConfigManager.instance().init(RunModeEnum.SERVER,
                     DatabaseTypeEnum.Internal);
 
             AppLogHelper.logInfo(getClass(), "WebApp.starting",
@@ -663,6 +748,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             final StringBuilder logMsg = new StringBuilder();
             logMsg.append("Web Server started on port ");
 
+            final StringBuilder logMsgAcc = new StringBuilder();
+            logMsgAcc.append("Web Server acceptor threads ");
+
             if (!WebServer.isSSLOnly()) {
                 logMsg.append(WebServer.getServerPort());
 
@@ -671,33 +759,54 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                 } else {
                     logMsg.append(" and ");
                 }
+
+                logMsgAcc.append("[")
+                        .append(WebServer.getServerAcceptorThreads())
+                        .append("] and ");
             }
             logMsg.append(WebServer.getServerPortSsl()).append(" (SSL)");
             SpInfo.instance().log(logMsg.toString());
 
+            logMsgAcc.append("[").append(WebServer.getServerAcceptorThreads())
+                    .append("] (SSL)");
+            SpInfo.instance().log(logMsgAcc.toString());
+
+            SpInfo.instance().log(WebServer.ThreadPoolInfo.logQueueCapacity());
+            SpInfo.instance().log(WebServer.ThreadPoolInfo.logMaxThreads());
+            SpInfo.instance().log(WebServer.ThreadPoolInfo.logMinThreads());
+            SpInfo.instance()
+                    .log(WebServer.ThreadPoolInfo.logIdleTimeoutMsec());
+
+            SpInfo.instance().log(WebServer.logSessionScavengeInterval());
+
             //
-            final WebServer.SslCertInfo sslCert = WebServer.getSslCertInfo();
+            final SslCertInfo sslCert = ConfigManager.getSslCertInfo();
 
             if (sslCert == null) {
                 SpInfo.instance().log("SSL Certificate info NOT avaliable.");
             } else {
                 final LocaleHelper helper = new LocaleHelper(Locale.ENGLISH);
 
+                //
                 logMsg.setLength(0);
                 logMsg.append("SSL Cert Issuer  [")
                         .append(sslCert.getIssuerCN()).append("]");
-
                 if (sslCert.isSelfSigned()) {
                     logMsg.append(" self-signed.");
                 }
                 SpInfo.instance().log(logMsg.toString());
-
+                //
+                logMsg.setLength(0);
+                logMsg.append("SSL Cert Subject [")
+                        .append(sslCert.getSubjectCN()).append("]");
+                SpInfo.instance().log(logMsg.toString());
+                //
                 logMsg.setLength(0);
                 logMsg.append("SSL Cert Created [").append(
                         helper.getLongMediumDateTime(sslCert.getCreationDate()))
                         .append("]");
                 SpInfo.instance().log(logMsg.toString());
-
+                //
                 logMsg.setLength(0);
                 logMsg.append("SSL Cert Expires [")
                         .append(helper
@@ -852,7 +961,10 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
         super.init();
 
-        if (WebServer.isWebAppCustomI18n()) {
+        final boolean useCustomI18n = WebServer.isWebAppCustomI18n();
+        Messages.init(useCustomI18n);
+
+        if (useCustomI18n) {
             addCustomStringResourceLoader();
         }
 
@@ -877,7 +989,13 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
         synchronized (this) {
             if (!theIsInitialized) {
                 theIsInitialized = true;
-                myInitialize();
+                try {
+                    myInitialize();
+                } catch (Exception e) {
+                    System.err.println(e.getMessage());
+                    LOGGER.error(e.getMessage(), e);
+                    initializeError = true;
+                }
             }
         }
     }
@@ -917,7 +1035,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             session.invalidateNow();
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(String.format("%s [TEMP]", debugMsg));
+                LOGGER.debug("{} [TEMP]", debugMsg);
             }
 
         } else if (urlPath.startsWith(MOUNT_PATH_COMETD.substring(1))) {
@@ -937,7 +1055,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             session = super.newSession(request, response);
 
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String.format("%s [TEMP]", debugMsg));
+                LOGGER.trace("{} [TEMP]", debugMsg);
             }
 
         } else {
@@ -952,8 +1070,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             session.bind();
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug(String.format("%s [%s]. Sessions [%d]", debugMsg,
-                        session.getId(), theDictIpAddrUser.size()));
+                LOGGER.debug("{} [{}]. Sessions [{}]", debugMsg,
+                        session.getId(), theDictIpAddrUser.size());
             }
         }
         return session;
@@ -964,40 +1082,50 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
         super.sessionUnbound(sessionId);
 
-        synchronized (this) {
+        synchronized (MUTEX_DICT) {
 
             String ipAddr = theDictSessionIpAddr.remove(sessionId);
 
             if (ipAddr == null) {
 
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("IP User Session [?.?.?.?] [" + sessionId
-                            + "] unbound. Sessions [" + theDictIpAddrUser.size()
-                            + "].");
+                    LOGGER.debug(
+                            "IP User Session [?.?.?.?] [{}] unbound. "
+                                    + "Sessions [{}]",
+                            sessionId, theDictIpAddrUser.size());
                 }
 
             } else {
 
-                if (theDictIpAddrSession.remove(ipAddr) == null) {
+                final String sessionRemoved =
+                        theDictIpAddrSession.remove(ipAddr);
+
+                if (sessionRemoved == null) {
                     LOGGER.error("Inconsistent IP User Session cache: "
-                            + "no session found for [" + ipAddr + "]");
+                            + "no session found for [{}]", ipAddr);
+                } else {
+                    if (!sessionRemoved.equals(sessionId)) {
+                        LOGGER.warn(
+                                "{}: Inconsistent Session IP cache "
+                                        + "[{}]->[{}]->[{}]",
+                                "sessionUnbound", sessionId, ipAddr,
+                                sessionRemoved);
+                    }
                 }
 
                 final String user = theDictIpAddrUser.remove(ipAddr);
 
                 if (user == null) {
-
                     LOGGER.error("Inconsistent IP User Session cache: "
-                            + "no user found for [" + ipAddr + "]");
-
+                            + "no user found for [{}]", ipAddr);
                 } else {
-
                     if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("IP User Session [" + ipAddr + "] [" + user
-                                + "] [" + sessionId + "] removed. Sessions ["
-                                + (theDictIpAddrUser.size()) + "].");
+                        LOGGER.debug(
+                                "IP User Session [{}] [{}] [{}] removed."
+                                        + " Sessions [{}]",
+                                ipAddr, user, sessionId,
+                                theDictIpAddrUser.size());
                     }
-
                     /*
                      * TODO: how to get the WebAppTypEnum?
                      */
@@ -1005,9 +1133,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                             PubLevelEnum.INFO,
                             localize("pub-user-logout", user, ipAddr));
                 }
-
             }
-            checkIpUserSessionCache("sessionUnbound");
         }
     }
 

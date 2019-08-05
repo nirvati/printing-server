@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -27,18 +27,16 @@ import java.math.BigDecimal;
 import java.net.URL;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.UUID;
 
 import javax.mail.MessagingException;
@@ -57,8 +55,6 @@ import org.apache.wicket.request.handler.TextRequestHandler;
 import org.apache.wicket.request.handler.resource.ResourceStreamRequestHandler;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.request.resource.ContentDisposition;
-import org.apache.wicket.util.resource.ResourceStreamNotFoundException;
-import org.apache.wicket.util.resource.StringBufferResourceStream;
 import org.apache.wicket.util.time.Duration;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -80,20 +76,20 @@ import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.OnOffEnum;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.AccountTrxDao;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.UserAccountDao;
-import org.savapage.core.dao.UserAttrDao;
 import org.savapage.core.dao.UserDao;
-import org.savapage.core.dao.UserEmailDao;
 import org.savapage.core.dao.enums.DeviceAttrEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
 import org.savapage.core.dao.enums.DocLogProtocolEnum;
 import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.dao.impl.DaoContextImpl;
 import org.savapage.core.doc.DocContent;
+import org.savapage.core.doc.store.DocStoreTypeEnum;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.dto.AccountVoucherBatchDto;
 import org.savapage.core.dto.AccountVoucherRedeemDto;
@@ -102,7 +98,6 @@ import org.savapage.core.dto.PosDepositDto;
 import org.savapage.core.dto.PosDepositReceiptDto;
 import org.savapage.core.dto.PrimaryKeyDto;
 import org.savapage.core.dto.ProxyPrinterCostDto;
-import org.savapage.core.dto.ProxyPrinterMediaSourcesDto;
 import org.savapage.core.dto.UserCreditTransferDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
@@ -121,8 +116,6 @@ import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.DocLog;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.jpa.User;
-import org.savapage.core.jpa.UserAttr;
-import org.savapage.core.jpa.UserEmail;
 import org.savapage.core.json.JsonAbstractBase;
 import org.savapage.core.json.JsonPrinterDetail;
 import org.savapage.core.json.PdfProperties;
@@ -132,6 +125,7 @@ import org.savapage.core.json.rpc.JsonRpcConfig;
 import org.savapage.core.json.rpc.JsonRpcError;
 import org.savapage.core.json.rpc.ResultDataBasic;
 import org.savapage.core.json.rpc.impl.ResultPosDeposit;
+import org.savapage.core.pdf.PdfCreateRequest;
 import org.savapage.core.print.gcp.GcpClient;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.gcp.GcpRegisterPrinterRsp;
@@ -149,17 +143,18 @@ import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.DocLogService;
 import org.savapage.core.services.EmailService;
 import org.savapage.core.services.InboxService;
+import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
-import org.savapage.core.services.helpers.IppLogger;
 import org.savapage.core.services.helpers.PageRangeException;
 import org.savapage.core.services.helpers.UserAuth;
 import org.savapage.core.services.helpers.email.EmailMsgParms;
+import org.savapage.core.users.CommonUserGroup;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.DateUtil;
-import org.savapage.core.util.EmailValidator;
+import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.MediaUtils;
 import org.savapage.core.util.Messages;
@@ -173,15 +168,22 @@ import org.savapage.ext.payment.PaymentGatewayTrx;
 import org.savapage.ext.smartschool.SmartschoolPrintMonitor;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.savapage.lib.pgp.PGPBaseException;
-import org.savapage.lib.pgp.PGPPublicKeyInfo;
+import org.savapage.lib.pgp.pdf.PdfPgpVerifyUrl;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.request.ApiRequestHandler;
 import org.savapage.server.api.request.ApiRequestHelper;
 import org.savapage.server.api.request.ApiRequestMixin;
 import org.savapage.server.api.request.ApiResultCodeEnum;
+import org.savapage.server.api.request.export.ReqExportDocStorePdf;
 import org.savapage.server.api.request.export.ReqExportOutboxPdf;
+import org.savapage.server.api.request.export.ReqExportPrinterOpt;
+import org.savapage.server.api.request.export.ReqExportPrinterPpd;
 import org.savapage.server.api.request.export.ReqExportUserDataHistory;
 import org.savapage.server.cometd.AbstractEventService;
+import org.savapage.server.dropzone.PdfPgpDropZoneFileResource;
+import org.savapage.server.dropzone.PdfPgpUploadHelper;
+import org.savapage.server.dropzone.WebPrintDropZoneFileResource;
+import org.savapage.server.dropzone.WebPrintHelper;
 import org.savapage.server.dto.MoneyTransferDto;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.helpers.HtmlButtonEnum;
@@ -189,9 +191,6 @@ import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.StatsPageTotalPanel;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
-import org.savapage.server.webprint.DropZoneFileResource;
-import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -218,21 +217,15 @@ public final class JsonApiServer extends AbstractPage {
     private static final Logger LOGGER =
             LoggerFactory.getLogger(JsonApiServer.class);
 
-    /**
-     *
-     */
+    /** */
     private static final AccountingService ACCOUNTING_SERVICE =
             ServiceContext.getServiceFactory().getAccountingService();
 
-    /**
-     *
-     */
+    /** */
     private static final AccountVoucherService ACCOUNT_VOUCHER_SERVICE =
             ServiceContext.getServiceFactory().getAccountVoucherService();
 
-    /**
-     * .
-     */
+    /** */
     private static final EmailService EMAIL_SERVICE =
             ServiceContext.getServiceFactory().getEmailService();
 
@@ -242,32 +235,26 @@ public final class JsonApiServer extends AbstractPage {
     private static final DocLogService DOC_LOG_SERVICE =
             ServiceContext.getServiceFactory().getDocLogService();
 
-    /**
-     *
-     */
+    /** */
     private static final InboxService INBOX_SERVICE =
             ServiceContext.getServiceFactory().getInboxService();
 
-    /**
-     * .
-     */
+    /** */
+    private static final JobTicketService JOBTICKET_SERVICE =
+            ServiceContext.getServiceFactory().getJobTicketService();
+
+    /** */
     private static final ProxyPrintService PROXY_PRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
-    /**
-     *
-     */
+    /** */
     private static final UserService USER_SERVICE =
             ServiceContext.getServiceFactory().getUserService();
 
-    /**
-     *
-     */
+    /** */
     private static final long serialVersionUID = 1L;
 
-    /**
-     *
-     */
+    /** */
     private static final JsonApiDict API_DICTIONARY = new JsonApiDict();
 
     /**
@@ -377,9 +364,9 @@ public final class JsonApiServer extends AbstractPage {
                 dbClaim = API_DICTIONARY.getDbClaimNeeded(requestId,
                         requestingWebAppType);
 
-                API_DICTIONARY.lock(letterheadLock);
+                API_DICTIONARY.lock(letterheadLock, requestId, requestingUser);
 
-                API_DICTIONARY.lock(dbClaim);
+                API_DICTIONARY.lock(dbClaim, requestId, requestingUser);
                 dbClaimLockDone = true;
 
                 /*
@@ -426,6 +413,10 @@ public final class JsonApiServer extends AbstractPage {
                     // no break intended
                 case JsonApiDict.REQ_PDF_OUTBOX:
                     // no break intended
+                case JsonApiDict.REQ_PDF_DOCSTORE_ARCHIVE:
+                    // no break intended
+                case JsonApiDict.REQ_PDF_DOCSTORE_JOURNAL:
+                    // no break intended
                 case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
                     // no break intended
                 case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
@@ -436,18 +427,15 @@ public final class JsonApiServer extends AbstractPage {
                     // no break intended
                 case JsonApiDict.REQ_PAPERCUT_DELEGATOR_COST_CSV:
                     // no break intended
+                case JsonApiDict.REQ_PRINTER_OPT_DOWNLOAD:
+                    // no break intended
+                case JsonApiDict.REQ_PRINTER_PPD_DOWNLOAD:
+                    // no break intended
                 case JsonApiDict.REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
                     // no break intended
                 case JsonApiDict.REQ_USER_EXPORT_DATA_HISTORY:
                     handleExportFile(requestId, parameters, requestingUser,
                             isGetAction);
-                    break;
-
-                case JsonApiDict.REQ_PRINTER_OPT_DOWNLOAD:
-                    requestCycle.scheduleRequestHandlerAfterCurrent(
-                            this.exportPrinterOpt(
-                                    parameters.get(JsonApiDict.PARM_REQ_SUB)
-                                            .toLongObject()));
                     break;
 
                 case JsonApiDict.REQ_PDF:
@@ -479,6 +467,9 @@ public final class JsonApiServer extends AbstractPage {
                     switch (getSessionWebAppType()) {
                     case ADMIN:
                         urlPath = WebApp.MOUNT_PATH_WEBAPP_ADMIN;
+                        break;
+                    case PRINTSITE:
+                        urlPath = WebApp.MOUNT_PATH_WEBAPP_PRINTSITE;
                         break;
                     case JOBTICKETS:
                         urlPath = WebApp.MOUNT_PATH_WEBAPP_JOBTICKETS;
@@ -526,9 +517,10 @@ public final class JsonApiServer extends AbstractPage {
 
                 if (t instanceof ReadLockObtainFailedException) {
 
-                    apiRes = setApiResult(new HashMap<String, Object>(),
+                    apiRes = setApiResultTxt(new HashMap<String, Object>(),
                             ApiResultCodeEnum.UNAVAILABLE,
-                            "msg-system-temp-unavailable");
+                            PhraseEnum.SYS_TEMP_UNAVAILABLE
+                                    .uiText(ServiceContext.getLocale()));
 
                     if (!dbClaimLockDone) {
                         // dbClaim locking failed or was not executed: reset to
@@ -537,7 +529,7 @@ public final class JsonApiServer extends AbstractPage {
                     }
 
                 } else {
-                    apiRes = handleException(requestId, t);
+                    apiRes = handleException(requestId, requestingUser, t);
                 }
 
                 jsonArray = new ObjectMapper().writeValueAsString(apiRes);
@@ -565,8 +557,8 @@ public final class JsonApiServer extends AbstractPage {
 
             } catch (Exception ex) {
                 try {
-                    jsonArray = new ObjectMapper()
-                            .writeValueAsString(handleException(requestId, ex));
+                    jsonArray = new ObjectMapper().writeValueAsString(
+                            handleException(requestId, requestingUser, ex));
                 } catch (Exception e1) {
                     LOGGER.error(e1.getMessage());
                 }
@@ -641,6 +633,22 @@ public final class JsonApiServer extends AbstractPage {
                                 parameters, isGetAction, requestingUser, null);
                 break;
 
+            case JsonApiDict.REQ_PDF_DOCSTORE_ARCHIVE:
+                requestHandler =
+                        new ReqExportDocStorePdf(DocStoreTypeEnum.ARCHIVE)
+                                .export(getSessionWebAppType(),
+                                        getRequestCycle(), parameters,
+                                        isGetAction, requestingUser, null);
+                break;
+
+            case JsonApiDict.REQ_PDF_DOCSTORE_JOURNAL:
+                requestHandler =
+                        new ReqExportDocStorePdf(DocStoreTypeEnum.JOURNAL)
+                                .export(getSessionWebAppType(),
+                                        getRequestCycle(), parameters,
+                                        isGetAction, requestingUser, null);
+                break;
+
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
                 requestHandler = exportPosPurchaseReceipt(tempExportFile,
@@ -671,6 +679,22 @@ public final class JsonApiServer extends AbstractPage {
                         "papercut-delegator-cost.csv", tempExportFile,
                         parameters.get(JsonApiDict.PARM_REQ_SUB).toString(),
                         requestingUser);
+                break;
+
+            case JsonApiDict.REQ_PRINTER_OPT_DOWNLOAD:
+                requestHandler = new ReqExportPrinterOpt(
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toLongObject())
+                                .export(getSessionWebAppType(),
+                                        getRequestCycle(), parameters,
+                                        isGetAction, requestingUser, null);
+                break;
+
+            case JsonApiDict.REQ_PRINTER_PPD_DOWNLOAD:
+                requestHandler = new ReqExportPrinterPpd(
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toLongObject())
+                                .export(getSessionWebAppType(),
+                                        getRequestCycle(), parameters,
+                                        isGetAction, requestingUser, null);
                 break;
 
             case JsonApiDict.REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
@@ -792,11 +816,13 @@ public final class JsonApiServer extends AbstractPage {
      * @throws IOException
      * @throws CircuitBreakerException
      * @throws InterruptedException
+     * @throws PGPBaseException
      */
     private void mailDepositReceipt(final Long accountTrxDbId,
             final String toAddress, final String requestingUser,
-            boolean isAdminRequest) throws JRException, MessagingException,
-            IOException, InterruptedException, CircuitBreakerException {
+            boolean isAdminRequest)
+            throws JRException, MessagingException, IOException,
+            InterruptedException, CircuitBreakerException, PGPBaseException {
 
         final File tempPdfFile = new File(OutputProducer
                 .createUniqueTempPdfName(requestingUser, "deposit-receipt"));
@@ -835,43 +861,6 @@ public final class JsonApiServer extends AbstractPage {
     private String getUserFriendlyFilename(final PosDepositReceiptDto receipt) {
         return CommunityDictEnum.SAVAPAGE.getWord() + "-"
                 + receipt.getReceiptNumber() + ".pdf";
-    }
-
-    /**
-     *
-     * @param printerName
-     * @return
-     * @throws ResourceStreamNotFoundException
-     */
-    private IRequestHandler exportPrinterOpt(final Long printerId)
-            throws ResourceStreamNotFoundException {
-
-        final PrinterDao printerDao =
-                ServiceContext.getDaoContext().getPrinterDao();
-
-        final Printer printer = printerDao.findById(printerId);
-
-        /*
-         * INVARIANT: printer must exist in database.
-         */
-        if (printer == null) {
-            throw new SpException("Printer [" + printerId + "] not found.");
-        }
-
-        final StringBufferResourceStream stream =
-                new StringBufferResourceStream("text/text");
-
-        stream.append(
-                IppLogger.logIppPrinterOpt(printer, getSession().getLocale()));
-
-        final ResourceStreamRequestHandler handler =
-                new ResourceStreamRequestHandler(stream);
-
-        handler.setFileName(printer.getPrinterName() + ".txt");
-        handler.setContentDisposition(ContentDisposition.ATTACHMENT);
-        handler.setCacheDuration(Duration.NONE);
-
-        return handler;
     }
 
     /**
@@ -1047,9 +1036,7 @@ public final class JsonApiServer extends AbstractPage {
         dto.setPersonalAccountType(personalAccountType);
 
         ServiceContext.getServiceFactory().getPaperCutService()
-                .createDelegatorPrintCostCsv(
-                        PaperCutDbProxy.create(ConfigManager.instance(), true),
-                        tempCsvFile, dto);
+                .createDelegatorPrintCostCsv(tempCsvFile, dto);
 
         final DownloadRequestHandler handler =
                 new DownloadRequestHandler(tempCsvFile);
@@ -1207,6 +1194,9 @@ public final class JsonApiServer extends AbstractPage {
         case JsonApiDict.REQ_CONSTANTS:
 
             return reqConstants(
+                    EnumUtils.getEnum(WebAppTypeEnum.class,
+                            getParmValue(parameters, isGetAction,
+                                    "webAppType")),
                     getParmValue(parameters, isGetAction, "authMode"));
 
         case JsonApiDict.REQ_DEVICE_NEW_CARD_READER:
@@ -1254,11 +1244,6 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqWebAppCloseSession();
 
-        case JsonApiDict.REQ_MAIL_TEST:
-
-            return reqMailTest(requestingUser,
-                    getParmValue(parameters, isGetAction, "mailto"));
-
         case JsonApiDict.REQ_IMAP_TEST:
 
             return reqImapTest();
@@ -1303,8 +1288,8 @@ public final class JsonApiServer extends AbstractPage {
 
             return apiResultFromBasicRpcResponse(ACCOUNTING_SERVICE
                     .transferUserCredit(JsonAbstractBase.create(
-                            UserCreditTransferDto.class, getParmValue(
-                                    parameters, isGetAction, "dto"))));
+                            UserCreditTransferDto.class,
+                            getParmValue(parameters, isGetAction, "dto"))));
 
         case JsonApiDict.REQ_USER_MONEY_TRANSFER_REQUEST:
 
@@ -1417,11 +1402,6 @@ public final class JsonApiServer extends AbstractPage {
 
             return reqPrinterSetMediaCost(
                     getParmValue(parameters, isGetAction, "j_cost"));
-
-        case JsonApiDict.REQ_PRINTER_SET_MEDIA_SOURCES:
-
-            return reqPrinterSetMediaSources(
-                    getParmValue(parameters, isGetAction, "j_media_sources"));
 
         case JsonApiDict.REQ_LETTERHEAD_LIST:
 
@@ -1622,8 +1602,47 @@ public final class JsonApiServer extends AbstractPage {
         final String documentPageRangeFilter = calcDocumentPageRangeFilter(user,
                 vanillaJobIndex, pageRangeFilter);
 
-        return OutputProducer.instance().generatePdfForExport(user, pdfFile,
-                documentPageRangeFilter, removeGraphics, ecoPdf, grayscalePdf,
+        /*
+         * Get the (filtered) jobs.
+         */
+        InboxInfoDto inboxInfo = INBOX_SERVICE.getInboxInfo(user.getUserId());
+
+        if (StringUtils.isNotBlank(documentPageRangeFilter)) {
+            inboxInfo = INBOX_SERVICE.filterInboxInfoPages(inboxInfo,
+                    documentPageRangeFilter);
+        }
+
+        final PdfCreateRequest pdfRequest = new PdfCreateRequest();
+
+        pdfRequest.setUserObj(user);
+        pdfRequest.setPdfFile(pdfFile);
+        pdfRequest.setInboxInfo(inboxInfo);
+        pdfRequest.setRemoveGraphics(removeGraphics);
+        pdfRequest.setApplyPdfProps(true);
+        pdfRequest.setApplyLetterhead(true);
+        pdfRequest.setForPrinting(false);
+        pdfRequest.setEcoPdfShadow(ecoPdf);
+        pdfRequest.setGrayscale(grayscalePdf);
+
+        final ConfigManager cm = ConfigManager.instance();
+
+        final PdfPgpVerifyUrl verifyUrl;
+
+        if (ConfigManager.isPdfPgpAvailable()) {
+
+            String host = cm.getConfigValue(Key.PDFPGP_VERIFICATION_HOST);
+            if (StringUtils.isBlank(host)) {
+                host = InetUtils.getServerHostAddress();
+            }
+            verifyUrl = new PdfPgpVerifyUrl(host,
+                    cm.getConfigInteger(Key.PDFPGP_VERIFICATION_PORT));
+        } else {
+            verifyUrl = null;
+        }
+
+        pdfRequest.setVerifyUrl(verifyUrl);
+
+        return OutputProducer.instance().generatePdfForExport(pdfRequest,
                 docLog);
     }
 
@@ -1887,6 +1906,23 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
+     * Sets the API result on parameter {@code out}.
+     *
+     * @param out
+     *            The Map to put the result on.
+     * @param code
+     *            The {@link #ApiResultCodeEnum}.
+     * @param txt
+     *            The message text.
+     * @return the {@code out} parameter.
+     *
+     */
+    private Map<String, Object> setApiResultTxt(final Map<String, Object> out,
+            final ApiResultCodeEnum code, final String txt) {
+        return createApiResult(out, code, null, txt);
+    }
+
+    /**
      *
      * @param out
      * @param key
@@ -1931,11 +1967,13 @@ public final class JsonApiServer extends AbstractPage {
 
     /**
      *
-     * @param e
+     * @param requestId
+     * @param requestingUser
+     * @param exception
      * @return
      */
     private Map<String, Object> handleException(final String requestId,
-            final Exception exception) {
+            final String requestingUser, final Exception exception) {
 
         String msg = null;
         String msgKey = null;
@@ -1958,7 +1996,9 @@ public final class JsonApiServer extends AbstractPage {
                         || exception instanceof PessimisticLockException) {
                     LOGGER.error(exception.getMessage());
                 } else {
-                    LOGGER.error(String.format("[%s] %s", requestId,
+                    LOGGER.error(String.format("[%s][%s][%s]: %s", requestId,
+                            StringUtils.defaultString(requestingUser, "-"),
+                            this.createUserAgentHelper().getUserAgentHeader(),
                             exception.getMessage()), exception);
                 }
             }
@@ -1994,14 +2034,17 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
+     * Checks if session is logically expired, and touches the validated time.
      *
      * @param session
-     * @return
+     *            The current session.
+     * @return {@code true} when current session is logically expired.
      */
     private boolean checkTouchSessionExpired(final SpSession session) {
 
+        // Mantis #1048
         if (ApiRequestHelper.isAuthTokenLoginEnabled()) {
-            return false;
+            // no code intended.
         }
 
         if (session == null) {
@@ -2091,6 +2134,14 @@ public final class JsonApiServer extends AbstractPage {
                             webAppType);
                 }
 
+                if (!authorized) {
+                    LOGGER.warn(
+                            "WebApp [{}] request [{}]: "
+                                    + "user [{}] not authorized.",
+                            webAppType.toString(), request,
+                            session.getUser().getUserId());
+                }
+
             } else {
                 authorized = false;
 
@@ -2153,13 +2204,14 @@ public final class JsonApiServer extends AbstractPage {
      * @throws InterruptedException
      * @throws CircuitBreakerException
      * @throws ParseException
+     * @throws PGPBaseException
      */
     private Map<String, Object> reqSend(final User lockedUser,
             final String mailto, final String jobIndex, final String ranges,
             final boolean removeGraphics, final boolean ecoPdf,
-            final boolean grayscalePdf)
-            throws LetterheadNotFoundException, IOException, MessagingException,
-            InterruptedException, CircuitBreakerException, ParseException {
+            final boolean grayscalePdf) throws LetterheadNotFoundException,
+            IOException, MessagingException, InterruptedException,
+            CircuitBreakerException, ParseException, PGPBaseException {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
@@ -2330,10 +2382,8 @@ public final class JsonApiServer extends AbstractPage {
      *
      * @param user
      * @return
-     * @throws Exception
      */
-    private Map<String, Object> reqPdfPropsGet(final User user)
-            throws Exception {
+    private Map<String, Object> reqPdfPropsGet(final User user) {
 
         final PdfProperties objProps = USER_SERVICE.getPdfProperties(user);
 
@@ -2554,87 +2604,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Sends a test mail message to mailto address.
-     *
-     * @param requestingUser
-     * @param mailto
-     * @return
-     * @throws MessagingException
-     * @throws IOException
-     */
-    private Map<String, Object> reqMailTest(final String requestingUser,
-            final String mailto) {
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        if (StringUtils.isBlank(mailto)
-                || !new EmailValidator().validate(mailto)) {
-            setApiResult(userData, ApiResultCodeEnum.ERROR, "msg-email-invalid",
-                    StringUtils.defaultString(mailto));
-            return userData;
-        }
-
-        final String subject = localize("mail-test-subject");
-        final String body = localize("mail-test-body", requestingUser,
-                CommunityDictEnum.SAVAPAGE.getWord() + " "
-                        + ConfigManager.getAppVersion());
-
-        try {
-
-            final EmailMsgParms emailParms = new EmailMsgParms();
-
-            emailParms.setToAddress(mailto);
-            emailParms.setSubject(subject);
-            emailParms.setBodyInStationary(subject, body, getLocale(), true);
-
-            // PGP/MIME Encrypt?
-            final UserEmailDao daoUserEmail =
-                    ServiceContext.getDaoContext().getUserEmailDao();
-
-            final UserEmail userEmail =
-                    daoUserEmail.findByEmail(mailto.toLowerCase());
-
-            if (userEmail != null) {
-
-                final UserAttrDao daoUserAttr =
-                        ServiceContext.getDaoContext().getUserAttrDao();
-
-                final UserAttr pgpPubAttr = daoUserAttr.findByName(
-                        userEmail.getUser(), UserAttrEnum.PGP_PUBKEY_ID);
-
-                if (pgpPubAttr != null) {
-
-                    final PGPPublicKeyInfo info = ServiceContext
-                            .getServiceFactory().getPGPPublicKeyService()
-                            .lookup(pgpPubAttr.getValue().toUpperCase());
-
-                    if (info != null) {
-                        final List<PGPPublicKeyInfo> list = new ArrayList<>();
-                        list.add(info);
-                        emailParms.setPublicKeyList(list);
-                    }
-                }
-            }
-            EMAIL_SERVICE.sendEmail(emailParms);
-
-            setApiResult(userData, ApiResultCodeEnum.OK, "msg-mail-sent",
-                    mailto);
-
-        } catch (MessagingException | IOException | InterruptedException
-                | CircuitBreakerException | PGPBaseException e) {
-
-            String msg = e.getMessage();
-
-            if (e.getCause() != null) {
-                msg += " (" + e.getCause().getMessage() + ")";
-            }
-            setApiResult(userData, ApiResultCodeEnum.ERROR, "msg-error", msg);
-        }
-
-        return userData;
-    }
-
-    /**
      *
      * @return
      */
@@ -2718,7 +2687,7 @@ public final class JsonApiServer extends AbstractPage {
         String error = PaperCutServerProxy.create(cm, false).testConnection();
 
         if (error == null) {
-            error = PaperCutDbProxy.create(cm, false).testConnection();
+            error = new PaperCutDbProxy(cm, false).testConnection();
         }
 
         if (error == null) {
@@ -3268,54 +3237,6 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     * Sets the Proxy Printer media cost properties.
-     * <p>
-     * Also, a logical delete can be applied or reversed.
-     * </p>
-     *
-     * @param json
-     * @return
-     */
-    private Map<String, Object> reqPrinterSetMediaSources(final String json) {
-
-        final PrinterDao printerDao =
-                ServiceContext.getDaoContext().getPrinterDao();
-
-        final Map<String, Object> userData = new HashMap<String, Object>();
-
-        final ProxyPrinterMediaSourcesDto dto = JsonAbstractBase
-                .create(ProxyPrinterMediaSourcesDto.class, json);
-
-        final long id = dto.getId();
-
-        final Printer jpaPrinter = printerDao.findById(id);
-
-        /*
-         * INVARIANT: printer MUST exist.
-         */
-        if (jpaPrinter == null) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-printer-not-found", String.valueOf(id));
-        }
-
-        /*
-         *
-         */
-        final AbstractJsonRpcMethodResponse rpcResponse = PROXY_PRINT_SERVICE
-                .setProxyPrinterCostMediaSources(jpaPrinter, dto);
-
-        if (rpcResponse.isResult()) {
-            setApiResult(userData, ApiResultCodeEnum.OK,
-                    "msg-printer-saved-ok");
-        } else {
-            setApiResultMsgError(userData, "", rpcResponse.asError().getError()
-                    .data(ErrorDataBasic.class).getReason());
-        }
-
-        return userData;
-    }
-
-    /**
      *
      * @param user
      * @param userSubject
@@ -3793,10 +3714,19 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqUserSourceGroups(final String user) {
 
-        Map<String, Object> userData = new HashMap<String, Object>();
+        final Map<String, Object> userData = new HashMap<String, Object>();
 
-        userData.put("groups", Arrays.asList(ConfigManager.instance()
-                .getUserSource().getGroups().toArray()));
+        final SortedSet<CommonUserGroup> sset =
+                ConfigManager.instance().getUserSource().getGroups();
+
+        final String[] groupNames = new String[sset.size()];
+        int i = 0;
+        for (final CommonUserGroup grp : sset) {
+            groupNames[i++] = grp.getGroupName();
+        }
+
+        userData.put("groups", groupNames);
+
         return setApiResultOK(userData);
     }
 
@@ -4304,12 +4234,13 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     *
+     * @param webAppType
      * @param authModeReq
      *            The requested authentication mode.
      * @return
      */
-    private Map<String, Object> reqConstants(final String authModeReq) {
+    private Map<String, Object> reqConstants(final WebAppTypeEnum webAppType,
+            final String authModeReq) {
 
         final Map<String, Object> userData = new HashMap<>();
 
@@ -4344,11 +4275,10 @@ public final class JsonApiServer extends AbstractPage {
 
         //
         final ConfigManager cm = ConfigManager.instance();
-
+        final String remoteAddr = this.getRemoteAddr();
         final UserAuth userAuth = new UserAuth(
-                ApiRequestHelper.getHostTerminal(this.getRemoteAddr()),
-                authModeReq,
-                getSessionWebAppType().equals(WebAppTypeEnum.ADMIN));
+                ApiRequestHelper.getHostTerminal(remoteAddr), authModeReq,
+                webAppType, InetUtils.isPublicAddress(remoteAddr));
 
         userData.put("authName", userAuth.isVisibleAuthName());
         userData.put("authId", userAuth.isVisibleAuthId());
@@ -4357,7 +4287,7 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("authYubiKey", userAuth.isVisibleAuthYubikey());
 
         userData.put("authModeDefault",
-                UserAuth.mode(userAuth.getAuthModeDefault()));
+                userAuth.getAuthModeDefault().toDbValue());
 
         userData.put("authCardPinReq", userAuth.isAuthCardPinReq());
         userData.put("authCardSelfAssoc", userAuth.isAuthCardSelfAssoc());
@@ -4400,14 +4330,34 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("jobticketCopierEnable",
                 cm.isConfigValue(Key.JOBTICKET_COPIER_ENABLE));
 
+        userData.put("jobticketDeliveryDays", Integer
+                .valueOf(cm.getConfigInt(Key.JOBTICKET_DELIVERY_DAYS, 0)));
+
+        userData.put("jobticketDeliveryDaysMin", Integer
+                .valueOf(cm.getConfigInt(Key.JOBTICKET_DELIVERY_DAYS_MIN, 0)));
+
+        final int minutes =
+                cm.getConfigInt(Key.JOBTICKET_DELIVERY_DAY_MINUTES, 0);
+
+        userData.put("jobticketDeliveryHour",
+                Integer.valueOf(minutes / DateUtil.MINUTES_IN_HOUR));
+        userData.put("jobticketDeliveryMinute",
+                Integer.valueOf(minutes % DateUtil.MINUTES_IN_HOUR));
+
+        userData.put("jobticketDeliveryDaysOfweek",
+                JOBTICKET_SERVICE.getDeliveryDaysOfWeek());
+
         //
         userData.put("proxyPrintClearPrinter",
                 cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_PRINTER));
 
         if (cm.isConfigValue(Key.PROXY_PRINT_DELEGATE_ENABLE)) {
 
-            userData.put("delegatorNameId", cm.isConfigValue(
-                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_NAME_ID));
+            userData.put("delegatorGroupHideId", cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_GROUP_HIDE_ID));
+
+            userData.put("delegatorUserHideId", cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_USER_HIDE_ID));
 
             userData.put("proxyPrintClearDelegate", cm
                     .isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_DELEGATE));
@@ -4430,13 +4380,23 @@ public final class JsonApiServer extends AbstractPage {
             userData.put("webPrintUploadUrl",
                     WebApp.MOUNT_PATH_UPLOAD_WEBPRINT);
             userData.put("webPrintUploadFileParm",
-                    DropZoneFileResource.UPLOAD_PARAM_NAME_FILE);
+                    WebPrintDropZoneFileResource.UPLOAD_PARAM_NAME_FILE);
             userData.put("webPrintUploadFontParm",
-                    DropZoneFileResource.UPLOAD_PARAM_NAME_FONT);
+                    WebPrintDropZoneFileResource.UPLOAD_PARAM_NAME_FONT);
             userData.put("webPrintFileExt",
                     WebPrintHelper.getSupportedFileExtensions(true));
         }
 
+        if (ConfigManager.isPdfPgpEnabled()) {
+            userData.put("pdfpgpMaxBytes",
+                    PdfPgpUploadHelper.getMaxUploadSize().bytes());
+            userData.put("pdfpgpUploadUrl",
+                    WebApp.MOUNT_PATH_UPLOAD_PDF_VERIFY);
+            userData.put("pdfpgpUploadFileParm",
+                    PdfPgpDropZoneFileResource.UPLOAD_PARAM_NAME_FILE);
+            userData.put("pdfpgpFileExt",
+                    PdfPgpUploadHelper.getSupportedFileExtensions(true));
+        }
 
         // Colors
         final Map<String, String> colors = new HashMap<>();
@@ -4446,6 +4406,25 @@ public final class JsonApiServer extends AbstractPage {
         colors.put("pdfOut", SparklineHtml.COLOR_PDF);
 
         userData.put("colors", colors);
+
+        if (webAppType == WebAppTypeEnum.USER) {
+
+            Map<String, Object> scaling;
+
+            scaling = new HashMap<>();
+            scaling.put("show", cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_SCALING_MEDIA_MATCH_SHOW));
+            scaling.put("value", cm.getConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_SCALING_MEDIA_MATCH_DEFAULT));
+            userData.put("printScalingMatch", scaling);
+
+            scaling = new HashMap<>();
+            scaling.put("show", cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_SCALING_MEDIA_CLASH_SHOW));
+            scaling.put("value", cm.getConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_SCALING_MEDIA_CLASH_DEFAULT));
+            userData.put("printScalingClash", scaling);
+        }
 
         //
         return userData;

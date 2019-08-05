@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,6 +33,7 @@ import java.security.cert.CertificateException;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Properties;
+import java.util.concurrent.ArrayBlockingQueue;
 
 import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
@@ -41,9 +42,9 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.server.ForwardedRequestCustomizer;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -53,6 +54,7 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
+import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -61,9 +63,14 @@ import org.savapage.common.ConfigDefaults;
 import org.savapage.core.SpException;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.SslCertInfo;
 import org.savapage.core.ipp.operation.IppMessageMixin;
 import org.savapage.core.util.InetUtils;
-import org.savapage.server.feed.AtomFeedLoginService;
+import org.savapage.server.ext.papercut.ExtPaperCutSyncServlet;
+import org.savapage.server.feed.AtomFeedServlet;
+import org.savapage.server.restful.RestApplication;
+import org.savapage.server.restful.services.RestSystemService;
+import org.savapage.server.restful.services.RestTestService;
 import org.savapage.server.xmlrpc.SpXmlRpcServlet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,50 +82,6 @@ import org.slf4j.LoggerFactory;
  *
  */
 public final class WebServer {
-
-    /**
-     * .
-     */
-    public static class SslCertInfo {
-
-        private final String issuerCN;
-        private final Date creationDate;
-        private final Date notAfter;
-        private final boolean selfSigned;
-
-        @SuppressWarnings("unused")
-        private SslCertInfo() {
-            this.issuerCN = null;
-            this.creationDate = null;
-            this.notAfter = null;
-            this.selfSigned = false;
-        }
-
-        public SslCertInfo(final String issuerCN, final Date creationDate,
-                final Date notAfter, final boolean selfSigned) {
-            this.issuerCN = issuerCN;
-            this.creationDate = creationDate;
-            this.notAfter = notAfter;
-            this.selfSigned = selfSigned;
-        }
-
-        public String getIssuerCN() {
-            return issuerCN;
-        }
-
-        public Date getCreationDate() {
-            return creationDate;
-        }
-
-        public Date getNotAfter() {
-            return notAfter;
-        }
-
-        public boolean isSelfSigned() {
-            return selfSigned;
-        }
-
-    }
 
     /**
      * Redirect all traffic except IPP to SSL.
@@ -157,125 +120,208 @@ public final class WebServer {
     }
 
     /**
-     *
-     */
-    private static class ConnectorConfig {
-
-        private static final int MIN_THREADS = 20;
-
-        private static final int MAX_THREADS_X64 = 8000;
-
-        private static final int MAX_THREADS_I686 = 4000;
-
-        private static final int MAX_IDLE_TIME_MSEC = 30000;
-
-        /**
-         *
-         * @return
-         */
-        public static int getMinThreads() {
-            return MIN_THREADS;
-        }
-
-        public static boolean isX64() {
-            return System.getProperty("os.arch").equalsIgnoreCase("amd64");
-        }
-
-        /**
-         *
-         * @return
-         */
-        public static int getMaxThreads() {
-
-            final int maxThreads;
-
-            if (isX64()) {
-                maxThreads = MAX_THREADS_X64;
-            } else {
-                maxThreads = MAX_THREADS_I686;
-            }
-
-            return maxThreads;
-        }
-
-        public static int getIdleTimeoutMsec() {
-            return MAX_IDLE_TIME_MSEC;
-        }
-    }
-
-    /**
      * The logger.
      */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(WebServer.class);
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_SERVER_PORT = "server.port";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_SERVER_PORT_SSL = "server.ssl.port";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_HTML_REDIRECT_SSL =
             "server.html.redirect.ssl";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_SSL_KEYSTORE = "server.ssl.keystore";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_SSL_KEYSTORE_PW =
             "server.ssl.keystore-password";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PROP_KEY_SSL_KEY_PW = "server.ssl.key-password";
 
     /** */
     private static final String PROP_KEY_WEBAPP_CUSTOM_I18N =
             "webapp.custom.i18n";
 
-    /**
-     * .
-     */
+    /** */
+    private static final String PROP_KEY_SERVER_THREADPOOL_QUEUE_CAPACITY =
+            "server.threadpool.queue.capacity";
+    /** */
+    private static final String PROP_KEY_SERVER_THREADPOOL_MIN_THREADS =
+            "server.threadpool.minthreads";
+    /** */
+    private static final String PROP_KEY_SERVER_THREADPOOL_MAX_THREADS =
+            "server.threadpool.maxthreads";
+
+    /** */
+    private static final String PROP_KEY_SERVER_THREADPOOL_IDLE_TIMEOUT_MSEC =
+            "server.threadpool.idle-timeout-msec";
+
+    /** */
+    private static final String PROP_KEY_SERVER_SESSION_SCAVENGE_INTERVAL_SEC =
+            "server.session.scavenge.interval-sec";
+
+    /** */
+    private static final String SERVER_THREADPOOL_MIN_THREADS_DEFAULT = "20";
+
+    /** */
+    private static final String SERVER_THREADPOOL_MAX_THREADS_DEFAULT = "200";
+
+    /** */
+    private static final String SERVER_THREADPOOL_IDLE_TIMEOUT_MSEC_DEFAULT =
+            "30000";
+
+    /** */
+    private static final String SERVER_THREADPOOL_QUEUE_CAPACITY_DEFAULT =
+            "3000";
+
+    /** */
+    private static final String SERVER_SESSION_SCAVENGE_INTERVAL_SEC_DEFAULT =
+            "600";
+
+    /** */
     private static int serverPort;
 
-    /**
-     * .
-     */
+    /** */
     private static int serverPortSsl;
 
     /**
-     * .
+     * Number of acceptor threads.
      */
-    private static boolean serverSslRedirect;
+    private static int serverAcceptorThreads;
 
     /**
-     * .
+     * ThreadPool parameter information.
+     *
+     * <a href= "https://wiki.eclipse.org/Jetty/Howto/High_Load#Jetty_Tuning">
+     * Jetty/Howto/High Load</a>
      */
-    private static SslCertInfo sslCertInfo;
+    public static class ThreadPoolInfo {
+        /**
+         * Configure the number of threads according to the webapp. That is, how
+         * many threads it needs in order to achieve the best performance.
+         * Configure with mind to limiting memory usage maximum available.
+         * Typically >50 and <500.
+         */
+        private static int maxThreads;
+
+        /** */
+        private static int minThreads;
+
+        /**
+         * <p>
+         * It is very important to limit the task queue of Jetty. By default,
+         * the queue is unbounded! As a result, if under high load in excess of
+         * the processing power of the webapp, jetty will keep a lot of requests
+         * on the queue. Even after the load has stopped, Jetty will appear to
+         * have stopped responding to new requests as it still has lots of
+         * requests on the queue to handle.
+         * </p>
+         *
+         * <p>
+         * For a high reliability system, it should reject the excess requests
+         * immediately (fail fast) by using a queue with a bounded capability.
+         * The capability (maximum queue length) should be calculated according
+         * to the "no-response" time tolerable. For example, if the webapp can
+         * handle 100 requests per second, and if you can allow it one minute to
+         * recover from excessive high load, you can set the queue capability to
+         * 60*100=6000. If it is set too low, it will reject requests too soon
+         * and can't handle normal load spike.
+         * </p>
+         */
+        private static int queueCapacity;
+
+        /**
+         * Maximum time a thread may be idle in ms.
+         */
+        private static int idleTimeoutMsec;
+
+        /**
+         * @return Max threads in the {@link QueuedThreadPool}.
+         */
+        public static int getMaxThreads() {
+            return maxThreads;
+        }
+
+        /**
+         * @return Min threads in the {@link QueuedThreadPool}.
+         */
+        public static int getMinThreads() {
+            return minThreads;
+        }
+
+        /**
+         * @return Queue Capacity of the {@link QueuedThreadPool}.
+         */
+        public static int getQueueCapacity() {
+            return queueCapacity;
+        }
+
+        /**
+         * @return Maximum time a thread may be idle in ms.
+         */
+        public static int getIdleTimeoutMsec() {
+            return idleTimeoutMsec;
+        }
+
+        /**
+         * @return Log message for Max threads in the {@link QueuedThreadPool}.
+         */
+        public static String logMaxThreads() {
+            return String.format("%s [%s]",
+                    PROP_KEY_SERVER_THREADPOOL_MAX_THREADS,
+                    ThreadPoolInfo.maxThreads);
+        }
+
+        /**
+         * @return Log message for Min threads in the {@link QueuedThreadPool}.
+         */
+        public static String logMinThreads() {
+            return String.format("%s [%s]",
+                    PROP_KEY_SERVER_THREADPOOL_MIN_THREADS,
+                    ThreadPoolInfo.minThreads);
+        }
+
+        /**
+         * @return Log message for Queue Capacity of the
+         *         {@link QueuedThreadPool}.
+         */
+        public static String logQueueCapacity() {
+            return String.format("%s [%s]",
+                    PROP_KEY_SERVER_THREADPOOL_QUEUE_CAPACITY,
+                    ThreadPoolInfo.queueCapacity);
+        }
+
+        /**
+         * @return Log message for Maximum time a thread may be idle in ms.
+         */
+        public static String logIdleTimeoutMsec() {
+            return String.format("%s [%s]",
+                    PROP_KEY_SERVER_THREADPOOL_IDLE_TIMEOUT_MSEC,
+                    ThreadPoolInfo.idleTimeoutMsec);
+        }
+    }
+
+    /** */
+    private static boolean serverSslRedirect;
 
     /** */
     private static boolean webAppCustomI18n;
 
-    /**
-    *
-    */
+    /** */
+    private static int sessionScavengeInterval;
+
+    /** */
     private WebServer() {
     }
 
     /**
-     *
      * @return {@code true} when custom Web App i18n is to be applied.
      */
     public static boolean isWebAppCustomI18n() {
@@ -283,7 +329,6 @@ public final class WebServer {
     }
 
     /**
-     *
      * @return The server port.
      */
     public static int getServerPort() {
@@ -291,11 +336,26 @@ public final class WebServer {
     }
 
     /**
-     *
      * @return The server SSL port.
      */
     public static int getServerPortSsl() {
         return serverPortSsl;
+    }
+
+    /**
+     * @return Log message with session scavenge in seconds.
+     */
+    public static String logSessionScavengeInterval() {
+        return String.format("%s [%d]",
+                PROP_KEY_SERVER_SESSION_SCAVENGE_INTERVAL_SEC,
+                sessionScavengeInterval);
+    }
+
+    /**
+     * @return Number of server acceptor threads.
+     */
+    public static int getServerAcceptorThreads() {
+        return serverAcceptorThreads;
     }
 
     /**
@@ -307,20 +367,10 @@ public final class WebServer {
     }
 
     /**
-     *
      * @return {@code true} when non-SSL port is redirected to SSL port.
      */
     public static boolean isSSLRedirect() {
         return serverSslRedirect;
-    }
-
-    /**
-     *
-     * @return The {@link SslCertInfo}, or {@code null}. when alias is not
-     *         found.
-     */
-    public static SslCertInfo getSslCertInfo() {
-        return sslCertInfo;
     }
 
     /**
@@ -330,22 +380,17 @@ public final class WebServer {
      *            The keystore location.
      * @param ksPassword
      *            The keystore password.
-     * @param certAlias
-     *            The certificate alias.
      * @return The {@link SslCertInfo}, or {@code null}. when alias is not
      *         found.
      */
     private static SslCertInfo createSslCertInfo(final String ksLocation,
             final String ksPassword) {
 
-        FileInputStream is = null;
+        final File file = new File(ksLocation);
 
         SslCertInfo certInfo = null;
 
-        try {
-
-            final File file = new File(ksLocation);
-            is = new FileInputStream(file);
+        try (FileInputStream is = new FileInputStream(file);) {
 
             final KeyStore keystore =
                     KeyStore.getInstance(KeyStore.getDefaultType());
@@ -389,17 +434,24 @@ public final class WebServer {
                 final Date creationDate = keystore.getCreationDate(minAlias);
                 final Date notAfter = minCertX509.getNotAfter();
 
+                String subjectCN = null;
+
+                final LdapName lnSubject =
+                        new LdapName(minCertX509.getSubjectDN().getName());
+                for (final Rdn rdn : lnSubject.getRdns()) {
+                    if (rdn.getType().equalsIgnoreCase("CN")) {
+                        subjectCN = rdn.getValue().toString();
+                        break;
+                    }
+                }
+
                 final LdapName ln =
                         new LdapName(minCertX509.getIssuerDN().getName());
-
                 for (final Rdn rdn : ln.getRdns()) {
-
                     if (rdn.getType().equalsIgnoreCase("CN")) {
-
                         final String issuerCN = rdn.getValue().toString();
-
-                        certInfo = new SslCertInfo(issuerCN, creationDate,
-                                notAfter, nAliases == 1);
+                        certInfo = new SslCertInfo(issuerCN, subjectCN,
+                                creationDate, notAfter, nAliases == 1);
                         break;
                     }
                 }
@@ -409,8 +461,6 @@ public final class WebServer {
                 | CertificateException | IOException | InvalidNameException e) {
             LOGGER.error(e.getMessage(), e);
             throw new SpException(e.getMessage(), e);
-        } finally {
-            IOUtils.closeQuietly(is);
         }
 
         return certInfo;
@@ -440,6 +490,53 @@ public final class WebServer {
         return false;
     }
 
+    private final static int PORT_OFFSET = 1024;
+
+    /**
+     * @return {@code true} when ports are valid.
+     */
+    private static boolean checkPorts() {
+
+        if (getServerPort() > PORT_OFFSET && getServerPortSsl() > PORT_OFFSET) {
+            return true;
+        }
+
+        final String msg =
+                "\n+========================================================+"
+                        + "\n| SavaPage NOT started: server ports MUST be GT "
+                        + String.valueOf(PORT_OFFSET) + "     |"
+                        + "\n+==============================="
+                        + "=========================+";
+        System.err.println(new Date().toString() + " : " + msg);
+        LOGGER.error(msg);
+        return false;
+    }
+
+    /**
+     * Add RESTfull servlet.
+     *
+     * @param context
+     *            Web App context.
+     */
+    private static void initRESTful(final WebAppContext context) {
+
+        final ServletHolder jerseyServlet = context.addServlet(
+                org.glassfish.jersey.servlet.ServletContainer.class,
+                RestApplication.SERVLET_URL_PATTERN);
+
+        jerseyServlet.setInitParameter("javax.ws.rs.Application",
+                RestApplication.class.getCanonicalName());
+    }
+
+    /**
+     * Initializing action when started in development environment.
+     */
+    private static void initDevelopmenEnv() {
+        RestSystemService.test();
+        RestTestService.test();
+        // DeadlockedThreadsDetector.createDeadlockTest();
+    }
+
     /**
      * Starts the Web Server.
      * <p>
@@ -458,6 +555,8 @@ public final class WebServer {
      */
     public static void main(final String[] args) throws Exception {
 
+        ConfigManager.initJavaUtilLogging();
+
         if (!checkJava8()) {
             return;
         }
@@ -468,15 +567,13 @@ public final class WebServer {
         /*
          * Passed as -Dserver.home to JVM
          */
-        final String serverHome = System.getProperty("server.home");
+        final Properties propsServer = ConfigManager.loadServerProperties();
 
         /*
-         * Read the properties files for this server
+         * Notify central WebApp.
          */
-        final String pathServerProperties = serverHome + "/server.properties";
-
-        final Properties propsServer = new Properties();
-        propsServer.load(new java.io.FileInputStream(pathServerProperties));
+        WebApp.setServerProps(propsServer);
+        WebApp.loadWebProperties();
 
         /*
          * Server Ports.
@@ -486,6 +583,10 @@ public final class WebServer {
 
         serverPortSsl = Integer.parseInt(propsServer.getProperty(
                 PROP_KEY_SERVER_PORT_SSL, ConfigDefaults.SERVER_SSL_PORT));
+
+        if (!checkPorts()) {
+            return;
+        }
 
         /*
          * Check if ports are in use.
@@ -505,7 +606,6 @@ public final class WebServer {
             return;
         }
 
-        //
         serverSslRedirect = !isSSLOnly() && BooleanUtils.toBooleanDefaultIfNull(
                 BooleanUtils.toBooleanObject(
                         propsServer.getProperty(PROP_KEY_HTML_REDIRECT_SSL)),
@@ -515,16 +615,61 @@ public final class WebServer {
                 BooleanUtils.toBooleanObject(
                         propsServer.getProperty(PROP_KEY_WEBAPP_CUSTOM_I18N)),
                 false);
-        //
-        final QueuedThreadPool threadPool = new QueuedThreadPool();
-        final String poolName = "jetty-threadpool";
 
-        threadPool.setName(poolName);
-        threadPool.setMinThreads(ConnectorConfig.getMinThreads());
-        threadPool.setMaxThreads(ConnectorConfig.getMaxThreads());
-        threadPool.setIdleTimeout(ConnectorConfig.getIdleTimeoutMsec());
+        sessionScavengeInterval = Integer.parseInt(propsServer.getProperty(
+                PROP_KEY_SERVER_SESSION_SCAVENGE_INTERVAL_SEC,
+                SERVER_SESSION_SCAVENGE_INTERVAL_SEC_DEFAULT));
+
+        ThreadPoolInfo.queueCapacity = Integer.parseInt(propsServer.getProperty(
+                PROP_KEY_SERVER_THREADPOOL_QUEUE_CAPACITY,
+                SERVER_THREADPOOL_QUEUE_CAPACITY_DEFAULT));
+
+        if (ThreadPoolInfo.queueCapacity <= 0) {
+            System.err.println(String.format(
+                    "%s not started: %s [%d] is invalid "
+                            + "(capacity must be GT zero, "
+                            + "and can't be unbounded).",
+                    CommunityDictEnum.SAVAPAGE.getWord(),
+                    PROP_KEY_SERVER_THREADPOOL_QUEUE_CAPACITY,
+                    ThreadPoolInfo.queueCapacity));
+            System.exit(-1);
+            return;
+        }
+
+        ThreadPoolInfo.maxThreads = Integer.parseInt(
+                propsServer.getProperty(PROP_KEY_SERVER_THREADPOOL_MAX_THREADS,
+                        SERVER_THREADPOOL_MAX_THREADS_DEFAULT));
+
+        ThreadPoolInfo.minThreads = Integer.parseInt(
+                propsServer.getProperty(PROP_KEY_SERVER_THREADPOOL_MIN_THREADS,
+                        SERVER_THREADPOOL_MIN_THREADS_DEFAULT));
+
+        ThreadPoolInfo.idleTimeoutMsec = Integer.parseInt(propsServer
+                .getProperty(PROP_KEY_SERVER_THREADPOOL_IDLE_TIMEOUT_MSEC,
+                        SERVER_THREADPOOL_IDLE_TIMEOUT_MSEC_DEFAULT));
+
+        final QueuedThreadPool threadPool;
+
+        /*
+         * https://wiki.eclipse.org/Jetty/Howto/High_Load#Jetty_Tuning
+         *
+         * The number of acceptors is calculated by Jetty based of number of
+         * available CPU cores.
+         */
+        if (ThreadPoolInfo.queueCapacity < 0) {
+            threadPool = new QueuedThreadPool(ThreadPoolInfo.maxThreads,
+                    ThreadPoolInfo.minThreads, ThreadPoolInfo.idleTimeoutMsec);
+        } else {
+            threadPool = new QueuedThreadPool(ThreadPoolInfo.maxThreads,
+                    ThreadPoolInfo.minThreads, ThreadPoolInfo.idleTimeoutMsec,
+                    new ArrayBlockingQueue<>(ThreadPoolInfo.queueCapacity));
+        }
+
+        threadPool.setName("jetty-threadpool");
 
         final Server server = new Server(threadPool);
+        // First thing to do.
+        Runtime.getRuntime().addShutdownHook(new WebServerShutdownHook(server));
 
         /*
          * This is needed to enable the Jetty annotations.
@@ -550,6 +695,11 @@ public final class WebServer {
         httpConfig.setSecureScheme("https");
         httpConfig.setSecurePort(serverPortSsl);
 
+        /*
+         * Customize Requests for Proxy Forwarding.
+         */
+        httpConfig.addCustomizer(new ForwardedRequestCustomizer());
+
         if (!isSSLOnly()) {
             /*
              * The server connector we create is the one for http, passing in
@@ -561,7 +711,7 @@ public final class WebServer {
                     new HttpConnectionFactory(httpConfig));
 
             http.setPort(serverPort);
-            http.setIdleTimeout(ConnectorConfig.getIdleTimeoutMsec());
+            http.setIdleTimeout(ThreadPoolInfo.idleTimeoutMsec);
 
             server.addConnector(http);
         }
@@ -601,6 +751,8 @@ public final class WebServer {
                 "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256"
         //
         );
+
+        final String serverHome = ConfigManager.getServerHome();
 
         final String ksLocation;
         final String ksPassword;
@@ -654,20 +806,26 @@ public final class WebServer {
                     propsServer.getProperty(PROP_KEY_SSL_KEY_PW));
         }
 
-        sslCertInfo = createSslCertInfo(ksLocation, ksPassword);
+        ConfigManager.setSslCertInfo(createSslCertInfo(ksLocation, ksPassword));
 
         /*
          * HTTPS Configuration
          *
          * A new HttpConfiguration object is needed for the next connector and
          * you can pass the old one as an argument to effectively clone the
-         * contents. On this HttpConfiguration object we add a
-         * SecureRequestCustomizer which is how a new connector is able to
-         * resolve the https connection before handing control over to the Jetty
-         * Server.
+         * contents.
+         *
+         * On this HttpConfiguration object we add a SecureRequestCustomizer
+         * which is how a new connector is able to resolve the https connection
+         * before handing control over to the Jetty Server.
          */
         final HttpConfiguration httpsConfig = new HttpConfiguration(httpConfig);
         httpsConfig.addCustomizer(new SecureRequestCustomizer());
+
+        /*
+         * Customize Requests for Proxy Forwarding.
+         */
+        httpsConfig.addCustomizer(new ForwardedRequestCustomizer());
 
         /*
          * HTTPS connector
@@ -682,7 +840,9 @@ public final class WebServer {
                 new HttpConnectionFactory(httpsConfig));
 
         https.setPort(serverPortSsl);
-        https.setIdleTimeout(ConnectorConfig.getIdleTimeoutMsec());
+        https.setIdleTimeout(ThreadPoolInfo.idleTimeoutMsec);
+
+        serverAcceptorThreads = https.getAcceptors();
 
         server.addConnector(https);
 
@@ -732,8 +892,8 @@ public final class WebServer {
         /*
          * Set cookies to HttpOnly.
          */
-        webAppContext.getSessionHandler().getSessionManager()
-                .getSessionCookieConfig().setHttpOnly(true);
+        webAppContext.getSessionHandler().getSessionCookieConfig()
+                .setHttpOnly(true);
 
         /*
          * Set the handler(s).
@@ -744,9 +904,15 @@ public final class WebServer {
         server.setHandler(handlerList);
 
         /*
-         * BASIC Authentication for Atom Feed.
+         * BASIC Authentication for Atom Feed and PaperCut User Syn/Auth
+         * Interface.
          */
-        server.addBean(new AtomFeedLoginService());
+        server.addBean(new BasicAuthLoginService(
+                new String[] { AtomFeedServlet.ROLE_ALLOWED,
+                        ExtPaperCutSyncServlet.ROLE_ALLOWED }));
+
+        // Add RESTfull servlet.
+        initRESTful(webAppContext);
 
         //
         final String serverStartedFile =
@@ -755,14 +921,11 @@ public final class WebServer {
 
         int status = 0;
 
-        FileWriter writer = null;
-
-        try {
+        try (FileWriter writer = new FileWriter(serverStartedFile);) {
             /*
              * Writing the time we started in a file. This file is monitored by
              * the install script to see when the server has started.
              */
-            writer = new FileWriter(serverStartedFile);
 
             final Date now = new Date();
 
@@ -774,13 +937,19 @@ public final class WebServer {
 
             writer.flush();
 
-            Runtime.getRuntime()
-                    .addShutdownHook(new WebServerShutdownHook(server));
-
             /*
-             * Start the server
+             * Start the server: WebApp is initialized.
              */
             server.start();
+
+            // ... after start() !
+            server.getSessionIdManager().getSessionHouseKeeper()
+                    .setIntervalSec(sessionScavengeInterval);
+
+            if (WebApp.hasInitializeError()) {
+                System.exit(1);
+                return;
+            }
 
             if (!fDevelopment) {
                 server.join();
@@ -789,8 +958,6 @@ public final class WebServer {
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);
             status = 1;
-        } finally {
-            IOUtils.closeQuietly(writer);
         }
 
         if (status == 0) {
@@ -800,6 +967,9 @@ public final class WebServer {
             }
 
             if (fDevelopment) {
+
+                initDevelopmenEnv();
+
                 System.out
                         .println(" \n+========================================"
                                 + "====================================+"

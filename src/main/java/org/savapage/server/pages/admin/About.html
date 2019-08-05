@@ -4,7 +4,7 @@
 	<!-- 
     +========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ..|
-    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein.......| 
+    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein.......| 
     |........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify ......|
     | it under the terms of the GNU Affero General Public License as ........|
@@ -231,8 +231,20 @@
 						<th wicket:id="app.dir.letterheads-key" />
 						<td wicket:id="app.dir.letterheads" />
 					</tr>
+					<wicket:enclosure child="btn-i18n-cache-clear">
+						<tr>
+							<th style="vertical-align: middle;">i18n cache</th>
+							<td>
+								<button style="margin-left: 0;"
+									class="ui-btn ui-mini ui-btn-inline ui-btn-icon-none"
+									wicket:id="btn-i18n-cache-clear" id="sp-btn-i18n-cache-clear" />
+							</td>
+						</tr>
+					</wicket:enclosure>
 				</tbody>
 			</table>
+			<br />
+
 		</div>
 	</li>
 
@@ -309,7 +321,6 @@
 
 				</tbody>
 			</table>
-
 		</div>
 	</li>
 
@@ -332,9 +343,6 @@
 					</h3>
 					<div class="sp-txt-info sp-txt-wrap" wicket:id="version-cups" />
 				</li>
-			</ul>
-
-			<ul data-role="listview" data-inset="true">
 				<li>
 					<h3>
 						Ghostscript (
@@ -366,6 +374,25 @@
 						)
 					</h3>
 					<div class="sp-txt-info sp-txt-wrap" wicket:id="version-pdftoppm" />
+				</li>
+				<li>
+					<h3>
+						pdftocairo (
+						<wicket:message key="package-required" />
+						)
+					</h3>
+					<div class="sp-txt-info sp-txt-wrap" wicket:id="version-pdftocairo" />
+				</li>
+			</ul>
+
+			<ul data-role="listview" data-inset="true">
+				<li>
+					<h3>
+						qpdf (
+						<wicket:message key="package-optional" />
+						)
+					</h3>
+					<div class="sp-txt-info sp-txt-wrap" wicket:id="version-qpdf" />
 				</li>
 			</ul>
 

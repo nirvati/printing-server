@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -36,6 +36,8 @@ import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.IRequestParameters;
+import org.apache.wicket.request.Request;
+import org.apache.wicket.request.Url;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.util.string.StringValue;
 import org.savapage.core.SpException;
@@ -43,7 +45,9 @@ import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.OneTimeAuthToken;
 import org.savapage.core.doc.DocContentTypeEnum;
 import org.savapage.core.jpa.User;
@@ -57,12 +61,12 @@ import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.oauth.OAuthUserInfo;
 import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
+import org.savapage.server.dropzone.WebPrintHelper;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.FontOptionsPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webprint.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -153,19 +157,19 @@ public final class WebAppUser extends AbstractWebAppPage {
 
             switch (button) {
             case PRINT:
-                htmlId = "sp-file-upload-print-button";
+                htmlId = "sp-btn-file-upload-print";
                 cssClass = "ui-icon-main-print";
                 uiText = HtmlButtonEnum.PRINT.uiText(getPage().getLocale());
                 break;
 
             case PDF:
-                htmlId = "sp-file-upload-pdf-button";
+                htmlId = "sp-btn-file-upload-pdf";
                 cssClass = "ui-icon-main-pdf-properties";
                 uiText = "PDF";
                 break;
 
             default:
-                htmlId = "sp-file-upload-inbox-button";
+                htmlId = "sp-btn-file-upload-inbox";
                 cssClass = "ui-icon-main-home";
                 uiText = HtmlButtonEnum.BACK.uiText(getPage().getLocale());
                 break;
@@ -177,6 +181,8 @@ public final class WebAppUser extends AbstractWebAppPage {
             MarkupHelper.modifyLabelAttr(label, MarkupHelper.ATTR_ID, htmlId);
             MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_CLASS,
                     cssClass);
+            MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_TITLE,
+                    localized(htmlId.concat("-tooltip")));
 
             item.add(label);
         }
@@ -210,17 +216,55 @@ public final class WebAppUser extends AbstractWebAppPage {
     private Boolean checkOAuthToken(
             final MutableObject<OAuthProviderEnum> mutableProvider) {
 
-        final IRequestParameters reqParms =
-                this.getRequestCycle().getRequest().getRequestParameters();
+        final Request request = this.getRequestCycle().getRequest();
+
+        final IRequestParameters reqParms = request.getRequestParameters();
+
+        /*
+         * Check remainder of previous successful OAuth. If present, do NOT
+         * honor remainder of OAuth URL path.
+         */
+        final StringValue oauthLogIn = reqParms
+                .getParameterValue(WebAppParmEnum.SP_LOGIN_OAUTH.parm());
+
+        if (!oauthLogIn.isEmpty()) {
+            return null;
+        }
 
         final StringValue oauthProviderValue =
                 reqParms.getParameterValue(WebAppParmEnum.SP_OAUTH.parm());
 
+        String oauthProvider = null;
+
         if (oauthProviderValue.isEmpty()) {
+            final Url requestUrl = request.getUrl();
+            final List<String> urlSegments = requestUrl.getSegments();
+            if (urlSegments.size() == 3 && urlSegments.get(1)
+                    .equals(WebAppParmEnum.SP_OAUTH.parm())) {
+                oauthProvider = urlSegments.get(2);
+            }
+        } else {
+            oauthProvider = oauthProviderValue.toString();
+        }
+
+        if (oauthProvider == null) {
             return null;
         }
 
-        final String oauthProvider = oauthProviderValue.toString();
+        final StringValue oauthInstanceIdValue =
+                reqParms.getParameterValue(WebAppParmEnum.SP_OAUTH_ID.parm());
+
+        final String logPfx;
+
+        final String oauthInstanceId;
+        if (oauthInstanceIdValue.isEmpty()) {
+            oauthInstanceId = null;
+            logPfx = String.format("OAuth [%s]", oauthProviderValue);
+        } else {
+            oauthInstanceId = oauthInstanceIdValue.toString();
+            logPfx = String.format("OAuth [%s][%s]", oauthProviderValue,
+                    oauthInstanceId);
+        }
 
         final ServerPluginManager pluginManager =
                 WebApp.get().getPluginManager();
@@ -229,7 +273,7 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         for (final OAuthProviderEnum value : OAuthProviderEnum.values()) {
             if (oauthProvider.equalsIgnoreCase(value.toString())) {
-                plugin = pluginManager.getOAuthClient(value);
+                plugin = pluginManager.getOAuthClient(value, oauthInstanceId);
             }
             if (plugin == null) {
                 continue;
@@ -238,8 +282,7 @@ public final class WebAppUser extends AbstractWebAppPage {
         }
 
         if (plugin == null) {
-            LOGGER.error(String.format("OAuth [%s]: plugin not found.",
-                    oauthProvider));
+            LOGGER.error("{}: plugin not found.", logPfx);
             return Boolean.FALSE;
         }
 
@@ -262,6 +305,8 @@ public final class WebAppUser extends AbstractWebAppPage {
          */
         this.getPageParameters().clearNamed();
 
+        // TODO: how to clear /path variant of OAuth request?
+
         /*
          * Perform the callback.
          */
@@ -274,8 +319,7 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         //
         if (userInfo == null) {
-            LOGGER.error(
-                    String.format("OAuth [%s]: no userinfo.", oauthProvider));
+            LOGGER.error("{}: no userinfo.", logPfx);
             return Boolean.FALSE;
         }
 
@@ -283,9 +327,7 @@ public final class WebAppUser extends AbstractWebAppPage {
         final String email = userInfo.getEmail();
 
         if (userid == null && email == null) {
-            LOGGER.error(
-                    String.format("OAuth [%s]: no userid or email in userinfo.",
-                            oauthProvider));
+            LOGGER.error("{}: no userid or email in userinfo.", logPfx);
             return Boolean.FALSE;
         }
 
@@ -295,8 +337,7 @@ public final class WebAppUser extends AbstractWebAppPage {
             final UserEmail userEmail = ServiceContext.getDaoContext()
                     .getUserEmailDao().findByEmail(email);
             if (userEmail == null) {
-                LOGGER.warn(String.format("OAuth [%s] email [%s]: not found.",
-                        oauthProvider, email));
+                LOGGER.warn("{}: email [{}]: not found.", logPfx, email);
                 return Boolean.FALSE;
             }
             authUser = userEmail.getUser();
@@ -305,8 +346,7 @@ public final class WebAppUser extends AbstractWebAppPage {
             authUser = ServiceContext.getDaoContext().getUserDao()
                     .findActiveUserByUserId(userid);
             if (authUser == null) {
-                LOGGER.warn(String.format("OAuth [%s] user [%s]: not found.",
-                        oauthProvider, email));
+                LOGGER.warn("{}: user [{}]: not found.", logPfx, userid);
                 return Boolean.FALSE;
             }
         } else {
@@ -315,9 +355,8 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         if (authUser.getDeleted().booleanValue()
                 || authUser.getDisabledPrintIn().booleanValue()) {
-            LOGGER.warn(
-                    String.format("OAuth [%s] user [%s]: deleted or disabled.",
-                            oauthProvider, authUser.getUserId()));
+            LOGGER.warn("{}: user [{}]: deleted or disabled.", logPfx,
+                    authUser.getUserId());
             return Boolean.FALSE;
         }
 
@@ -327,8 +366,8 @@ public final class WebAppUser extends AbstractWebAppPage {
         final SpSession session = SpSession.get();
 
         if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug(String.format("OAuth [%s] user [%s]: OK [session: %s]",
-                    oauthProvider, authUser.getUserId(), session.getId()));
+            LOGGER.debug("{}: user [{}]: OK [session: {}]", logPfx,
+                    authUser.getUserId(), session.getId());
         }
 
         session.setUser(authUser);
@@ -445,6 +484,8 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         super(parameters);
 
+        checkInternetAccess(IConfigProp.Key.WEBAPP_INTERNET_USER_ENABLE);
+
         if (isWebAppCountExceeded(parameters)) {
             discloseAll();
             this.setWebAppCountExceededResponse();
@@ -481,7 +522,7 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         addZeroPagePanel(WebAppTypeEnum.USER);
 
-        webPrintdMarkup();
+        webPrintMarkup();
 
         addFileDownloadApiPanel();
 
@@ -493,6 +534,7 @@ public final class WebAppUser extends AbstractWebAppPage {
         nextButtons.add(UploadNextButton.PRINT);
 
         add(new UploadNextButtonView("next-buttons", nextButtons));
+
     }
 
     @Override
@@ -536,11 +578,11 @@ public final class WebAppUser extends AbstractWebAppPage {
     /**
      * Creates the markup for the Web Print File upload.
      */
-    private void webPrintdMarkup() {
+    private void webPrintMarkup() {
 
         final Label fileUploadField = new Label("fileUpload");
-        fileUploadField
-                .add(new AttributeModifier("accept", getHtmlAcceptString()));
+        fileUploadField.add(new AttributeModifier(MarkupHelper.ATTR_ACCEPT,
+                getHtmlAcceptString()));
         add(fileUploadField);
 
         //

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,6 +45,8 @@ import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
+import org.savapage.core.doc.store.DocStoreBranchEnum;
+import org.savapage.core.doc.store.DocStoreTypeEnum;
 import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.ipp.helpers.IppOptionMap;
 import org.savapage.core.jpa.AccountTrx;
@@ -54,6 +56,7 @@ import org.savapage.core.jpa.DocOut;
 import org.savapage.core.jpa.PdfOut;
 import org.savapage.core.jpa.PrintIn;
 import org.savapage.core.jpa.PrintOut;
+import org.savapage.core.services.DocStoreService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.DateUtil;
@@ -73,6 +76,7 @@ public final class DocLogItem {
     private ExternalSupplierStatusEnum extSupplierStatus;
     private String extId;
     private String extData;
+    private String mimeType;
 
     private String userId;
     private String userName;
@@ -109,6 +113,9 @@ public final class DocLogItem {
     private boolean finishingStaple;
     private boolean finishingFold;
     private boolean finishingBooklet;
+
+    private boolean printArchive;
+    private boolean printJournal;
 
     private Map<String, String> ippOptions;
 
@@ -173,6 +180,14 @@ public final class DocLogItem {
 
     public void setExtData(String extData) {
         this.extData = extData;
+    }
+
+    public String getMimeType() {
+        return mimeType;
+    }
+
+    public void setMimeType(String mimeType) {
+        this.mimeType = mimeType;
     }
 
     public List<AccountTrx> getTransactions() {
@@ -407,7 +422,16 @@ public final class DocLogItem {
             final QueueService queueService =
                     ServiceContext.getServiceFactory().getQueueService();
 
+            final DocStoreService docStoreService =
+                    ServiceContext.getServiceFactory().getDocStoreService();
+
             final List<DocLogItem> list = new ArrayList<>();
+
+            final boolean isArchiveEnabled = docStoreService.isEnabled(
+                    DocStoreTypeEnum.ARCHIVE, DocStoreBranchEnum.OUT_PRINT);
+
+            final boolean isJournalEnabled = docStoreService.isEnabled(
+                    DocStoreTypeEnum.JOURNAL, DocStoreBranchEnum.OUT_PRINT);
 
             for (final DocLog docLog : ((List<DocLog>) query.getResultList())) {
 
@@ -419,6 +443,7 @@ public final class DocLogItem {
                         DaoEnumHelper.getExtSupplierStatus(docLog));
                 log.setExtId(docLog.getExternalId());
                 log.setExtData(docLog.getExternalData());
+                log.setMimeType(docLog.getMimetype());
 
                 log.setUserId(docLog.getUser().getUserId());
                 log.setUserName(docLog.getUser().getFullName());
@@ -563,6 +588,18 @@ public final class DocLogItem {
                                     optionMap.hasFinishingPunch());
                             log.setFinishingStaple(
                                     optionMap.hasFinishingStaple());
+                        }
+
+                        log.setPrintArchive(isArchiveEnabled && docStoreService
+                                .isDocPresent(DocStoreTypeEnum.ARCHIVE,
+                                        DocStoreBranchEnum.OUT_PRINT, docLog));
+
+                        if (!log.isPrintArchive()) {
+                            log.setPrintJournal(isJournalEnabled
+                                    && docStoreService.isDocPresent(
+                                            DocStoreTypeEnum.JOURNAL,
+                                            DocStoreBranchEnum.OUT_PRINT,
+                                            docLog));
                         }
 
                     } else if (pdfOut != null) {
@@ -1307,6 +1344,22 @@ public final class DocLogItem {
         this.finishingBooklet = finishingBooklet;
     }
 
+    public boolean isPrintArchive() {
+        return printArchive;
+    }
+
+    public void setPrintArchive(boolean printArchive) {
+        this.printArchive = printArchive;
+    }
+
+    public boolean isPrintJournal() {
+        return printJournal;
+    }
+
+    public void setPrintJournal(boolean printJournal) {
+        this.printJournal = printJournal;
+    }
+
     public Map<String, String> getIppOptions() {
         return ippOptions;
     }
@@ -1482,6 +1535,12 @@ public final class DocLogItem {
 
     public void setPrintMode(PrintModeEnum printMode) {
         this.printMode = printMode;
+    }
+
+    public boolean isJobTicket() {
+        return this.printMode != null && (this.printMode == PrintModeEnum.TICKET
+                || this.printMode == PrintModeEnum.TICKET_C
+                || this.printMode == PrintModeEnum.TICKET_E);
     }
 
     public String getCurrencyCode() {

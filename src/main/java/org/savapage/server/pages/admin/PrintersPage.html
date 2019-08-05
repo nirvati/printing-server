@@ -24,19 +24,36 @@
 			<img width="16" height="16" wicket:id="printerImage" />
 			<h3>
 				<wicket:enclosure child="deviceUriImg">
-					<img wicket:id="deviceUriImg" src="" height="16" />
+					<img wicket:id="deviceUriImg" src="" style="margin-bottom: -2px;"
+						height="16" />&nbsp;
 				</wicket:enclosure>
+				<wicket:enclosure child="img-journal">
+					<img wicket:id="img-journal" src="" style="margin-bottom: -2px;"
+						height="16" />&nbsp;
+                </wicket:enclosure>
+				<wicket:enclosure child="img-archive">
+					<img wicket:id="img-archive" src="" style="margin-bottom: -2px;"
+						height="16" />&nbsp;
+                </wicket:enclosure>
 				<span wicket:id="displayName" />
 			</h3>
 
 			<p>
 				<span wicket:id="printer-pie" sparkType="pie" sparkSliceColors="[]"
-					class="" />&nbsp;<span class="sp-printer-opt-download"
-					wicket:id="printerName" />
+					class="" />&nbsp;<span wicket:id="printerName" />
 				<wicket:enclosure child="cups-printer-class-members"> (<span
 						class="sp-txt-wrap" wicket:id="cups-printer-class-members" />)
 				</wicket:enclosure>
 				&bull; <span class="sp-txt-wrap" wicket:id="deviceUri" />
+				<wicket:enclosure child="driver">
+            &bull; <span class="sp-txt-wrap sp-txt-info"
+						wicket:id="driver" />
+				</wicket:enclosure>
+				<wicket:enclosure child="manufacturer">
+            &bull; <span class="sp-txt-wrap sp-txt-info"
+						wicket:id="manufacturer" />
+				</wicket:enclosure>
+
 			</p>
 
 			<wicket:enclosure child="printer-snmp">

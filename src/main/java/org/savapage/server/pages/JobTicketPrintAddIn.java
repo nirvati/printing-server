@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -53,6 +53,8 @@ import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.session.JobTicketSession;
 import org.savapage.server.session.SpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -66,14 +68,14 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
      */
     private static final long serialVersionUID = 1L;
 
-    /**
-     * .
-     */
+    /** */
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(JobTicketPrintAddIn.class);
+
+    /** */
     private static final String PARM_SETTLE = "settle";
 
-    /**
-     * .
-     */
+    /** */
     private static final String PARM_RETRY = "retry";
 
     private static final String WICKET_ID_CHOICE = "choice";
@@ -123,11 +125,13 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             final Label labelWlk =
                     new Label(WICKET_ID_CHOICE, choice.getUiText());
 
-            MarkupHelper.modifyLabelAttr(labelWlk, "value", choice.getChoice());
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_VALUE,
+                    choice.getChoice());
 
             if (this.defaultChoice != null && choice.getChoice()
                     .equals(this.defaultChoice.getChoice())) {
-                MarkupHelper.modifyLabelAttr(labelWlk, "selected", "selected");
+                MarkupHelper.modifyLabelAttr(labelWlk,
+                        MarkupHelper.ATTR_SELECTED, MarkupHelper.ATTR_SELECTED);
             }
 
             item.add(labelWlk);
@@ -140,24 +144,19 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
     private static class RedirectPrinterListView
             extends PropertyListView<RedirectPrinterDto> {
 
-        /**
-         * .
-         */
+        /** */
         private static final long serialVersionUID = 1L;
 
-        /**
-         *
-         */
+        /** */
         private final boolean isSettlement;
 
-        /**
-         *
-         */
+        /** */
         private final TicketJobSheetDto jobSheetDto;
 
-        /**
-         *
-         */
+        /** */
+        private final int printerListSize;
+
+        /** */
         private int tabindexWlk;
 
         /**
@@ -175,6 +174,7 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             this.isSettlement = settlement;
             this.jobSheetDto = jobSheet;
             this.tabindexWlk = 9;
+            this.printerListSize = list.size();
         }
 
         /**
@@ -291,18 +291,19 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             labelWlk = new Label("label",
                     String.format("%s%s", imgHtml, asHtml(printer.getName())));
             labelWlk.setEscapeModelStrings(false);
-            MarkupHelper.modifyLabelAttr(labelWlk, "for", id);
-            MarkupHelper.modifyLabelAttr(labelWlk, "tabindex",
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_FOR, id);
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_TABINDEX,
                     String.valueOf(++tabindexWlk));
             item.add(labelWlk);
 
             //
             labelWlk = new Label("input", "");
-            MarkupHelper.modifyLabelAttr(labelWlk, "id", id);
-            MarkupHelper.modifyLabelAttr(labelWlk, "value",
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_ID, id);
+            MarkupHelper.modifyLabelAttr(labelWlk, MarkupHelper.ATTR_VALUE,
                     printer.getId().toString());
-            if (printer.isPreferred()) {
-                MarkupHelper.modifyLabelAttr(labelWlk, "checked", "checked");
+            if (printer.isPreferred() || this.printerListSize == 1) {
+                MarkupHelper.modifyLabelAttr(labelWlk,
+                        MarkupHelper.ATTR_CHECKED, MarkupHelper.ATTR_CHECKED);
             }
             item.add(labelWlk);
 
@@ -326,7 +327,7 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
                 helper.discloseLabel(WICKET_ID_MEDIA_TYPE);
             } else {
                 helper.addModifyLabelAttr(WICKET_ID_MEDIA_TYPE,
-                        mediaTypeOptChoice.getUiText(), "value",
+                        mediaTypeOptChoice.getUiText(), MarkupHelper.ATTR_VALUE,
                         mediaTypeOptChoice.getChoice());
             }
 
@@ -337,26 +338,58 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
             final PrinterAttrLookup printerAttrLookup =
                     new PrinterAttrLookup(dbPrinter);
 
+            final List<JsonProxyPrinterOptChoice> filteredMediaSourcesForUser =
+                    filterMediaSourcesForUser(printerAttrLookup,
+                            printer.getMediaSourceOpt().getChoices());
+
             if (this.jobSheetDto == null || !this.jobSheetDto.isEnabled()) {
                 helper.discloseLabel(WICKET_ID_MEDIA_SOURCE_JOB_SHEET);
             } else {
                 item.add(new PrinterOptListView(
                         WICKET_ID_MEDIA_SOURCE_JOB_SHEET,
-                        filterMediaSourcesForUser(printerAttrLookup,
-                                printer.getMediaSourceOpt().getChoices()),
+                        filteredMediaSourcesForUser,
                         this.getLastIppChoice(printer.getId(),
                                 JobTicketSession.PrinterOpt.MEDIA_SOURCE_SHEET,
                                 printer.getMediaSourceOpt().getChoices(),
                                 printer.getMediaSourceJobSheetOptChoice())));
-
             }
-            item.add(new PrinterOptListView(WICKET_ID_MEDIA_SOURCE,
-                    filterMediaSourcesForUser(printerAttrLookup,
-                            printer.getMediaSourceOpt().getChoices()),
+
+            final JsonProxyPrinterOptChoice lastMediaSourceChoice =
                     this.getLastIppChoice(printer.getId(),
                             JobTicketSession.PrinterOpt.MEDIA_SOURCE,
                             printer.getMediaSourceOpt().getChoices(),
-                            printer.getMediaSourceJobSheetOptChoice())));
+                            printer.getMediaSourceOptChoice());
+
+            /*
+             * Check if lastMediaSourceChoice contains requested media, if not,
+             * take printer.getMediaSourceOptChoice() as default media source.
+             */
+            JsonProxyPrinterOptChoice dfltMediaSourceChoice =
+                    printer.getMediaSourceOptChoice();
+
+            if (lastMediaSourceChoice != null
+                    && printer.getMediaSourceOptChoice() != null) {
+
+                final String mediaChoiceLast = printer.getMediaSourceMediaMap()
+                        .get(lastMediaSourceChoice.getChoice());
+
+                final String mediaChoiceCurr = printer.getMediaSourceMediaMap()
+                        .get(dfltMediaSourceChoice.getChoice());
+
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace(
+                            "Last choice [{}] [{}] Default choice [{}] [{}]",
+                            lastMediaSourceChoice.getChoice(), mediaChoiceLast,
+                            dfltMediaSourceChoice.getChoice(), mediaChoiceCurr);
+                }
+
+                if (mediaChoiceLast.equals(mediaChoiceCurr)) {
+                    dfltMediaSourceChoice = lastMediaSourceChoice;
+                }
+            }
+
+            item.add(new PrinterOptListView(WICKET_ID_MEDIA_SOURCE,
+                    filteredMediaSourcesForUser, dfltMediaSourceChoice));
 
             //
             final JsonProxyPrinterOpt outputBinOpt = printer.getOutputBinOpt();
@@ -460,6 +493,8 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
         final TicketJobSheetDto jobSheetDto;
         final List<RedirectPrinterDto> printerList;
 
+        final MarkupHelper helper = new MarkupHelper(this);
+
         if (StringUtils.isBlank(jobFileName)) {
 
             setResponsePage(new MessageContent(AppLogLevelEnum.ERROR, String
@@ -471,14 +506,18 @@ public final class JobTicketPrintAddIn extends JobTicketAddInBase {
 
             final OutboxJobDto job = JOBTICKET_SERVICE.getTicket(jobFileName);
 
+            if (job == null) {
+                setResponsePage(JobTicketNotFound.class);
+                helper.discloseLabel("printer-radio");
+                return;
+            }
+
             jobSheetDto = JOBTICKET_SERVICE
                     .getTicketJobSheet(job.createIppOptionMap());
 
             printerList = JOBTICKET_SERVICE.getRedirectPrinters(job,
                     IppOptionMap.createVoid(), getLocale());
         }
-
-        final MarkupHelper helper = new MarkupHelper(this);
 
         if (printerList == null) {
             setResponsePage(JobTicketNotFound.class);

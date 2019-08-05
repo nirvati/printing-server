@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,32 +24,42 @@ package org.savapage.server.pages;
 import java.text.DateFormat;
 import java.text.MessageFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.lang3.EnumUtils;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
+import org.apache.wicket.request.Url;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.PerformanceLogger;
+import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
+import org.savapage.core.jpa.Device;
+import org.savapage.core.jpa.Printer;
 import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.PrinterService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
+import org.savapage.core.util.InetUtils;
 import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.helpers.HtmlPrinterImgEnum;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -367,6 +377,18 @@ public abstract class AbstractPage extends WebPage
     }
 
     /**
+     * Gets the POST-ed parameter Long value.
+     *
+     * @param parm
+     *            Parameter name.
+     * @return The Long value.
+     */
+    protected final Long getParmLong(final String parm) {
+        return getRequestCycle().getRequest().getPostParameters()
+                .getParameterValue(parm).toLongObject();
+    }
+
+    /**
      *
      * @param getParms
      *            The {@link PageParameters}.
@@ -655,6 +677,86 @@ public abstract class AbstractPage extends WebPage
             labelWrk.add(new AttributeModifier("checked", "checked"));
         }
         add(labelWrk);
+    }
+
+    /**
+     * @return {@code true} when this request is from an intranet host and not
+     *         SSL-tunneled.
+     */
+    protected final boolean isIntranetRequest() {
+
+        final Url url = getRequestCycle().getRequest().getClientUrl();
+        final String port = url.getPort().toString();
+
+        return InetUtils.isIntranetBrowserHost(url.getHost())
+                && (port.equals(ConfigManager.getServerSslPort())
+                        || port.equals(ConfigManager.getServerPort()));
+    }
+
+    /**
+     * @param printer
+     *            Printer.
+     * @return The printer image.
+     */
+    public static HtmlPrinterImgEnum getImgSrc(final Printer printer) {
+
+        final Map<String, Device> terminalDevices = new HashMap<>();
+        final Map<String, Device> readerDevices = new HashMap<>();
+
+        return getImgSrc(printer, terminalDevices, readerDevices);
+    }
+
+    /**
+     *
+     * @param printer
+     *            Printer.
+     * @param terminalDevices
+     *            The Terminal Devices responsible for printer being secured.
+     * @param readerDevices
+     *            The Reader Devices responsible for printer being secured.
+     * @return The printer image.
+     */
+    public static HtmlPrinterImgEnum getImgSrc(final Printer printer,
+            final Map<String, Device> terminalDevices,
+            final Map<String, Device> readerDevices) {
+
+        final PrinterService printerService =
+                ServiceContext.getServiceFactory().getPrinterService();
+
+        final HtmlPrinterImgEnum imageSrc;
+
+        if (printerService.isJobTicketPrinter(printer.getId())) {
+
+            imageSrc = HtmlPrinterImgEnum.JOBTICKET;
+
+        } else {
+
+            final MutableBoolean terminalSecured = new MutableBoolean();
+            final MutableBoolean readerSecured = new MutableBoolean();
+
+            final boolean isSecured = printerService.checkPrinterSecurity(
+                    printer, terminalSecured, readerSecured, terminalDevices,
+                    readerDevices);
+
+            if (isSecured) {
+
+                if (terminalSecured.booleanValue()
+                        && readerSecured.booleanValue()) {
+                    imageSrc = HtmlPrinterImgEnum.TERMINAL_AND_READER;
+                } else if (terminalSecured.booleanValue()) {
+                    imageSrc = HtmlPrinterImgEnum.TERMINAL;
+                } else {
+                    imageSrc = HtmlPrinterImgEnum.READER;
+                }
+            } else if (ConfigManager.instance()
+                    .isNonSecureProxyPrinter(printer)) {
+                imageSrc = HtmlPrinterImgEnum.NON_SECURE;
+            } else {
+                imageSrc = HtmlPrinterImgEnum.SECURE;
+            }
+
+        }
+        return imageSrc;
     }
 
 }

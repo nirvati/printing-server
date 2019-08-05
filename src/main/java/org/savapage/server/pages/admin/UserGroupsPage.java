@@ -23,6 +23,7 @@ package org.savapage.server.pages.admin;
 
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
@@ -37,6 +38,7 @@ import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserGroup;
 import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.session.SpSession;
@@ -61,6 +63,10 @@ public final class UserGroupsPage extends AbstractAdminListPage {
     /** */
     private static final AccessControlService ACCESS_CONTROL_SERVICE =
             ServiceContext.getServiceFactory().getAccessControlService();
+
+    /** */
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
 
     /**
      * @return {@code false} to give Admin a chance to inspect the User Groups.
@@ -136,6 +142,9 @@ public final class UserGroupsPage extends AbstractAdminListPage {
 
             Label labelWrk = null;
 
+            helper.encloseLabel("fullName", userGroup.getFullName(),
+                    !StringUtils.defaultString(userGroup.getFullName())
+                            .equals(userGroup.getGroupName()));
             //
             final ReservedUserGroupEnum reservedGroup =
                     ReservedUserGroupEnum.fromDbName(userGroup.getGroupName());
@@ -178,7 +187,7 @@ public final class UserGroupsPage extends AbstractAdminListPage {
                 helper.discloseLabel(WID_BUTTON_EDIT);
             }
 
-            if (this.hasAccessUsers) {
+            if (this.hasAccessUsers && userCount > 0) {
                 MarkupHelper
                         .modifyLabelAttr(
                                 helper.encloseLabel(WID_BUTTON_USERS,
@@ -191,7 +200,10 @@ public final class UserGroupsPage extends AbstractAdminListPage {
                 helper.discloseLabel(WID_BUTTON_USERS);
             }
 
-            if (this.hasAccessAcc) {
+            if (this.hasAccessAcc
+                    && ACCOUNTING_SERVICE.getActiveUserGroupAccount(
+                            userGroup.getGroupName()) != null) {
+
                 labelWrk = helper.encloseLabel(WID_BUTTON_ACCOUNT,
                         getLocalizer().getString("button-account", this), true);
 
@@ -227,7 +239,8 @@ public final class UserGroupsPage extends AbstractAdminListPage {
         final boolean sortAscending = req.getSort().getAscending();
 
         final UserGroupDao.ListFilter filter = new UserGroupDao.ListFilter();
-        filter.setContainingText(req.getSelect().getNameContainingText());
+        filter.setContainingNameOrIdText(
+                req.getSelect().getNameContainingText());
 
         final UserGroupDao userGroupDao =
                 ServiceContext.getDaoContext().getUserGroupDao();

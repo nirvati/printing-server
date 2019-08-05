@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,15 +22,14 @@
 package org.savapage.server.pages.admin;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
 import java.net.UnknownHostException;
 import java.text.MessageFormat;
 import java.util.Date;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
@@ -55,6 +54,7 @@ import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.SslCertInfo;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
@@ -68,15 +68,19 @@ import org.savapage.core.services.AppLogService;
 import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.system.SystemFileDescriptorCount;
+import org.savapage.core.system.SystemInfo;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.DeadlockedThreadsDetector;
+import org.savapage.core.util.IOHelper;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.bitcoin.BitcoinGateway;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
+import org.savapage.lib.pgp.PGPPublicKeyInfo;
 import org.savapage.server.WebApp;
-import org.savapage.server.WebServer;
 import org.savapage.server.cometd.UserEventService;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.pages.MarkupHelper;
@@ -96,16 +100,6 @@ public final class SystemStatusPanel extends Panel {
      * Version for serialization.
      */
     private static final long serialVersionUID = 1L;
-
-    /**
-     *
-     */
-    private static final long DAYS_IN_MONTH = 30;
-
-    /**
-     *
-     */
-    private static final long DAYS_IN_YEAR = 365;
 
     /**
      * Duration after which news expires.
@@ -135,6 +129,9 @@ public final class SystemStatusPanel extends Panel {
     private static final JobTicketService TICKET_SERVICE =
             ServiceContext.getServiceFactory().getJobTicketService();
 
+    /** */
+    private static final String WID_ENV_IMPACT = "environmental-impact";
+
     /**
      * @param panelId
      *            The panel id.
@@ -151,6 +148,7 @@ public final class SystemStatusPanel extends Panel {
     public void populate(final boolean hasEditorAccess) {
 
         final MarkupHelper helper = new MarkupHelper(this);
+        final LocaleHelper localeHelper = new LocaleHelper(getLocale());
 
         final ConfigManager cm = ConfigManager.instance();
         final MemberCard memberCard = MemberCard.instance();
@@ -186,14 +184,12 @@ public final class SystemStatusPanel extends Panel {
         //
         add(new Label("sys-mode-prompt", NounEnum.MODE.uiText(getLocale())));
 
-        final SystemModeEnum systemMode;
+        final SystemModeEnum systemMode = ConfigManager.getSystemMode();
 
-        if (ConfigManager.isSysMaintenance()) {
+        if (systemMode == SystemModeEnum.MAINTENANCE) {
             cssColor = MarkupHelper.CSS_TXT_WARN;
-            systemMode = SystemModeEnum.MAINTENANCE;
         } else {
             cssColor = MarkupHelper.CSS_TXT_VALID;
-            systemMode = SystemModeEnum.PRODUCTION;
         }
 
         if (hasEditorAccess) {
@@ -210,8 +206,8 @@ public final class SystemStatusPanel extends Panel {
         }
 
         //
-        add(new Label("sys-uptime", DateUtil.formatDuration(
-                ManagementFactory.getRuntimeMXBean().getUptime())));
+        add(new Label("sys-uptime",
+                DateUtil.formatDuration(SystemInfo.getUptime())));
 
         //
         final UserDao userDAO = ServiceContext.getDaoContext().getUserDao();
@@ -278,6 +274,24 @@ public final class SystemStatusPanel extends Panel {
         } else {
 
             helper.discloseLabel("mailprint-status");
+        }
+
+        /*
+         * OpenPGP
+         */
+        final PGPPublicKeyInfo pgpPubKey = cm.getPGPPublicKeyInfo();
+        if (pgpPubKey != null) {
+            helper.addLabel("pgp-uid", pgpPubKey.getUids().get(0).toString());
+            final TooltipPanel tooltip = new TooltipPanel("tooltip-pgp");
+            tooltip.populate(
+                    String.format("<p>KeyID: %s</p><p>Fingerprint: %s</p>",
+                            pgpPubKey.formattedKeyID(),
+                            pgpPubKey.formattedFingerPrint()),
+                    false);
+            tooltip.setEscapeModelStrings(false);
+            add(tooltip);
+        } else {
+            helper.discloseLabel("pgp-uid");
         }
 
         /*
@@ -510,16 +524,13 @@ public final class SystemStatusPanel extends Panel {
         /*
          *
          */
-        add(new Label("client-sessions",
-                helper.localizedNumber(UserEventService.getClientAppCount())));
-
-        add(new Label("web-sessions",
-                helper.localizedNumber(WebApp.getAuthUserSessionCount())));
+        add(new Label("client-sessions", String.format("%s (%s) • web (client)",
+                helper.localizedNumber(UserEventService.getUserWebAppCount()),
+                helper.localizedNumber(UserEventService.getClientAppCount()))));
 
         /*
          * Community Membership
          */
-        //
         add(new Label("membership-status-prompt",
                 CommunityDictEnum.MEMBERSHIP.getWord()));
 
@@ -626,11 +637,11 @@ public final class SystemStatusPanel extends Panel {
 
         //
         if (memberCard.getDaysTillExpiry() != null) {
-            final long daysLeft = memberCard.getDaysTillExpiry().longValue();
-            if (daysLeft <= MemberCard.DAYS_WARN_BEFORE_EXPIRE) {
+            enclosedValue = helper.localizedNumber(
+                    memberCard.getDaysTillExpiry().longValue());
+            if (memberCard.isDaysTillExpiryWarning()) {
                 cssColor = MarkupHelper.CSS_TXT_WARN;
             }
-            enclosedValue = helper.localizedNumber(daysLeft);
         }
         labelWrk = MarkupHelper.createEncloseLabel(
                 "membership-valid-days-remaining", enclosedValue,
@@ -667,20 +678,15 @@ public final class SystemStatusPanel extends Panel {
         /*
          * SSL Certificate
          */
-        final WebServer.SslCertInfo sslCert = WebServer.getSslCertInfo();
+        final SslCertInfo sslCert = ConfigManager.getSslCertInfo();
         String certText = null;
         String certClass = null;
 
         if (sslCert != null) {
-
-            final LocaleHelper localeHelper = new LocaleHelper(getLocale());
-
-            final long delta = sslCert.getNotAfter().getTime()
-                    - System.currentTimeMillis();
-
-            if (delta < DateUtil.DURATION_MSEC_DAY * DAYS_IN_YEAR) {
+            final Date dateRef = new Date();
+            if (sslCert.isNotAfterWithinYear(dateRef)) {
                 certText = localeHelper.getMediumDate(sslCert.getNotAfter());
-                if (delta < DateUtil.DURATION_MSEC_DAY * DAYS_IN_MONTH) {
+                if (sslCert.isNotAfterWithinMonth(dateRef)) {
                     certClass = "sp-txt-warn";
                 } else {
                     certClass = "sp-txt-info";
@@ -731,22 +737,67 @@ public final class SystemStatusPanel extends Panel {
 
         if (showTechInfo) {
             final TooltipPanel tooltip = new TooltipPanel("tooltip-jvm-memory");
-            tooltip.populate(helper.localized("tooltip-jvm-memory"));
+            tooltip.populate(helper.localized("tooltip-jvm-memory"), true);
             add(tooltip);
+        }
+
+        //
+        String webSessions = null;
+        if (showTechInfo) {
+            webSessions = String.format("%s (%s) • id (ip)",
+                    helper.localizedNumber(WebApp.getAuthSessionCount()),
+                    helper.localizedNumber(WebApp.getAuthIpAddrCount()));
+        }
+        helper.encloseLabel("web-sessions", webSessions, showTechInfo);
+
+        //
+        String openFiles = "-";
+        if (showTechInfo) {
+            helper.addLabel("open-files-prompt", "Open Files");
+            final SystemFileDescriptorCount fileDesc =
+                    SystemInfo.getFileDescriptorCount();
+            if (fileDesc.getOpenFileCount() != null) {
+                openFiles = helper.localizedNumber(fileDesc.getOpenFileCount());
+            }
+        }
+        helper.encloseLabel("open-files", openFiles, showTechInfo);
+
+        /*
+         *
+         */
+        if (showTechInfo) {
+            final File file = new File(File.separator);
+            helper.addLabel("disk-space",
+                    String.format("%s Total • %s Free",
+                            NumberUtil.humanReadableByteCount(
+                                    file.getTotalSpace(), true),
+                            NumberUtil.humanReadableByteCount(
+                                    file.getUsableSpace(), true)));
+
+            helper.addLabel("disk-space-prompt", NounEnum.DISK_SPACE);
+
+        } else {
+            helper.discloseLabel("disk-space");
         }
 
         /*
          * Threads info.
          */
-        final String threadInfo;
+        String threadInfo = "";
+        String deadlockedThreads = "";
 
         if (showTechInfo) {
             threadInfo = String.format("%d", Thread.activeCount());
-        } else {
-            threadInfo = "";
+            final int count =
+                    DeadlockedThreadsDetector.getDeadlockedThreadsCount();
+            if (count > 0) {
+                deadlockedThreads = String.format("(%d)", count);
+            }
         }
 
         helper.encloseLabel("threads-info", threadInfo, showTechInfo);
+        helper.encloseLabel("threads-info-deadlocks", deadlockedThreads,
+                !deadlockedThreads.isEmpty());
 
         /*
          * Connections info: correct Dao/Service count for this connection.
@@ -769,11 +820,17 @@ public final class SystemStatusPanel extends Panel {
          * Proxy Print
          */
         int size = 0;
+        String printJobQueue = "";
 
         if (showTechInfo) {
+            final long sizeDb = ServiceContext.getDaoContext().getPrintOutDao()
+                    .countActiveCupsJobs();
             size = ProxyPrintJobStatusMonitor.getPendingJobs();
+
+            printJobQueue =
+                    String.format("%d (%d) • monitor (database)", size, sizeDb);
         }
-        helper.encloseLabel("proxy-print-queue-size", String.valueOf(size),
+        helper.encloseLabel("proxy-print-queue-size", printJobQueue,
                 showTechInfo);
 
         /*
@@ -804,12 +861,17 @@ public final class SystemStatusPanel extends Panel {
         /*
          * Environmental Impact.
          */
-        Double esu = (double) (cm.getConfigLong(Key.STATS_TOTAL_PRINT_OUT_ESU)
-                / 100);
-        StatsEnvImpactPanel envImpactPanel =
-                new StatsEnvImpactPanel("environmental-impact");
-        add(envImpactPanel);
-        envImpactPanel.populate(esu);
+        if (cm.isConfigValue(Key.WEBAPP_ADMIN_DASHBOARD_SHOW_ENV_INFO)) {
+            final Double esu =
+                    (double) (cm.getConfigLong(Key.STATS_TOTAL_PRINT_OUT_ESU)
+                            / 100);
+            StatsEnvImpactPanel envImpactPanel =
+                    new StatsEnvImpactPanel(WID_ENV_IMPACT);
+            add(envImpactPanel);
+            envImpactPanel.populate(esu);
+        } else {
+            helper.discloseLabel(WID_ENV_IMPACT);
+        }
 
         /*
          * News from outside?
@@ -961,7 +1023,7 @@ public final class SystemStatusPanel extends Panel {
                                 request.reset();
                             }
 
-                            IOUtils.closeQuietly(reader);
+                            IOHelper.closeQuietly(reader);
                         }
                         return html;
                     }

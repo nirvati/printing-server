@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,7 +30,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Currency;
 import java.util.HashMap;
 import java.util.List;
@@ -40,9 +42,9 @@ import java.util.Map.Entry;
 import java.util.Properties;
 
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.SpException;
+import org.savapage.core.SpInfo;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
@@ -53,8 +55,12 @@ import org.savapage.core.dao.AccountTrxDao;
 import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.UserAttrDao;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
+import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.dto.UserPaymentGatewayDto;
+import org.savapage.core.ipp.routing.IppRoutingContext;
+import org.savapage.core.ipp.routing.IppRoutingListener;
+import org.savapage.core.ipp.routing.IppRoutingResult;
 import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserAccount;
@@ -69,7 +75,13 @@ import org.savapage.core.util.CurrencyUtil;
 import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.ServerPlugin;
+import org.savapage.ext.ServerPluginContext;
 import org.savapage.ext.ServerPluginException;
+import org.savapage.ext.notification.JobTicketCancelEvent;
+import org.savapage.ext.notification.JobTicketCloseEvent;
+import org.savapage.ext.notification.NotificationEventProgressImpl;
+import org.savapage.ext.notification.NotificationListener;
+import org.savapage.ext.notification.NotificationPlugin;
 import org.savapage.ext.oauth.OAuthClientPlugin;
 import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.payment.PaymentGateway;
@@ -83,6 +95,10 @@ import org.savapage.ext.payment.bitcoin.BitcoinGateway;
 import org.savapage.ext.payment.bitcoin.BitcoinGatewayListener;
 import org.savapage.ext.payment.bitcoin.BitcoinGatewayTrx;
 import org.savapage.ext.payment.bitcoin.BitcoinWalletInfo;
+import org.savapage.ext.print.IppRoutingPlugin;
+import org.savapage.ext.rest.RestClient;
+import org.savapage.server.CustomWebServlet;
+import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.callback.CallbackServlet;
 import org.slf4j.Logger;
@@ -96,7 +112,8 @@ import org.slf4j.LoggerFactory;
  *
  */
 public final class ServerPluginManager
-        implements PaymentGatewayListener, BitcoinGatewayListener {
+        implements PaymentGatewayListener, BitcoinGatewayListener,
+        NotificationListener, IppRoutingListener, ServerPluginContext {
 
     /**
      * The logger.
@@ -182,12 +199,6 @@ public final class ServerPluginManager
             new HashMap<>();
 
     /**
-     * All {@link OAuthClientPlugin} instances.
-     */
-    private final Map<OAuthProviderEnum, OAuthClientPlugin> oauthClientPlugins =
-            new HashMap<>();
-
-    /**
      * Subset of {@link #paymentPlugins}.
      */
     private final Map<String, PaymentGateway> paymentGateways = new HashMap<>();
@@ -198,9 +209,33 @@ public final class ServerPluginManager
     private final Map<String, BitcoinGateway> bitcoinGateways = new HashMap<>();
 
     /**
-     *
+     * All {@link OAuthClientPlugin} instances.
      */
+    private final Map<OAuthProviderEnum, Map<String, OAuthClientPlugin>> //
+    oauthClientPlugins = new HashMap<>();
+
+    /**
+     * All {@link NotificationPlugin} instances.
+     */
+    private final Map<String, NotificationPlugin> notificationPlugins =
+            new HashMap<>();
+
+    /**
+     * All {@link IppRoutingPlugin} instances.
+     */
+    private final Map<String, IppRoutingPlugin> ippRoutingPlugins =
+            new HashMap<>();
+
+    /**
+     * All plug-in instances.
+     */
+    private final List<ServerPlugin> allPlugins = new ArrayList<>();
+
+    /** */
     private BitcoinWalletInfo walletInfoCache;
+
+    /** */
+    private final Object walletInfoCacheMutex = new Object();
 
     /**
      *
@@ -216,7 +251,8 @@ public final class ServerPluginManager
      * @return The {@link Map} of (@link {@link OAuthClientPlugin} instances by
      *         unique ID.
      */
-    public Map<OAuthProviderEnum, OAuthClientPlugin> getOAuthClientPlugins() {
+    public Map<OAuthProviderEnum, Map<String, OAuthClientPlugin>>
+            getOAuthClientPlugins() {
         return oauthClientPlugins;
     }
 
@@ -234,7 +270,7 @@ public final class ServerPluginManager
             return;
         }
 
-        synchronized (this) {
+        synchronized (this.walletInfoCacheMutex) {
             this.walletInfoCache = gateway
                     .getWalletInfo(ConfigManager.getAppCurrency(), false);
         }
@@ -279,7 +315,7 @@ public final class ServerPluginManager
     public BitcoinWalletInfo getWalletInfoCache(final BitcoinGateway gateway,
             final boolean refresh) throws PaymentGatewayException, IOException {
 
-        synchronized (this) {
+        synchronized (this.walletInfoCacheMutex) {
 
             final Currency baseCurrency = ConfigManager.getAppCurrency();
 
@@ -384,7 +420,7 @@ public final class ServerPluginManager
                 final PaymentGateway paymentPlugin = (PaymentGateway) plugin;
 
                 paymentPlugin.onInit(pluginId, pluginName, pluginLive,
-                        pluginOnline, props);
+                        pluginOnline, props, this);
                 paymentPlugin.onInit(this);
 
                 paymentPlugins.put(pluginId, paymentPlugin);
@@ -397,7 +433,7 @@ public final class ServerPluginManager
                 final BitcoinGateway paymentPlugin = (BitcoinGateway) plugin;
 
                 paymentPlugin.onInit(pluginId, pluginName, pluginLive,
-                        pluginOnline, props);
+                        pluginOnline, props, this);
                 paymentPlugin.onInit(this);
 
                 paymentPlugins.put(pluginId, paymentPlugin);
@@ -411,11 +447,45 @@ public final class ServerPluginManager
                         (OAuthClientPlugin) plugin;
 
                 oauthPlugin.onInit(pluginId, pluginName, pluginLive,
-                        pluginOnline, props);
+                        pluginOnline, props, this);
 
-                oauthClientPlugins.put(oauthPlugin.getProvider(), oauthPlugin);
+                Map<String, OAuthClientPlugin> mapPluginInstance =
+                        this.oauthClientPlugins.get(oauthPlugin.getProvider());
+
+                if (mapPluginInstance == null) {
+                    mapPluginInstance = new HashMap<>();
+                }
+
+                mapPluginInstance.put(oauthPlugin.getInstanceId(), oauthPlugin);
+
+                this.oauthClientPlugins.put(oauthPlugin.getProvider(),
+                        mapPluginInstance);
 
                 validateOAuthCallbackUrl(oauthPlugin);
+
+            } else if (plugin instanceof NotificationPlugin) {
+
+                pluginType = NotificationPlugin.class.getSimpleName();
+
+                final NotificationPlugin notificationPlugin =
+                        (NotificationPlugin) plugin;
+
+                notificationPlugin.onInit(pluginId, pluginName, pluginLive,
+                        pluginOnline, props, this);
+
+                this.notificationPlugins.put(pluginId, notificationPlugin);
+
+            } else if (plugin instanceof IppRoutingPlugin) {
+
+                pluginType = IppRoutingPlugin.class.getSimpleName();
+
+                final IppRoutingPlugin ippRoutingPlugin =
+                        (IppRoutingPlugin) plugin;
+
+                ippRoutingPlugin.onInit(pluginId, pluginName, pluginLive,
+                        pluginOnline, props, this);
+
+                this.ippRoutingPlugins.put(pluginId, ippRoutingPlugin);
 
             } else {
 
@@ -428,6 +498,8 @@ public final class ServerPluginManager
                 LOGGER.debug(
                         String.format("%s [%s] loaded.", pluginType, istrName));
             }
+
+            this.allPlugins.add((ServerPlugin) plugin);
 
         } catch (NoSuchMethodException | SecurityException
                 | InstantiationException | IllegalAccessException
@@ -454,14 +526,42 @@ public final class ServerPluginManager
     private void validateOAuthCallbackUrl(final OAuthClientPlugin plugin)
             throws MalformedURLException {
 
-        final String query =
-                String.format("%s=%s", WebAppParmEnum.SP_OAUTH.parm(),
-                        plugin.getProvider().toString().toLowerCase());
+        final StringBuilder query = new StringBuilder();
+        final StringBuilder path = new StringBuilder();
 
-        if (!plugin.getCallbackUrl().getQuery().equals(query)) {
+        query.append(WebAppParmEnum.SP_OAUTH.parm()).append('=')
+                .append(plugin.getProvider().toString().toLowerCase());
+
+        path.append(WebApp.MOUNT_PATH_WEBAPP_USER).append("/")
+                .append(WebAppParmEnum.SP_OAUTH.parm()).append('/')
+                .append(plugin.getProvider().toString().toLowerCase());
+
+        if (StringUtils.isNotBlank(plugin.getInstanceId())) {
+
+            query.append('&').append(WebAppParmEnum.SP_OAUTH_ID.parm())
+                    .append('=').append(plugin.getInstanceId());
+
+            path.append('/').append(plugin.getInstanceId());
+        }
+
+        final String pluginQuery = plugin.getCallbackUrl().getQuery();
+        final String pluginPath = plugin.getCallbackUrl().getPath();
+
+        final boolean isValid;
+
+        if (StringUtils.isBlank(pluginQuery)) {
+            isValid = StringUtils.isNotBlank(pluginPath)
+                    && pluginPath.equals(path.toString());
+        } else {
+            isValid = pluginQuery.equals(query.toString());
+        }
+
+        if (!isValid) {
             throw new MalformedURLException(String.format(
-                    "Plugin [%s] callback URL [%s] must have query [%s]",
-                    plugin.getId(), plugin.getCallbackUrl().toString(), query));
+                    "Plugin [%s] callback URL [%s] "
+                            + "must have query [%s] or path [%s]",
+                    plugin.getId(), plugin.getCallbackUrl().toString(),
+                    query.toString(), path.toString()));
         }
     }
 
@@ -499,16 +599,11 @@ public final class ServerPluginManager
                 continue;
             }
 
-            FileInputStream fstream = null;
-
-            try {
-                fstream = new FileInputStream(file);
+            try (FileInputStream fstream = new FileInputStream(file);) {
                 loadPlugin(fstream, file.getName());
             } catch (IOException e) {
                 LOGGER.error(e.getMessage());
                 continue;
-            } finally {
-                IOUtils.closeQuietly(fstream);
             }
         }
     }
@@ -584,14 +679,33 @@ public final class ServerPluginManager
     }
 
     /**
-     * Gets the {@link OAuthClientPlugin} by its ID.
+     * Gets the {@link OAuthClientPlugin} by its IDs.
      *
      * @param provider
      *            The OAuth provider.
+     * @param instanceId
+     *            The OAuth instance ID (can be {@code null}).
      * @return The {@link OAuthClientPlugin}, or {@code null} when not found.
      */
-    public OAuthClientPlugin getOAuthClient(final OAuthProviderEnum provider) {
-        return this.oauthClientPlugins.get(provider);
+    public OAuthClientPlugin getOAuthClient(final OAuthProviderEnum provider,
+            final String instanceId) {
+        return this.oauthClientPlugins.get(provider).get(instanceId);
+    }
+
+    /**
+     *
+     * @param plugin
+     *            The{@link OAuthClientPlugin}.
+     * @return The URL path to the icon.
+     */
+    public String getOAuthClientIconPath(final OAuthClientPlugin plugin) {
+        if (plugin.getCustomIconPath() == null) {
+            final ExternalSupplierEnum supplier =
+                    ServerPluginHelper.getEnum(plugin.getProvider());
+            return WebApp.getExtSupplierEnumImgUrl(supplier);
+        }
+        return String.format("/%s/%s", CustomWebServlet.PATH_BASE,
+                plugin.getCustomIconPath());
     }
 
     /**
@@ -608,19 +722,12 @@ public final class ServerPluginManager
         final ServerPluginManager manager = new ServerPluginManager();
 
         for (final URL url : urls) {
-
-            InputStream istr = null;
-
-            try {
-                istr = url.openStream();
+            try (InputStream istr = url.openStream();) {
                 manager.loadPlugin(istr, url.getFile());
             } catch (IOException e) {
                 LOGGER.error(e.getMessage());
                 continue;
-            } finally {
-                IOUtils.closeQuietly(istr);
             }
-
         }
         return manager;
     }
@@ -736,13 +843,12 @@ public final class ServerPluginManager
     public PaymentGatewayTrxEvent
             onPaymentExpired(final PaymentGatewayTrx trx) {
 
-        publishEvent(PubLevelEnum.WARN, localize("payment-expired",
-                trx.getGatewayId(),
-                String.format("%s %.2f",
-                        CurrencyUtil.getCurrencySymbol(trx.getCurrencyCode(),
-                                Locale.getDefault()),
-                        trx.getAmount()),
-                trx.getUserId()));
+        publishEvent(PubLevelEnum.WARN,
+                localize("payment-expired", trx.getGatewayId(),
+                        String.format("%s %.2f", CurrencyUtil.getCurrencySymbol(
+                                trx.getCurrencyCode(), Locale.getDefault()),
+                                trx.getAmount()),
+                        trx.getUserId()));
 
         logPaymentTrxReceived(trx, STAT_EXPIRED);
 
@@ -1010,23 +1116,22 @@ public final class ServerPluginManager
             pubLevel = PubLevelEnum.WARN;
         }
 
-        publishEvent(pubLevel,
-                localize("payment-confirmed",
-                        //
-                        String.format("%s %s (%s %s)",
-                                CurrencyUtil.CURRENCY_CODE_BITCOIN,
-                                dto.getPaymentMethodAmount().toPlainString(),
-                                dto.getCurrencyCode(), baseCurrencyAmount),
-                        //
-                        trx.getGatewayId(),
-                        //
-                        userId,
-                        //
-                        String.valueOf(trx.getConfirmations()),
-                        //
-                        localize(msgKey)
+        publishEvent(pubLevel, localize("payment-confirmed",
                 //
-                ));
+                String.format("%s %s (%s %s)",
+                        CurrencyUtil.CURRENCY_CODE_BITCOIN,
+                        dto.getPaymentMethodAmount().toPlainString(),
+                        dto.getCurrencyCode(), baseCurrencyAmount),
+                //
+                trx.getGatewayId(),
+                //
+                userId,
+                //
+                String.valueOf(trx.getConfirmations()),
+                //
+                localize(msgKey)
+        //
+        ));
 
         logPaymentTrxReceived(trx, statusMsg, userId);
 
@@ -1178,28 +1283,42 @@ public final class ServerPluginManager
         final String delim = "+----------------------------"
                 + "--------------------------------------------+";
 
-        builder.append("Loaded plugins [").append(
-                this.paymentPlugins.size() + this.oauthClientPlugins.size())
+        int pluginsWlk = 0;
+
+        builder.append("Loaded plugins [").append(this.allPlugins.size())
                 .append("]");
 
         if (!this.oauthClientPlugins.isEmpty()) {
-            builder.append('\n').append(delim);
-            for (final Entry<OAuthProviderEnum, OAuthClientPlugin> entry : this.oauthClientPlugins
-                    .entrySet()) {
-                builder.append("\n| ").append(String.format("[%s]",
-                        entry.getValue().getClass().getName()));
-                builder.append("\n| ")
-                        .append(entry.getValue().getAuthorizationUrl());
+
+            if (pluginsWlk == 0) {
                 builder.append('\n').append(delim);
             }
+
+            for (final Map<String, OAuthClientPlugin> pluginMap : //
+            this.oauthClientPlugins.values()) {
+                for (final OAuthClientPlugin plugin : pluginMap.values()) {
+                    builder.append("\n| ").append(
+                            String.format("[%s]", plugin.getClass().getName()));
+                    if (plugin.getInstanceId() != null) {
+                        builder.append(
+                                String.format(" [%s]", plugin.getInstanceId()));
+                    }
+                    builder.append("\n| Authorization: ")
+                            .append(plugin.getAuthorizationUrl());
+                    builder.append('\n').append(delim);
+                }
+            }
+            pluginsWlk++;
         }
 
         if (!this.paymentPlugins.isEmpty()) {
 
-            builder.append('\n').append(delim);
+            if (pluginsWlk == 0) {
+                builder.append('\n').append(delim);
+            }
 
-            for (final Entry<String, PaymentGatewayPlugin> entry : this.paymentPlugins
-                    .entrySet()) {
+            for (final Entry<String, PaymentGatewayPlugin> entry : //
+            this.paymentPlugins.entrySet()) {
 
                 builder.append("\n| ").append(String.format("[%s]",
                         entry.getValue().getClass().getName()));
@@ -1218,9 +1337,47 @@ public final class ServerPluginManager
                 }
 
                 builder.append("]");
+
+                try {
+                    builder.append("\n| CallBack: ")
+                            .append(getCallBackUrl(entry.getValue()));
+                } catch (MalformedURLException e) {
+                    builder.append("\n| ").append(e.getClass().getSimpleName());
+                }
+                builder.append('\n').append(delim);
+
+            }
+            pluginsWlk++;
+        }
+
+        if (!this.notificationPlugins.isEmpty()) {
+            if (pluginsWlk == 0) {
+                builder.append('\n').append(delim);
             }
 
-            builder.append('\n').append(delim);
+            for (final Entry<String, NotificationPlugin> entry : //
+            this.notificationPlugins.entrySet()) {
+                builder.append("\n| ").append(String.format("[%s]",
+                        entry.getValue().getClass().getName()));
+                builder.append("\n| ").append(entry.getValue().getName());
+                builder.append('\n').append(delim);
+            }
+            pluginsWlk++;
+        }
+
+        if (!this.ippRoutingPlugins.isEmpty()) {
+            if (pluginsWlk == 0) {
+                builder.append('\n').append(delim);
+            }
+
+            for (final Entry<String, IppRoutingPlugin> entry : //
+            this.ippRoutingPlugins.entrySet()) {
+                builder.append("\n| ").append(String.format("[%s]",
+                        entry.getValue().getClass().getName()));
+                builder.append("\n| ").append(entry.getValue().getName());
+                builder.append('\n').append(delim);
+            }
+            pluginsWlk++;
         }
 
         return builder.toString();
@@ -1239,10 +1396,9 @@ public final class ServerPluginManager
      * Starts all plug-ins.
      */
     public void start() {
-        for (final Entry<String, PaymentGatewayPlugin> entry : this.paymentPlugins
-                .entrySet()) {
+        for (final ServerPlugin plugin : this.allPlugins) {
             try {
-                entry.getValue().onStart();
+                plugin.onStart();
             } catch (ServerPluginException e) {
                 publishAndLogEvent(PubLevelEnum.ERROR, e.getMessage());
             }
@@ -1253,10 +1409,15 @@ public final class ServerPluginManager
      * Stops all plug-ins.
      */
     public void stop() {
-        for (final Entry<String, PaymentGatewayPlugin> entry : this.paymentPlugins
-                .entrySet()) {
+        for (final ServerPlugin plugin : this.allPlugins) {
             try {
-                entry.getValue().onStop();
+                SpInfo.instance().log(String.format(
+                        "Shutting down [%s] plug-in ...", plugin.getName()));
+                plugin.onStop();
+                SpInfo.instance()
+                        .log(String.format(
+                                "... [%s] plug-in shutdown completed.",
+                                plugin.getName()));
             } catch (ServerPluginException e) {
                 publishAndLogEvent(PubLevelEnum.ERROR, e.getMessage());
             }
@@ -1314,6 +1475,70 @@ public final class ServerPluginManager
     private String localize(final String key, final String... args) {
         return Messages.getMessage(getClass(), ConfigManager.getDefaultLocale(),
                 key, args);
+    }
+
+    /**
+     * @return {@code true} when one or more {@link NotificationPlugin}
+     *         listeners are present.
+     */
+    public boolean hasNotificationListener() {
+        return !this.notificationPlugins.isEmpty();
+    }
+
+    @Override
+    public void onIppRoutingEvent(final IppRoutingContext ctx,
+            final IppRoutingResult res) {
+        this.ippRoutingPlugins.forEach((k, v) -> {
+            v.onRouting(ctx, res);
+        });
+    }
+
+    @Override
+    public void onJobTicketEvent(final JobTicketCancelEvent event) {
+        final NotificationEventProgressImpl progress =
+                new NotificationEventProgressImpl();
+        this.notificationPlugins.forEach((k, v) -> {
+            if (v.onJobTicketEvent(event, progress)) {
+                progress.onAccept(v);
+            } else {
+                progress.onReject(v);
+            }
+        });
+    }
+
+    @Override
+    public void onJobTicketEvent(final JobTicketCloseEvent event) {
+        final NotificationEventProgressImpl progress =
+                new NotificationEventProgressImpl();
+        this.notificationPlugins.forEach((k, v) -> {
+            if (v.onJobTicketEvent(event, progress)) {
+                progress.onAccept(v);
+            } else {
+                progress.onReject(v);
+            }
+        });
+    }
+
+    @Override
+    public File getPluginHome() {
+        return ConfigManager.getServerExtHome();
+    }
+
+    @Override
+    public boolean isUserInGroup(final String groupName, final String userId) {
+        return ServiceContext.getDaoContext().getUserGroupMemberDao()
+                .isUserInGroup(groupName, userId);
+    }
+
+    @Override
+    public RestClient createRestClient(final URI uri) {
+        return RestClientImpl.create(uri);
+    }
+
+    @Override
+    public RestClient createRestClient(final URI uri, final String username,
+            final String password) {
+        return RestClientImpl.create(uri, username, password);
     }
 
 }

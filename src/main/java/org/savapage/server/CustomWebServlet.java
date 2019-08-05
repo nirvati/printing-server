@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2014 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -33,14 +33,15 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.wicket.protocol.http.WebApplication;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.ServerPathEnum;
+import org.savapage.core.util.IOHelper;
 
 /**
  * Delivers files for web customization.
  *
- * @author Datraverse B.V.
+ * @author Rijk Ravestein
  *
  */
 @WebServlet(name = "CustomWebServlet",
@@ -58,12 +59,14 @@ public final class CustomWebServlet extends HttpServlet {
     private static final int BUFFER_SIZE = 1014;
 
     /**
-     * Base path of custom web files (without leading or trailing '/').
+     * Base path of custom web files (without leading or trailing '/'). Same as
+     * {@link ServerPathEnum#CUSTOM_WEB}.
      */
     public static final String PATH_BASE = "custom/web";
 
     /**
-     * Base path of custom web themes (without leading or trailing '/').
+     * Base path of custom web themes (without leading or trailing '/'). Same as
+     * {@link ServerPathEnum#CUSTOM_WEB_THEMES}.
      */
     public static final String PATH_BASE_THEMES = PATH_BASE + "/themes";
 
@@ -79,8 +82,8 @@ public final class CustomWebServlet extends HttpServlet {
 
     @Override
     protected void doGet(final HttpServletRequest req,
-            final HttpServletResponse resp) throws ServletException,
-            IOException {
+            final HttpServletResponse resp)
+            throws ServletException, IOException {
 
         final String reqURI = req.getRequestURI();
 
@@ -120,7 +123,7 @@ public final class CustomWebServlet extends HttpServlet {
             resp.setStatus(HttpServletResponse.SC_OK);
 
         } finally {
-            IOUtils.closeQuietly(istr);
+            IOHelper.closeQuietly(istr);
         }
     }
 }

@@ -25,14 +25,15 @@ import org.apache.commons.lang3.EnumUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.AccountTrxTypeEnum;
 import org.savapage.core.dao.helpers.AccountTrxPagerReq;
+import org.savapage.core.i18n.PhraseEnum;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  *
@@ -56,7 +57,7 @@ public final class AccountTrxBase extends AbstractAuthPage {
 
         final WebAppTypeEnum webAppType = this.getSessionWebAppType();
 
-        handlePage(webAppType == WebAppTypeEnum.ADMIN);
+        handlePage(webAppType);
     }
 
     @Override
@@ -65,9 +66,10 @@ public final class AccountTrxBase extends AbstractAuthPage {
     }
 
     /**
-     * @param adminWebApp
+     * @param webAppType
+     *            The type of Web App.
      */
-    private void handlePage(final boolean adminWebApp) {
+    private void handlePage(final WebAppTypeEnum webAppType) {
 
         final String data = getParmValue(POST_PARM_DATA);
 
@@ -79,7 +81,8 @@ public final class AccountTrxBase extends AbstractAuthPage {
         boolean userNameVisible = false;
         boolean accountNameVisible = false;
 
-        if (adminWebApp) {
+        if (webAppType == WebAppTypeEnum.ADMIN
+                || webAppType == WebAppTypeEnum.PRINTSITE) {
 
             userId = req.getSelect().getUserId();
             userNameVisible = (userId != null);
@@ -158,21 +161,27 @@ public final class AccountTrxBase extends AbstractAuthPage {
         //
         final MarkupHelper helper = new MarkupHelper(this);
 
-        helper.addModifyLabelAttr("accounttrx-select-type-initial", "value",
-                AccountTrxTypeEnum.INITIAL.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-adjust", "value",
-                AccountTrxTypeEnum.ADJUST.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-deposit", "value",
-                AccountTrxTypeEnum.DEPOSIT.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-gateway", "value",
-                AccountTrxTypeEnum.GATEWAY.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-transfer", "value",
+        helper.addLabel("select-and-sort",
+                PhraseEnum.SELECT_AND_SORT.uiText(getLocale()));
+
+        helper.addModifyLabelAttr("accounttrx-select-type-initial",
+                MarkupHelper.ATTR_VALUE, AccountTrxTypeEnum.INITIAL.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-adjust",
+                MarkupHelper.ATTR_VALUE, AccountTrxTypeEnum.ADJUST.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-deposit",
+                MarkupHelper.ATTR_VALUE, AccountTrxTypeEnum.DEPOSIT.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-gateway",
+                MarkupHelper.ATTR_VALUE, AccountTrxTypeEnum.GATEWAY.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-transfer",
+                MarkupHelper.ATTR_VALUE,
                 AccountTrxTypeEnum.TRANSFER.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-voucher", "value",
-                AccountTrxTypeEnum.VOUCHER.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-printin", "value",
+        helper.addModifyLabelAttr("accounttrx-select-type-voucher",
+                MarkupHelper.ATTR_VALUE, AccountTrxTypeEnum.VOUCHER.toString());
+        helper.addModifyLabelAttr("accounttrx-select-type-printin",
+                MarkupHelper.ATTR_VALUE,
                 AccountTrxTypeEnum.PRINT_IN.toString());
-        helper.addModifyLabelAttr("accounttrx-select-type-printout", "value",
+        helper.addModifyLabelAttr("accounttrx-select-type-printout",
+                MarkupHelper.ATTR_VALUE,
                 AccountTrxTypeEnum.PRINT_OUT.toString());
 
         //

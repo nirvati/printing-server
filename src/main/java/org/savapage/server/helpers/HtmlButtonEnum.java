@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -38,6 +38,8 @@ public enum HtmlButtonEnum {
     /** */
     APPLY,
     /** */
+    ARCHIVE,
+    /** */
     BACK,
     /** */
     BROWSE,
@@ -56,6 +58,8 @@ public enum HtmlButtonEnum {
     /** */
     CONTINUE,
     /** */
+    COPY,
+    /** */
     DEFAULT,
     /** */
     DELETE,
@@ -67,6 +71,8 @@ public enum HtmlButtonEnum {
     ERASE,
     /** */
     EXTEND,
+    /** */
+    GENERATE,
     /** */
     HELP,
     /** */
@@ -96,6 +102,8 @@ public enum HtmlButtonEnum {
     /** */
     REGISTER,
     /** */
+    RENAME,
+    /** */
     RESET,
     /** */
     RETRY,
@@ -123,6 +131,8 @@ public enum HtmlButtonEnum {
     TEST,
     /** */
     UPLOAD,
+    /** */
+    VERIFY,
     /** As opposite of {@link #NO}. */
     YES;
 

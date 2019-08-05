@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,11 +33,11 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.doc.DocContent;
 import org.savapage.core.doc.DocContentTypeEnum;
+import org.savapage.server.dropzone.WebPrintHelper;
 import org.savapage.server.pages.MarkupHelper;
-import org.savapage.server.webprint.WebPrintHelper;
 
 /**
- * A page showing the HOLD proxy print jobs for a user.
+ * A page showing File Upload information.
  * <p>
  * This page is retrieved from the JavaScript Web App.
  * </p>

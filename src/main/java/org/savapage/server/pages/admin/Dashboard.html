@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
 	<!-- 
     +====================================================================+ 
-    | This file is part of the SavaPage project <https://savapage.org> ...|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein...| 
+    | This file is part of the SavaPage project <https://savapage.org> ..|
+    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein...| 
     |....................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify ..|
     | it under the terms of the GNU Affero General Public License as ....|
@@ -18,16 +19,13 @@
 </div>
 
 <ul data-role="listview" data-inset="true">
-	<li data-role="list-divider">
-		<wicket:message key="realtime-activity" />
-	</li>
+	<li data-role="list-divider" wicket:id="realtime-activity" />
 	<li>
 		<div id="live-messages" class="sp-live-msg"
 			style="font-size: small; font-weight: normal"></div>
 		<div>
-			<button id="live-messages-clear" class="ui-btn ui-btn-inline">
-				<wicket:message key="button-clear" />
-			</button>
+			<button id="live-messages-clear" class="ui-btn ui-btn-inline"
+				wicket:id="button-clear" />
 			<wicket:remove>
 				<button id="live-messages-pause" class="ui-btn ui-btn-inline">Pause</button>
 				<button id="live-messages-resume" class="ui-btn ui-btn-inline"
@@ -35,5 +33,5 @@
 			</wicket:remove>
 		</div>
 	</li>
-
 </ul>
+</html>

@@ -29,7 +29,7 @@ import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.services.helpers.PageScalingEnum;
+import org.savapage.core.services.helpers.PrintScalingEnum;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.NumberUpPreviewPanel;
@@ -78,10 +78,10 @@ public class PrinterSettings extends AbstractUserPage {
         final String htmlRadioName = "print-page-scaling-enum";
 
         labelledRadio("page-scaling", "-none", htmlRadioName,
-                PageScalingEnum.NONE.toString(), false);
+                PrintScalingEnum.NONE.toString(), false);
 
         labelledRadio("page-scaling", "-fit", htmlRadioName,
-                PageScalingEnum.FIT.toString(), false);
+                PrintScalingEnum.FIT.toString(), false);
 
         helper.addButton("button-default", HtmlButtonEnum.DEFAULT);
 
@@ -95,11 +95,13 @@ public class PrinterSettings extends AbstractUserPage {
 
             TooltipPanel tooltip =
                     new TooltipPanel(WICKET_ID_TOOLTIP_LANDSCAPE_PRINT);
-            tooltip.populate(localized("sp-tooltip-page-orientation-print"));
+            tooltip.populate(localized("sp-tooltip-page-orientation-print"),
+                    true);
             add(tooltip);
 
             tooltip = new TooltipPanel(WICKET_ID_TOOLTIP_LANDSCAPE_COPY);
-            tooltip.populate(localized("sp-tooltip-page-orientation-copy"));
+            tooltip.populate(localized("sp-tooltip-page-orientation-copy"),
+                    true);
             add(tooltip);
 
         } else {

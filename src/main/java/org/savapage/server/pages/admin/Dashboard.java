@@ -23,6 +23,9 @@ package org.savapage.server.pages.admin;
 
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.enums.ACLOidEnum;
+import org.savapage.core.i18n.PhraseEnum;
+import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.pages.MarkupHelper;
 
 /**
  *
@@ -44,6 +47,8 @@ public class Dashboard extends AbstractAdminPage {
 
         super(parameters);
 
+        final MarkupHelper helper = new MarkupHelper(this);
+
         final boolean hasEditorAccess =
                 this.probePermissionToEdit(ACLOidEnum.A_DASHBOARD);
 
@@ -52,6 +57,11 @@ public class Dashboard extends AbstractAdminPage {
         add(systemStatusPanel);
 
         systemStatusPanel.populate(hasEditorAccess);
+
+        helper.addButton("button-clear", HtmlButtonEnum.CLEAR);
+
+        helper.addLabel("realtime-activity",
+                PhraseEnum.REALTIME_ACTIVITY.uiText(getLocale()));
     }
 
 }

@@ -35,14 +35,19 @@ import org.apache.wicket.MarkupContainer;
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.markup.html.TransparentWebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
+import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
+import org.savapage.core.i18n.AdjectiveEnum;
 import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.LabelEnum;
 import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PhraseEnum;
 import org.savapage.core.i18n.PrepositionEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.PrintOutVerbEnum;
 import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
+import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
 
 /**
@@ -59,7 +64,9 @@ import org.savapage.server.helpers.HtmlButtonEnum;
  */
 public final class MarkupHelper {
 
+    public static final String ATTR_ACCEPT = "accept";
     public static final String ATTR_CHECKED = "checked";
+    public static final String ATTR_SELECTED = "selected";
     public static final String ATTR_DISABLED = "disabled";
     public static final String ATTR_ID = "id";
     public static final String ATTR_FOR = "for";
@@ -70,11 +77,16 @@ public final class MarkupHelper {
     public static final String ATTR_HREF = "href";
     public static final String ATTR_NAME = "name";
     public static final String ATTR_VALUE = "value";
+    public static final String ATTR_PLACEHOLDER = "placeholder";
     public static final String ATTR_SLIDER_MIN = "min";
     public static final String ATTR_SLIDER_MAX = "max";
+    public static final String ATTR_MAXLENGTH = "maxlength";
+    public static final String ATTR_TABINDEX = "tabindex";
 
     public static final String ATTR_DATA_JQM_DATA_ON_TEXT = "data-on-text";
     public static final String ATTR_DATA_JQM_DATA_OFF_TEXT = "data-off-text";
+
+    public static final String ATTR_DATA_INPUT = "data-input";
 
     public static final String ATTR_DATA_SAVAPAGE = "data-savapage";
     public static final String ATTR_DATA_SAVAPAGE_TYPE = "data-savapage-type";
@@ -98,11 +110,52 @@ public final class MarkupHelper {
 
     public static final String CSS_DISABLED = "sp-disabled";
     public static final String CSS_INVISIBLE = "sp-invisible";
+
+    public static final String CSS_PREFERRED_ICON_ON =
+            "ui-icon-mini-preferred-on";
+    public static final String CSS_PREFERRED_ICON_OFF =
+            "ui-icon-mini-preferred-off";
+
     /**
      * HTML entity for ⦦ : OBLIQUE ANGLE OPENING UP).
      */
     public static final String HTML_ENT_OBL_ANGLE_OPENING_UP = "&#x29A6;";
 
+    /**
+     * Image path for unkown Account.
+     */
+    private static final String IMG_PATH_ACCOUNT_UNKNOWN =
+            WebApp.PATH_IMAGES_FAMFAM + "/cross.png";
+    /**
+     * Image path for Personal Account.
+     */
+    private static final String IMG_PATH_ACCOUNT_PERSONAL =
+            WebApp.PATH_IMAGES_FAMFAM + "/user_gray.png";
+    /**
+     * Image path for Group Account.
+     */
+    private static final String IMG_PATH_ACCOUNT_GROUP =
+            WebApp.PATH_IMAGES_FAMFAM + "/group.png";
+    /**
+     * Image path for Shared Account.
+     */
+    private static final String IMG_PATH_ACCOUNT_SHARED =
+            WebApp.PATH_IMAGES_FAMFAM + "/tag_green.png";
+    /**
+     * HTML img tag for Personal Account.
+     */
+    public static final String HTML_IMG_ACCOUNT_PERSONAL =
+            "<img src=\"" + IMG_PATH_ACCOUNT_PERSONAL + "\"/>";
+    /**
+     * HTML img tag for Group Account.
+     */
+    public static final String HTML_IMG_ACCOUNT_GROUP =
+            "<img src=\"" + IMG_PATH_ACCOUNT_GROUP + "\"/>";
+    /**
+     * HTML img tag for Shared Account.
+     */
+    public static final String HTML_IMG_ACCOUNT_SHARED =
+            "<img src=\"" + IMG_PATH_ACCOUNT_SHARED + "\"/>";
     /**
      *
      */
@@ -463,6 +516,71 @@ public final class MarkupHelper {
     }
 
     /**
+     * Adds a Adjective label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param adjective
+     *            The {@link AdjectiveEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId,
+            final AdjectiveEnum adjective) {
+        final Label label = new Label(wicketId,
+                adjective.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
+     * Adds a phrase label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param phrase
+     *            The {@link PhraseEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final PhraseEnum phrase) {
+        final Label label =
+                new Label(wicketId, phrase.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
+     * Adds a adverb label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param adverb
+     *            The {@link AdverbEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final AdverbEnum adverb) {
+        final Label label =
+                new Label(wicketId, adverb.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
+     * Adds a label.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param noun
+     *            The {@link NounEnum}.
+     * @return The added {@link Label}.
+     */
+    public Label addLabel(final String wicketId, final LabelEnum noun) {
+        final Label label =
+                new Label(wicketId, noun.uiText(this.container.getLocale()));
+        add(label);
+        return label;
+    }
+
+    /**
      * Adds a preposition label.
      *
      * @param wicketId
@@ -508,6 +626,22 @@ public final class MarkupHelper {
         labelWrk.add(new AttributeModifier("value", value));
         add(labelWrk);
         return labelWrk;
+    }
+
+    /**
+     * Adds input of type text.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param value
+     *            The {@link HtmlButtonEnum}. Its text is used as HTML 'value'
+     *            attribute.
+     * @return The added {@link Label}.
+     */
+    public Label addTextInput(final String wicketId,
+            final HtmlButtonEnum value) {
+        return this.addTextInput(wicketId,
+                value.uiText(this.container.getLocale()));
     }
 
     /**
@@ -562,7 +696,6 @@ public final class MarkupHelper {
         label.add(new AttributeModifier(attribute, value));
         return label;
     }
-
 
     /**
      * Sets the on/off texts for a jQuery Mobile Flipswitch.
@@ -841,6 +974,7 @@ public final class MarkupHelper {
         case IPP_JOB_HELD:
         case IPP_JOB_PENDING:
         case IPP_JOB_PROCESSING:
+        case IPP_JOB_UNKNOWN:
             return CSS_TXT_WARN;
 
         default:
@@ -857,23 +991,34 @@ public final class MarkupHelper {
      */
     public static String getImgUrlPath(final AccountTypeEnum accountType) {
 
-        final String imageSrc;
-
         if (accountType == null) {
-            imageSrc = "cross.png";
+            return IMG_PATH_ACCOUNT_UNKNOWN;
         } else {
             switch (accountType) {
             case GROUP:
-                imageSrc = "group.png";
-                break;
+                return IMG_PATH_ACCOUNT_GROUP;
             case SHARED:
-                imageSrc = "tag_green.png";
-                break;
+                return IMG_PATH_ACCOUNT_SHARED;
             default:
-                imageSrc = "user_gray.png";
-                break;
+                return IMG_PATH_ACCOUNT_PERSONAL;
             }
         }
-        return String.format("/%s/%s", "famfamfam-silk", imageSrc);
     }
+
+    /**
+     * @param level
+     *            The log level.
+     * @return The CSS_TXT-* class.
+     */
+    public static String getCssTxtClass(final AppLogLevelEnum level) {
+        switch (level) {
+        case ERROR:
+            return MarkupHelper.CSS_TXT_ERROR;
+        case WARN:
+            return MarkupHelper.CSS_TXT_WARN;
+        default:
+            return MarkupHelper.CSS_TXT_INFO;
+        }
+    }
+
 }

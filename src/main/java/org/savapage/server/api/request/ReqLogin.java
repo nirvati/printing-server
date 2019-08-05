@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,6 +45,7 @@ import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.UserNumberDao;
@@ -60,13 +61,14 @@ import org.savapage.core.rfid.RfidNumberFormat;
 import org.savapage.core.services.DeviceService.DeviceAttrLookup;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.UserAuth;
-import org.savapage.core.services.helpers.UserAuth.Mode;
+import org.savapage.core.services.helpers.UserAuthModeEnum;
 import org.savapage.core.users.IExternalUserAuthenticator;
 import org.savapage.core.users.IUserSource;
 import org.savapage.core.users.InternalUserAuthenticator;
 import org.savapage.core.users.conf.UserAliasList;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.DateUtil;
+import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.Messages;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.UserAgentHelper;
@@ -75,7 +77,6 @@ import org.savapage.server.auth.UserAuthToken;
 import org.savapage.server.auth.WebAppUserAuthManager;
 import org.savapage.server.cometd.UserEventService;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,8 +101,7 @@ public final class ReqLogin extends ApiRequestMixin {
     /**
      * <b>Static</b> lock object for synchronization of lazy user creation.
      */
-    private static final Object LAZY_CREATE_USER_LOCK = new Object() {
-    };
+    private static final Object LAZY_CREATE_USER_LOCK = new Object();
 
     /**
      * .
@@ -184,12 +184,13 @@ public final class ReqLogin extends ApiRequestMixin {
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
+        final DtoReq dtoReq =
+                DtoReq.create(DtoReq.class, this.getParmValueDto());
 
         MemberCard.instance().recalcStatus(new Date());
 
-        reqLogin(UserAuth.mode(dtoReq.getAuthMode()), dtoReq.getAuthId(),
-                dtoReq.getAuthPw(), dtoReq.getAuthToken(),
+        reqLogin(UserAuthModeEnum.fromDbValue(dtoReq.getAuthMode()),
+                dtoReq.getAuthId(), dtoReq.getAuthPw(), dtoReq.getAuthToken(),
                 dtoReq.getAssocCardNumber(), dtoReq.getWebAppType());
     }
 
@@ -212,7 +213,7 @@ public final class ReqLogin extends ApiRequestMixin {
      * <li>If Application is NOT ready-to-use the only login possible is as
      * admin in the admin application.</li>
      * <li>See
-     * {@link #reqLoginNew(org.savapage.core.services.helpers.UserAuth.Mode, String, String, String, boolean)}
+     * {@link #reqLoginNew(org.savapage.core.services.helpers.UserAuthModeEnum, String, String, String, boolean)}
      * , {@link #reqLoginAuthTokenCliApp(Map, String, String, boolean)(} and
      * {@link #reqLoginAuthTokenWebApp(String, String, boolean)}.</li>
      * </ul>
@@ -235,7 +236,7 @@ public final class ReqLogin extends ApiRequestMixin {
      * @throws IOException
      *             When IO error.
      */
-    private void reqLogin(final UserAuth.Mode authMode, final String authId,
+    private void reqLogin(final UserAuthModeEnum authMode, final String authId,
             final String authPw, final String authToken,
             final String assocCardNumber, final WebAppTypeEnum webAppType)
             throws IOException {
@@ -288,7 +289,7 @@ public final class ReqLogin extends ApiRequestMixin {
          */
         if (!cm.isSetupCompleted()) {
             if (webAppType != WebAppTypeEnum.ADMIN
-                    || authMode != UserAuth.Mode.NAME) {
+                    || authMode != UserAuthModeEnum.NAME) {
                 setApiResult(ApiResultCodeEnum.ERROR, "msg-login-install-mode");
                 return;
             }
@@ -320,7 +321,7 @@ public final class ReqLogin extends ApiRequestMixin {
          *
          * TODO: check if OAuth is enabled.
          */
-        if (authMode == Mode.OAUTH) {
+        if (authMode == UserAuthModeEnum.OAUTH) {
 
             /*
              * INVARIANT: User must exist in database.
@@ -393,7 +394,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
                 final boolean isCliAppAuthApplied;
 
-                if (isAuthTokenLoginEnabled && authMode == UserAuth.Mode.NAME
+                if (isAuthTokenLoginEnabled && authMode == UserAuthModeEnum.NAME
                         && StringUtils.isBlank(authPw)) {
                     isCliAppAuthApplied =
                             this.reqLoginAuthTokenCliApp(getUserData(), authId,
@@ -405,7 +406,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 if (!isCliAppAuthApplied) {
 
                     if (isAuthTokenLoginEnabled
-                            && authMode == UserAuth.Mode.NAME
+                            && authMode == UserAuthModeEnum.NAME
                             && StringUtils.isBlank(authPw)
                             && StringUtils.isNotBlank(authToken)) {
 
@@ -482,14 +483,15 @@ public final class ReqLogin extends ApiRequestMixin {
      * @throws IOException
      *             When IO error.
      */
-    private void reqLoginNew(final UserAuth.Mode authMode, final String authId,
-            final String authPw, final String assocCardNumber,
-            final WebAppTypeEnum webAppType) throws IOException {
+    private void reqLoginNew(final UserAuthModeEnum authMode,
+            final String authId, final String authPw,
+            final String assocCardNumber, final WebAppTypeEnum webAppType)
+            throws IOException {
 
         /*
          * INVARIANT: Password can NOT be empty in Name authentication.
          */
-        if (authMode == UserAuth.Mode.NAME && StringUtils.isBlank(authPw)) {
+        if (authMode == UserAuthModeEnum.NAME && StringUtils.isBlank(authPw)) {
             onLoginFailed(null);
             return;
         }
@@ -497,14 +499,16 @@ public final class ReqLogin extends ApiRequestMixin {
         /*
          *
          */
-        final Device terminal =
-                ApiRequestHelper.getHostTerminal(this.getRemoteAddr());
+        final String remoteAddr = this.getRemoteAddr();
+        final boolean isPublicAddress = InetUtils.isPublicAddress(remoteAddr);
 
-        final UserAuth theUserAuth = new UserAuth(terminal, null,
-                webAppType == WebAppTypeEnum.ADMIN);
+        final Device terminal = ApiRequestHelper.getHostTerminal(remoteAddr);
 
-        if (authMode != UserAuth.Mode.OAUTH
-                && authMode != UserAuth.Mode.YUBIKEY) { // TEST TEST
+        final UserAuth theUserAuth =
+                new UserAuth(terminal, null, webAppType, isPublicAddress);
+
+        if (authMode != UserAuthModeEnum.OAUTH
+                && authMode != UserAuthModeEnum.YUBIKEY) { // TEST TEST
             if (!theUserAuth.isAuthModeAllowed(authMode)) {
                 setApiResult(ApiResultCodeEnum.ERROR,
                         "msg-auth-mode-not-available", authMode.toString());
@@ -533,7 +537,7 @@ public final class ReqLogin extends ApiRequestMixin {
          */
         final boolean allowInternalUsersOnly = (userAuthenticator == null);
 
-        final boolean isInternalAdmin = authMode == UserAuth.Mode.NAME
+        final boolean isInternalAdmin = authMode == UserAuthModeEnum.NAME
                 && ConfigManager.isInternalAdmin(authId);
 
         final boolean isLazyUserInsert = webAppType == WebAppTypeEnum.USER
@@ -552,7 +556,8 @@ public final class ReqLogin extends ApiRequestMixin {
          */
         final RfidNumberFormat rfidNumberFormat;
 
-        if (authMode == UserAuth.Mode.CARD_LOCAL || assocCardNumber != null) {
+        if (authMode == UserAuthModeEnum.CARD_LOCAL
+                || assocCardNumber != null) {
             if (terminal == null) {
                 rfidNumberFormat = new RfidNumberFormat();
             } else {
@@ -572,10 +577,15 @@ public final class ReqLogin extends ApiRequestMixin {
             /*
              * INVARIANT: internal admin is allowed to login to the Admin WebApp
              * only.
+             *
+             * INVARIANT: when Internet auth mode is enabled, internal admin is
+             * allowed to login to intranet Admin WebApp only.
              */
-            if (webAppType != WebAppTypeEnum.ADMIN) {
+            if (webAppType != WebAppTypeEnum.ADMIN
+                    || (isPublicAddress && cm.isConfigValue(
+                            Key.WEBAPP_INTERNET_ADMIN_AUTH_MODE_ENABLE))) {
                 onLoginFailed("msg-login-denied", webAppType.getUiText(),
-                        UserAuth.getUiText(authMode), authId);
+                        UserAuth.getUiText(authMode), authId, remoteAddr);
                 return;
             }
 
@@ -589,7 +599,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
             if (!isAuthenticated) {
                 onLoginFailed("msg-login-invalid-password",
-                        webAppType.getUiText(), authId);
+                        webAppType.getUiText(), authId, remoteAddr);
                 return;
             }
 
@@ -598,7 +608,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
         } else {
 
-            if (authMode == UserAuth.Mode.YUBIKEY) {
+            if (authMode == UserAuthModeEnum.YUBIKEY) {
 
                 if (authId == null || !YubiKeyOTP.isValidOTPFormat(authId)) {
                     onLoginFailed(null);
@@ -623,7 +633,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 }
                 uid = userDb.getUserId();
 
-            } else if (authMode == UserAuth.Mode.NAME) {
+            } else if (authMode == UserAuthModeEnum.NAME) {
 
                 /*
                  * Get the "real" username from the alias.
@@ -640,7 +650,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 userDb = userDao.findActiveUserByUserId(uid);
 
-            } else if (authMode == UserAuth.Mode.ID) {
+            } else if (authMode == UserAuthModeEnum.ID) {
 
                 userDb = USER_SERVICE.findUserByNumber(authId);
 
@@ -649,17 +659,17 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (userDb == null) {
                     onLoginFailed("msg-login-invalid-number",
-                            webAppType.getUiText(), authId);
+                            webAppType.getUiText(), authId, remoteAddr);
                     return;
                 }
                 uid = userDb.getUserId();
 
-            } else if (authMode == UserAuth.Mode.CARD_IP
-                    || authMode == UserAuth.Mode.CARD_LOCAL) {
+            } else if (authMode == UserAuthModeEnum.CARD_IP
+                    || authMode == UserAuthModeEnum.CARD_LOCAL) {
 
                 String normalizedCardNumber = authId;
 
-                if (authMode == UserAuth.Mode.CARD_LOCAL) {
+                if (authMode == UserAuthModeEnum.CARD_LOCAL) {
                     normalizedCardNumber =
                             rfidNumberFormat.getNormalizedNumber(authId);
                 }
@@ -690,7 +700,7 @@ public final class ReqLogin extends ApiRequestMixin {
                             onLoginFailed("msg-login-card-unknown",
                                     webAppType.getUiText(),
                                     UserAuth.getUiText(authMode),
-                                    normalizedCardNumber);
+                                    normalizedCardNumber, remoteAddr);
                         }
                     }
                     return;
@@ -710,7 +720,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 if (webAppType != WebAppTypeEnum.USER) {
                     onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), authId);
+                            UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
                 }
 
@@ -721,7 +731,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 if (allowInternalUsersOnly) {
                     onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), authId);
+                            UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
                 }
 
@@ -732,7 +742,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 if (!isLazyUserInsert) {
                     onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), authId);
+                            UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
                 }
 
@@ -745,7 +755,8 @@ public final class ReqLogin extends ApiRequestMixin {
                 if (webAppType == WebAppTypeEnum.ADMIN && !userDb.getAdmin()) {
                     onLoginFailed("msg-login-no-admin-rights",
                             webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), userDb.getUserId());
+                            UserAuth.getUiText(authMode), userDb.getUserId(),
+                            remoteAddr);
                     return;
                 }
 
@@ -754,7 +765,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (!userDb.getPerson()) {
                     onLoginFailed("msg-login-no-person", webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), userDb.getUserId());
+                            UserAuth.getUiText(authMode), userDb.getUserId(),
+                            remoteAddr);
                     return;
                 }
 
@@ -765,7 +777,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (USER_SERVICE.isUserFullyDisabled(userDb, onDate)) {
                     onLoginFailed("msg-login-disabled", webAppType.getUiText(),
-                            UserAuth.getUiText(authMode), userDb.getUserId());
+                            UserAuth.getUiText(authMode), userDb.getUserId(),
+                            remoteAddr);
                     return;
                 }
 
@@ -779,7 +792,8 @@ public final class ReqLogin extends ApiRequestMixin {
                                 webAppType.getUiText(),
                                 UserAuth.getUiText(authMode),
                                 userDb.getUserId(),
-                                ACLRoleEnum.WEB_CASHIER.uiText(getLocale()));
+                                ACLRoleEnum.WEB_CASHIER.uiText(getLocale()),
+                                remoteAddr);
                         return;
                     }
                 } else if (webAppType == WebAppTypeEnum.JOBTICKETS) {
@@ -790,7 +804,20 @@ public final class ReqLogin extends ApiRequestMixin {
                                 UserAuth.getUiText(authMode),
                                 userDb.getUserId(),
                                 ACLRoleEnum.JOB_TICKET_OPERATOR
-                                        .uiText(getLocale()));
+                                        .uiText(getLocale()),
+                                remoteAddr);
+                        return;
+                    }
+                } else if (webAppType == WebAppTypeEnum.PRINTSITE) {
+                    if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
+                            ACLRoleEnum.PRINT_SITE_OPERATOR)) {
+                        onLoginFailed("msg-login-no-access-to-role",
+                                webAppType.getUiText(),
+                                UserAuth.getUiText(authMode),
+                                userDb.getUserId(),
+                                ACLRoleEnum.PRINT_SITE_OPERATOR
+                                        .uiText(getLocale()),
+                                remoteAddr);
                         return;
                     }
                 }
@@ -799,16 +826,15 @@ public final class ReqLogin extends ApiRequestMixin {
                  * Identify internal user.
                  */
                 isInternalUser = userDb.getInternal();
-
             }
 
             /*
              * Authenticate
              */
-            if (authMode == UserAuth.Mode.YUBIKEY
-                    || authMode == UserAuth.Mode.OAUTH) {
+            if (authMode == UserAuthModeEnum.YUBIKEY
+                    || authMode == UserAuthModeEnum.OAUTH) {
                 // no code intended
-            } else if (authMode == UserAuth.Mode.NAME) {
+            } else if (authMode == UserAuthModeEnum.NAME) {
 
                 if (isInternalUser) {
 
@@ -820,7 +846,8 @@ public final class ReqLogin extends ApiRequestMixin {
                          * INVARIANT: Password of Internal User must be correct.
                          */
                         onLoginFailed("msg-login-invalid-password",
-                                webAppType.getUiText(), userDb.getUserId());
+                                webAppType.getUiText(), userDb.getUserId(),
+                                remoteAddr);
                         return;
                     }
 
@@ -843,7 +870,7 @@ public final class ReqLogin extends ApiRequestMixin {
                          * INVARIANT: Password of External User must be correct.
                          */
                         onLoginFailed("msg-login-invalid-password",
-                                webAppType.getUiText(), uid);
+                                webAppType.getUiText(), uid, remoteAddr);
                         return;
                     }
 
@@ -877,11 +904,11 @@ public final class ReqLogin extends ApiRequestMixin {
                 /*
                  * Check PIN for both ID Number, Local and Network Card.
                  */
-                isAuthenticated = (authMode == UserAuth.Mode.ID
+                isAuthenticated = (authMode == UserAuthModeEnum.ID
                         && !theUserAuth.isAuthIdPinReq())
-                        || (authMode == UserAuth.Mode.CARD_IP
+                        || (authMode == UserAuthModeEnum.CARD_IP
                                 && !theUserAuth.isAuthCardPinReq())
-                        || (authMode == UserAuth.Mode.CARD_LOCAL
+                        || (authMode == UserAuthModeEnum.CARD_LOCAL
                                 && !theUserAuth.isAuthCardPinReq());
 
                 if (!isAuthenticated) {
@@ -891,7 +918,7 @@ public final class ReqLogin extends ApiRequestMixin {
                          * INVARIANT: PIN can NOT be empty.
                          */
                         onLoginFailed("msg-login-no-pin-available",
-                                webAppType.getUiText(), authId);
+                                webAppType.getUiText(), authId, remoteAddr);
                         return;
                     }
 
@@ -910,7 +937,7 @@ public final class ReqLogin extends ApiRequestMixin {
                      * INVARIANT: PIN must be correct.
                      */
                     onLoginFailed("msg-login-invalid-pin",
-                            webAppType.getUiText(), authId);
+                            webAppType.getUiText(), authId, remoteAddr);
                     return;
                 }
             }
@@ -971,7 +998,7 @@ public final class ReqLogin extends ApiRequestMixin {
          * Deny access, when the user is still not found in the database.
          */
         if (userDb == null) {
-            if (authMode == UserAuth.Mode.OAUTH) {
+            if (authMode == UserAuthModeEnum.OAUTH) {
                 /*
                  * This happens when "sp-login-oauth" URL parameter is still
                  * there, as backlash of a previous OAuth, and the Login page is
@@ -980,7 +1007,8 @@ public final class ReqLogin extends ApiRequestMixin {
                 onLoginFailed(null);
             } else {
                 onLoginFailed("msg-login-user-not-present",
-                        webAppType.getUiText(), authMode.toString(), "?");
+                        webAppType.getUiText(), authMode.toString(), "?",
+                        remoteAddr);
             }
             return;
         }
@@ -1116,9 +1144,10 @@ public final class ReqLogin extends ApiRequestMixin {
         } else {
 
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String.format(
-                        "%s WebApp AuthToken Login [%s] denied: user NOT found.",
-                        webAppType.toString(), uid));
+                LOGGER.trace(
+                        "{} WebApp AuthToken Login [{}] denied: "
+                                + "user NOT found.",
+                        webAppType.toString(), uid);
             }
 
             onLoginFailed(null);
@@ -1143,29 +1172,26 @@ public final class ReqLogin extends ApiRequestMixin {
                 return;
             }
 
-            final int minutes;
+            final IConfigProp.Key key;
 
-            if (ApiRequestHelper.isAuthTokenLoginEnabled()) {
-
-                minutes = 0;
-
+            if (webAppType == WebAppTypeEnum.ADMIN) {
+                key = IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMEOUT_MINS;
             } else {
-
-                final IConfigProp.Key configKey;
-
-                if (webAppType == WebAppTypeEnum.ADMIN) {
-                    configKey =
-                            IConfigProp.Key.WEB_LOGIN_ADMIN_SESSION_TIMEOUT_MINS;
-                } else {
-                    configKey =
-                            IConfigProp.Key.WEB_LOGIN_USER_SESSION_TIMEOUT_MINS;
-                }
-
-                minutes = ConfigManager.instance().getConfigInt(configKey);
-
+                key = IConfigProp.Key.WEB_LOGIN_USER_SESSION_TIMEOUT_MINS;
             }
-            session.setMaxInactiveInterval(
-                    minutes * DateUtil.SECONDS_IN_MINUTE);
+
+            final int timeout = ConfigManager.instance().getConfigInt(key)
+                    * DateUtil.SECONDS_IN_MINUTE;
+
+            final int interval;
+            if (ApiRequestHelper.isAuthTokenLoginEnabled()) {
+                // Mantis #1048
+                interval = timeout;
+            } else {
+                interval = timeout;
+            }
+
+            session.setMaxInactiveInterval(interval);
         }
     }
 
@@ -1332,8 +1358,8 @@ public final class ReqLogin extends ApiRequestMixin {
      * @param webAppType
      *            The {@link WebAppTypeEnum}.
      * @param authMode
-     *            The {@link UserAuth.Mode}. {@code null} when authenticated by
-     *            (WebApp or Client) token.
+     *            The {@link UserAuthModeEnum}. {@code null} when authenticated
+     *            by (WebApp or Client) token.
      * @param uid
      *            The User ID.
      * @param userDb
@@ -1345,8 +1371,9 @@ public final class ReqLogin extends ApiRequestMixin {
      */
     private void onUserLoginGranted(final Map<String, Object> userData,
             final SpSession session, final WebAppTypeEnum webAppType,
-            final UserAuth.Mode authMode, final String uid, final User userDb,
-            final UserAuthToken authToken) throws IOException {
+            final UserAuthModeEnum authMode, final String uid,
+            final User userDb, final UserAuthToken authToken)
+            throws IOException {
 
         userData.put("id", uid);
         userData.put("key_id", userDb.getId());
@@ -1372,12 +1399,11 @@ public final class ReqLogin extends ApiRequestMixin {
 
         final String cometdToken;
 
-        if (userDb.getAdmin()) {
+        if (webAppType == WebAppTypeEnum.ADMIN
+                || webAppType == WebAppTypeEnum.PRINTSITE) {
             cometdToken = CometdClientMixin.SHARED_USER_ADMIN_TOKEN;
-            userData.put("role", "admin"); // TODO
         } else {
             cometdToken = CometdClientMixin.SHARED_USER_TOKEN;
-            userData.put("role", "editor"); // TODO
         }
         userData.put("cometdToken", cometdToken);
 
@@ -1414,7 +1440,6 @@ public final class ReqLogin extends ApiRequestMixin {
                         System.currentTimeMillis(), msecJobExpiry);
             }
 
-            //
             INBOX_SERVICE.pruneOrphanJobs(ConfigManager.getUserHomeDir(uid),
                     userDb);
         }
@@ -1433,7 +1458,6 @@ public final class ReqLogin extends ApiRequestMixin {
      */
     private User onLazyCreateUser(final UserDao userDao, final User userAuth,
             final WebAppTypeEnum webAppType) {
-
         /*
          * Since the user does not exist in the database (yet) we cannot use SQL
          * row locking to protect concurrent user creation: therefore we use the
@@ -1505,7 +1529,8 @@ public final class ReqLogin extends ApiRequestMixin {
      * Handle login failure.
      *
      * @param msgKeyAdminPublish
-     *            When {@code null} no admin message is published.
+     *            When {@code null} no log entry is written and no admin message
+     *            is published.
      * @param args
      *            The arguments of the message
      */

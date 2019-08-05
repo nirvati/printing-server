@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ import org.savapage.core.SpException;
 import org.savapage.core.concurrent.ReadLockObtainFailedException;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.server.api.request.ApiRequestHandler;
 import org.savapage.server.api.request.ReqConfigPropGet;
@@ -39,7 +40,10 @@ import org.savapage.server.api.request.ReqDeviceDelete;
 import org.savapage.server.api.request.ReqDeviceGet;
 import org.savapage.server.api.request.ReqDeviceSet;
 import org.savapage.server.api.request.ReqDocLogRefund;
+import org.savapage.server.api.request.ReqDocLogTicketReopen;
 import org.savapage.server.api.request.ReqGenerateUuid;
+import org.savapage.server.api.request.ReqI18nCacheClear;
+import org.savapage.server.api.request.ReqInboxClear;
 import org.savapage.server.api.request.ReqJobTicketCancel;
 import org.savapage.server.api.request.ReqJobTicketExec;
 import org.savapage.server.api.request.ReqJobTicketPrintCancel;
@@ -48,18 +52,21 @@ import org.savapage.server.api.request.ReqJobTicketQuickSearch;
 import org.savapage.server.api.request.ReqJobTicketSave;
 import org.savapage.server.api.request.ReqLogin;
 import org.savapage.server.api.request.ReqLogout;
+import org.savapage.server.api.request.ReqMailTest;
 import org.savapage.server.api.request.ReqOAuthUrl;
 import org.savapage.server.api.request.ReqOutboxCancelAll;
 import org.savapage.server.api.request.ReqOutboxCancelJob;
 import org.savapage.server.api.request.ReqOutboxExtend;
+import org.savapage.server.api.request.ReqOutboxReleaseJob;
 import org.savapage.server.api.request.ReqPdfPropsSetValidate;
 import org.savapage.server.api.request.ReqPosDepositQuickSearch;
-import org.savapage.server.api.request.ReqPrintDelegationSet;
+import org.savapage.server.api.request.ReqPrintSiteUserSet;
 import org.savapage.server.api.request.ReqPrinterGet;
 import org.savapage.server.api.request.ReqPrinterOptValidate;
 import org.savapage.server.api.request.ReqPrinterPrint;
 import org.savapage.server.api.request.ReqPrinterQuickSearch;
 import org.savapage.server.api.request.ReqPrinterSet;
+import org.savapage.server.api.request.ReqPrinterSetMediaSources;
 import org.savapage.server.api.request.ReqPrinterSnmp;
 import org.savapage.server.api.request.ReqPrinterSync;
 import org.savapage.server.api.request.ReqQueueEnable;
@@ -69,7 +76,13 @@ import org.savapage.server.api.request.ReqSharedAccountGet;
 import org.savapage.server.api.request.ReqSharedAccountQuickSearch;
 import org.savapage.server.api.request.ReqSharedAccountSet;
 import org.savapage.server.api.request.ReqSystemModeChange;
+import org.savapage.server.api.request.ReqUrlPrint;
+import org.savapage.server.api.request.ReqUserCardQuickSearch;
+import org.savapage.server.api.request.ReqUserDelegateAccountsPreferred;
+import org.savapage.server.api.request.ReqUserDelegateGroupsPreferred;
 import org.savapage.server.api.request.ReqUserGet;
+import org.savapage.server.api.request.ReqUserGetDelegateAccountsPreferredSelect;
+import org.savapage.server.api.request.ReqUserGetDelegateGroupsPreferredSelect;
 import org.savapage.server.api.request.ReqUserGroupGet;
 import org.savapage.server.api.request.ReqUserGroupMemberQuickSearch;
 import org.savapage.server.api.request.ReqUserGroupQuickSearch;
@@ -80,7 +93,8 @@ import org.savapage.server.api.request.ReqUserNotifyAccountChange;
 import org.savapage.server.api.request.ReqUserPasswordErase;
 import org.savapage.server.api.request.ReqUserQuickSearch;
 import org.savapage.server.api.request.ReqUserSet;
-import org.savapage.server.webapp.WebAppTypeEnum;
+import org.savapage.server.api.request.ReqUserSetDelegateAccountsPreferredSelect;
+import org.savapage.server.api.request.ReqUserSetDelegateGroupsPreferredSelect;
 
 /**
  * A dedicated class for initializing the JSON API dictionary at the right time.
@@ -88,7 +102,7 @@ import org.savapage.server.webapp.WebAppTypeEnum;
  * @author Rijk Ravestein
  *
  */
-public class JsonApiDict {
+public final class JsonApiDict {
 
     public static final String PARM_WEBAPP_TYPE = "webAppType";
     public static final String PARM_REQ = "request";
@@ -125,6 +139,8 @@ public class JsonApiDict {
     public static final String REQ_DEVICE_SET = "device-set";
 
     public static final String REQ_DOCLOG_REFUND = "doclog-refund";
+    public static final String REQ_DOCLOG_TICKET_REOPEN =
+            "doclog-ticket-reopen";
 
     public static final String REQ_EXIT_EVENT_MONITOR = "exit-event-monitor";
     public static final String REQ_GCP_GET_DETAILS = "gcp-get-details";
@@ -135,10 +151,13 @@ public class JsonApiDict {
             "gcp-set-notifications";
     public static final String REQ_GET_EVENT = "get-event";
 
+    public static final String REQ_I18N_CACHE_CLEAR = "i18n-cache-clear";
+
     public static final String REQ_IMAP_TEST = "imap-test";
     public static final String REQ_IMAP_START = "imap-start";
     public static final String REQ_IMAP_STOP = "imap-stop";
 
+    public static final String REQ_INBOX_CLEAR = "inbox-clear";
     public static final String REQ_INBOX_JOB_DELETE = "inbox-job-delete";
     public static final String REQ_INBOX_JOB_EDIT = "inbox-job-edit";
     public static final String REQ_INBOX_JOB_PAGES = "inbox-job-pages";
@@ -200,6 +219,7 @@ public class JsonApiDict {
 
     public static final String REQ_OUTBOX_CLEAR = "outbox-clear";
     public static final String REQ_OUTBOX_DELETE_JOB = "outbox-delete-job";
+    public static final String REQ_OUTBOX_RELEASE_JOB = "outbox-release-job";
     public static final String REQ_OUTBOX_EXTEND = "outbox-extend";
 
     public static final String REQ_PAGE_DELETE = "page-delete";
@@ -211,6 +231,11 @@ public class JsonApiDict {
     public static final String REQ_PDF = "pdf";
     public static final String REQ_PDF_OUTBOX = "pdf-outbox";
     public static final String REQ_PDF_JOBTICKET = "pdf-jobticket";
+    public static final String REQ_PDF_DOCSTORE_ARCHIVE =
+            "pdf-docstore-archive";
+    public static final String REQ_PDF_DOCSTORE_JOURNAL =
+            "pdf-docstore-journal";
+
     public static final String REQ_PDF_GET_PROPERTIES = "pdf-get-properties";
     public static final String REQ_PDF_SET_PROPERTIES = "pdf-set-properties";
 
@@ -245,8 +270,8 @@ public class JsonApiDict {
     public static final String REQ_PRINT_AUTH_CANCEL = "print-auth-cancel";
     public static final String REQ_PRINT_FAST_RENEW = "print-fast-renew";
 
-    public static final String REQ_PRINT_DELEGATION_SET =
-            "print-delegation-set";
+    public static final String REQ_PRINTER_PPD_DOWNLOAD =
+            "printer-ppd-download";
 
     public static final String REQ_PRINTER_OPT_DOWNLOAD =
             "printer-opt-download";
@@ -298,7 +323,25 @@ public class JsonApiDict {
     public static final String REQ_USER_QUICK_SEARCH = "user-quick-search";
     public static final String REQ_USER_SET = "user-set";
     public static final String REQ_USER_SOURCE_GROUPS = "user-source-groups";
+
+    public static final String REQ_USERCARD_QUICK_SEARCH =
+            "usercard-quick-search";
+
     public static final String REQ_USER_SYNC = "user-sync";
+
+    public static final String REQ_USER_DELEGATE_GROUPS_PREFERRED =
+            "user-delegate-groups-preferred";
+    public static final String REQ_USER_SET_DELEGATE_GROUPS_PREFERRED_SELECT =
+            "user-set-delegate-groups-preferred-select";
+    public static final String REQ_USER_GET_DELEGATE_GROUPS_PREFERRED_SELECT =
+            "user-get-delegate-groups-preferred-select";
+
+    public static final String REQ_USER_DELEGATE_ACCOUNTS_PREFERRED =
+            "user-delegate-accounts-preferred";
+    public static final String REQ_USER_SET_DELEGATE_ACCOUNTS_PREFERRED_SELECT =
+            "user-set-delegate-accounts-preferred-select";
+    public static final String REQ_USER_GET_DELEGATE_ACCOUNTS_PREFERRED_SELECT =
+            "user-get-delegate-accounts-preferred-select";
 
     public static final String REQ_USERGROUPS_ADD_REMOVE =
             "usergroups-add-remove";
@@ -314,6 +357,10 @@ public class JsonApiDict {
             "usergroup-member-quick-search";
 
     public static final String REQ_GENERATE_UUID = "generate-uuid";
+
+    public static final String REQ_PRINTSITE_USER_SET = "printsite-user-set";
+
+    public static final String REQ_URL_PRINT = "url-print";
 
     /**
      */
@@ -543,28 +590,55 @@ public class JsonApiDict {
 
     /**
      *
+     * @param request
+     *            The request id.
+     * @param uid
+     *            The requesting user id.
+     * @return context ID for lock.
+     */
+    private static String createLockContextId(final String request,
+            final String uid) {
+        return String.format("%s:%s", request, uid);
+    }
+
+    /**
+     *
      * @param lock
      *            The {@link LetterheadLock}.
+     * @param request
+     *            The request id.
+     * @param uid
+     *            The requesting user id.
      */
-    public void lock(final LetterheadLock lock) {
+    public void lock(final LetterheadLock lock, final String request,
+            final String uid) {
         if (lock == JsonApiDict.LetterheadLock.READ) {
-            ReadWriteLockEnum.LETTERHEAD_STORE.setReadLock(true);
+            ReadWriteLockEnum.LETTERHEAD_STORE.setReadLock(true,
+                    createLockContextId(request, uid));
         } else if (lock == JsonApiDict.LetterheadLock.UPDATE) {
-            ReadWriteLockEnum.LETTERHEAD_STORE.setWriteLock(true);
+            ReadWriteLockEnum.LETTERHEAD_STORE.setWriteLock(true,
+                    createLockContextId(request, uid));
         }
     }
 
     /**
      * @param claim
      *            The {@link DbClaim}.
+     * @param request
+     *            The request id.
+     * @param uid
+     *            The requesting user id.
      * @throws ReadLockObtainFailedException
      *             When lock could not be acquired.
      */
-    public void lock(final DbClaim claim) throws ReadLockObtainFailedException {
+    public void lock(final DbClaim claim, final String request,
+            final String uid) throws ReadLockObtainFailedException {
         if (claim == JsonApiDict.DbClaim.READ) {
-            ReadWriteLockEnum.DATABASE_READONLY.tryReadLock();
+            ReadWriteLockEnum.DATABASE_READONLY
+                    .tryReadLock(createLockContextId(request, uid));
         } else if (claim == JsonApiDict.DbClaim.EXCLUSIVE) {
-            ReadWriteLockEnum.DATABASE_READONLY.setWriteLock(true);
+            ReadWriteLockEnum.DATABASE_READONLY.setWriteLock(true,
+                    createLockContextId(request, uid));
         }
     }
 
@@ -697,12 +771,15 @@ public class JsonApiDict {
         case REQ_PDF:
         case REQ_PDF_OUTBOX:
         case REQ_PDF_JOBTICKET:
+        case REQ_PDF_DOCSTORE_ARCHIVE:
+        case REQ_PDF_DOCSTORE_JOURNAL:
         case REQ_REPORT:
         case REQ_REPORT_USER:
         case REQ_ACCOUNT_VOUCHER_BATCH_PRINT:
         case REQ_PAPERCUT_DELEGATOR_COST_CSV:
         case REQ_POS_RECEIPT_DOWNLOAD:
         case REQ_POS_RECEIPT_DOWNLOAD_USER:
+        case REQ_PRINTER_PPD_DOWNLOAD:
         case REQ_PRINTER_OPT_DOWNLOAD:
         case REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
         case REQ_USER_EXPORT_DATA_HISTORY:
@@ -794,6 +871,9 @@ public class JsonApiDict {
             final ACLRoleEnum role = iter.next();
 
             switch (role) {
+            case PRINT_SITE_OPERATOR:
+                allowed = webAppType == WebAppTypeEnum.PRINTSITE;
+                break;
             case JOB_TICKET_CREATOR:
                 allowed = webAppType == WebAppTypeEnum.USER;
                 break;
@@ -860,6 +940,9 @@ public class JsonApiDict {
         acl(REQ_DOCLOG_REFUND, ReqDocLogRefund.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
+        acl(REQ_DOCLOG_TICKET_REOPEN, ReqDocLogTicketReopen.class, DbClaim.READ,
+                DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
+
         usr(REQ_EXIT_EVENT_MONITOR, DbClaim.NONE, DbAccess.NO);
         adm(REQ_GCP_GET_DETAILS, DbClaim.READ, DbAccess.YES);
         adm(REQ_GCP_ONLINE, DbClaim.READ, DbAccess.YES);
@@ -882,6 +965,9 @@ public class JsonApiDict {
                 DbAccess.NO);
 
         adm(REQ_PAPERCUT_DELEGATOR_COST_CSV, DbClaim.NONE, DbAccess.NO);
+
+        usr(REQ_INBOX_CLEAR, ReqInboxClear.class, DbClaim.NONE,
+                DbAccess.USER_LOCK);
 
         usr(REQ_INBOX_JOB_DELETE, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_INBOX_JOB_EDIT, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -929,7 +1015,7 @@ public class JsonApiDict {
         usr(REQ_WEBAPP_UNLOAD, DbClaim.NONE, DbAccess.NO);
         put(REQ_WEBAPP_CLOSE_SESSION, AuthReq.NONE, DbClaim.NONE, DbAccess.NO);
 
-        adm(REQ_MAIL_TEST, DbClaim.NONE, DbAccess.NO);
+        adm(REQ_MAIL_TEST, ReqMailTest.class, DbClaim.NONE, DbAccess.NO);
 
         usr(REQ_OUTBOX_CLEAR, ReqOutboxCancelAll.class, DbClaim.NONE,
                 DbAccess.USER_LOCK);
@@ -938,6 +1024,9 @@ public class JsonApiDict {
         usr(REQ_OUTBOX_EXTEND, ReqOutboxExtend.class, DbClaim.NONE,
                 DbAccess.USER_LOCK);
 
+        acl(REQ_OUTBOX_RELEASE_JOB, ReqOutboxReleaseJob.class, DbClaim.READ,
+                DbAccess.YES, EnumSet.of(ACLRoleEnum.PRINT_SITE_OPERATOR));
+
         adm(REQ_PAGOMETER_RESET, DbClaim.EXCLUSIVE, DbAccess.YES);
 
         usr(REQ_PAGE_DELETE, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -945,8 +1034,11 @@ public class JsonApiDict {
 
         usr(REQ_PDF, DbClaim.READ, DbAccess.USER_LOCK);
         usr(REQ_PDF_OUTBOX, DbClaim.NONE, DbAccess.NO);
+        usr(REQ_PDF_DOCSTORE_ARCHIVE, DbClaim.NONE, DbAccess.NO);
+        usr(REQ_PDF_DOCSTORE_JOURNAL, DbClaim.NONE, DbAccess.NO);
         acl(REQ_PDF_JOBTICKET, DbClaim.NONE, DbAccess.NO,
                 EnumSet.of(ACLRoleEnum.JOB_TICKET_CREATOR,
+                        ACLRoleEnum.PRINT_SITE_OPERATOR,
                         ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         usr(REQ_PDF_GET_PROPERTIES, DbClaim.NONE, DbAccess.YES);
@@ -988,16 +1080,24 @@ public class JsonApiDict {
 
         adm(REQ_PRINTER_GET, ReqPrinterGet.class, DbClaim.NONE, DbAccess.YES);
 
+        adm(REQ_PRINTER_PPD_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
         adm(REQ_PRINTER_OPT_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
+
         usr(REQ_PRINTER_PRINT, ReqPrinterPrint.class, DbClaim.READ,
                 DbAccess.USER_LOCK);
 
         usr(REQ_PRINTER_QUICK_SEARCH, ReqPrinterQuickSearch.class, DbClaim.READ,
                 DbAccess.YES);
 
+        usr(REQ_URL_PRINT, ReqUrlPrint.class, DbClaim.NONE, DbAccess.NO);
+
+        adm(REQ_I18N_CACHE_CLEAR, ReqI18nCacheClear.class, DbClaim.NONE,
+                DbAccess.NO);
+
         adm(REQ_PRINTER_SET, ReqPrinterSet.class, DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_SET_MEDIA_COST, DbClaim.READ, DbAccess.YES);
-        adm(REQ_PRINTER_SET_MEDIA_SOURCES, DbClaim.READ, DbAccess.YES);
+        adm(REQ_PRINTER_SET_MEDIA_SOURCES, ReqPrinterSetMediaSources.class,
+                DbClaim.READ, DbAccess.YES);
         adm(REQ_PRINTER_RENAME, DbClaim.READ, DbAccess.YES);
 
         adm(REQ_PRINTER_SYNC, ReqPrinterSync.class, DbClaim.READ, DbAccess.YES);
@@ -1045,12 +1145,41 @@ public class JsonApiDict {
                 EnumSet.of(ACLRoleEnum.WEB_CASHIER));
 
         acl(REQ_USER_QUICK_SEARCH, ReqUserQuickSearch.class, DbClaim.READ,
-                DbAccess.YES, EnumSet.of(ACLRoleEnum.WEB_CASHIER,
+                DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.WEB_CASHIER,
+                        ACLRoleEnum.PRINT_SITE_OPERATOR,
+                        ACLRoleEnum.JOB_TICKET_OPERATOR));
+
+        acl(REQ_USERCARD_QUICK_SEARCH, ReqUserCardQuickSearch.class,
+                DbClaim.READ, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.WEB_CASHIER,
+                        ACLRoleEnum.PRINT_SITE_OPERATOR,
                         ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         adm(REQ_USER_SET, ReqUserSet.class, DbClaim.READ, DbAccess.YES);
+
         adm(REQ_USER_SOURCE_GROUPS, DbClaim.NONE, DbAccess.NO);
         adm(REQ_USER_SYNC, DbClaim.NONE, DbAccess.NO);
+
+        usr(REQ_USER_DELEGATE_GROUPS_PREFERRED,
+                ReqUserDelegateGroupsPreferred.class, DbClaim.READ,
+                DbAccess.YES);
+        usr(REQ_USER_GET_DELEGATE_GROUPS_PREFERRED_SELECT,
+                ReqUserGetDelegateGroupsPreferredSelect.class, DbClaim.NONE,
+                DbAccess.YES);
+        usr(REQ_USER_SET_DELEGATE_GROUPS_PREFERRED_SELECT,
+                ReqUserSetDelegateGroupsPreferredSelect.class, DbClaim.READ,
+                DbAccess.YES);
+
+        usr(REQ_USER_DELEGATE_ACCOUNTS_PREFERRED,
+                ReqUserDelegateAccountsPreferred.class, DbClaim.READ,
+                DbAccess.YES);
+        usr(REQ_USER_GET_DELEGATE_ACCOUNTS_PREFERRED_SELECT,
+                ReqUserGetDelegateAccountsPreferredSelect.class, DbClaim.NONE,
+                DbAccess.YES);
+        usr(REQ_USER_SET_DELEGATE_ACCOUNTS_PREFERRED_SELECT,
+                ReqUserSetDelegateAccountsPreferredSelect.class, DbClaim.READ,
+                DbAccess.YES);
 
         adm(REQ_USERGROUPS_ADD_REMOVE, ReqUserGroupsAddRemove.class,
                 DbClaim.READ, DbAccess.YES);
@@ -1066,10 +1195,9 @@ public class JsonApiDict {
         usr(REQ_USERGROUP_MEMBER_QUICK_SEARCH,
                 ReqUserGroupMemberQuickSearch.class, DbClaim.READ,
                 DbAccess.YES);
-
-        usr(REQ_PRINT_DELEGATION_SET, ReqPrintDelegationSet.class, DbClaim.READ,
-                DbAccess.YES);
-
+        //
+        acl(REQ_PRINTSITE_USER_SET, ReqPrintSiteUserSet.class, DbClaim.READ,
+                DbAccess.YES, EnumSet.of(ACLRoleEnum.PRINT_SITE_OPERATOR));
     }
 
     /**

@@ -4,7 +4,7 @@
 	<!-- 
     +=========================================================================+ 
     | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2018 Datraverse B.V. | Author: Rijk Ravestein........| 
+    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein........| 
     |.........................................................................| 
     | SavaPage is free software: you can redistribute it and/or modify .......|
     | it under the terms of the GNU Affero General Public License as .........|
@@ -146,18 +146,53 @@
 				</div>
 			</wicket:enclosure>
 
+			<wicket:enclosure child="label-jobticket-domain">
+				<div class="ui-field-contain sp-jobticket-labels">
+
+					<label data-mini="true" class="sp-txt-wrap"
+						for="sp-jobticket-domain-list" wicket:id="label-jobticket-domain" />
+
+					<select data-mini="true" id="sp-jobticket-domain-list">
+						<option value="" wicket:id="jobticket-domain-option-select" />
+						<optgroup label="&#11835;&#11835;&#11835;&#11835;">
+							<wicket:panel wicket:id="jobticket-domain-option">
+								<option value="the-key" wicket:id="option"></option>
+							</wicket:panel>
+						</optgroup>
+					</select>
+				</div>
+			</wicket:enclosure>
+
+			<wicket:enclosure child="label-jobticket-use">
+				<div class="ui-field-contain sp-jobticket-labels">
+
+					<label data-mini="true" class="sp-txt-wrap"
+						for="sp-jobticket-use-list" wicket:id="label-jobticket-use" />
+
+					<select data-mini="true" id="sp-jobticket-use-list">
+						<option value="" wicket:id="jobticket-use-option-select" />
+						<optgroup label="&#11835;&#11835;&#11835;&#11835;">
+							<wicket:panel wicket:id="jobticket-use-option">
+								<option value="the-key" wicket:id="option"></option>
+							</wicket:panel>
+						</optgroup>
+					</select>
+				</div>
+			</wicket:enclosure>
+
 			<wicket:enclosure child="label-jobticket-tag">
-				<div class="ui-field-contain sp-jobticket"
-					id="sp-jobticket-tag-list-div">
+				<div class="ui-field-contain sp-jobticket-labels">
 
 					<label data-mini="true" class="sp-txt-wrap"
 						for="sp-jobticket-tag-list" wicket:id="label-jobticket-tag" />
 
 					<select data-mini="true" id="sp-jobticket-tag-list">
 						<option value="" wicket:id="jobticket-tag-option-select" />
-						<wicket:panel wicket:id="jobticket-tag-option">
-							<option value="the-key" wicket:id="option"></option>
-						</wicket:panel>
+						<optgroup label="&#11835;&#11835;&#11835;&#11835;">
+							<wicket:panel wicket:id="jobticket-tag-option">
+								<option value="the-key" wicket:id="option"></option>
+							</wicket:panel>
+						</optgroup>
 					</select>
 				</div>
 			</wicket:enclosure>
@@ -171,19 +206,34 @@
 
 					<select data-mini="true" id="sp-print-shared-account-list"
 						data-native-menu=true>
-						<option value="0" selected><wicket:message
-								key="account-type-personal" /></option>
-						<optgroup label="&#11835;&#11835;&#11835;&#11835;">
-							<wicket:panel wicket:id="print-shared-account-option">
-								<option value="the-key" wicket:id="option"></option>
-							</wicket:panel>
-						</optgroup>
+
+						<wicket:enclosure child="print-account-type-personal">
+							<option value="0" selected
+								wicket:id="print-account-type-personal" />
+							<optgroup label="&#11835;&#11835;&#11835;&#11835;">
+								<wicket:panel wicket:id="print-shared-account-option-extra">
+									<option value="the-key" wicket:id="option-extra" />
+								</wicket:panel>
+							</optgroup>
+						</wicket:enclosure>
+
+						<wicket:enclosure child="print-shared-account-option-only">
+							<option value="-1" wicket:id="btn-select-shared-account" />
+							<optgroup label="&#11835;&#11835;&#11835;&#11835;">
+								<wicket:panel wicket:id="print-shared-account-option-only">
+									<option value="the-key" wicket:id="option-only" />
+								</wicket:panel>
+							</optgroup>
+						</wicket:enclosure>
+
 					</select>
 
 				</div>
 			</wicket:enclosure>
 
-			<hr style="opacity: 0.2;" />
+			<wicket:enclosure child="print-account-separator">
+				<hr style="opacity: 0.2;" />
+			</wicket:enclosure>
 
 			<div class="ui-field-contain sp-proxyprint sp-jobticket-print">
 				<label data-mini="true" for="print-job-list" class="sp-txt-wrap">
@@ -228,7 +278,8 @@
 				</label>
 				<input type="text" data-clear-btn="true" id="print-page-ranges"
 					value="" pattern="[0-9]*" autocomplete="off" autocorrect="off"
-					autocapitalize="off" spellcheck="false" />
+					autocapitalize="off" spellcheck="false"
+					wicket:id="print-page-ranges" />
 			</div>
 
 			<div class="ui-field-contain" id="sp-jobticket-copy-pages-div">
@@ -350,6 +401,23 @@
 						wicket:id="delete-pages-after-print-warn" />
 				</div>
 			</wicket:enclosure>
+
+			<wicket:enclosure child="archive-print-job-prompt">
+				<div
+					class="sp-proxyprint sp-jobticket-print sp-proxyprint-archive sp-txt-wrap">
+					<hr style="opacity: 0.2; margin-top: 15px;" />
+					<span wicket:id="archive-print-job-prompt" />
+				</div>
+			</wicket:enclosure>
+
+			<wicket:enclosure child="archive-print-job">
+				<div
+					class="ui-mini sp-proxyprint sp-jobticket-print sp-proxyprint-archive">
+					<label for="print-archive-print-job" wicket:id="archive-print-job" />
+					<input type="checkbox" id="print-archive-print-job" value="0" />
+				</div>
+			</wicket:enclosure>
+
 		</li>
 
 		<li class="sp-jobticket" data-mini="true">
@@ -357,20 +425,30 @@
 			<wicket:enclosure child="prompt-jobticket-delivery-datetime">
 				<span class="sp-txt-wrap"
 					wicket:id="prompt-jobticket-delivery-datetime" />
-				<table>
+				<span style="font-size: small;">&bull;</span>
+				<span style="font-size: small;" class="sp-txt-wrap"
+					wicket:id="prompt-jobticket-delivery-datetime-weekdays" />
+				<table width="100%" style="font-size: 90%;">
 					<tr>
 						<td>
-							<input id="sp-jobticket-date" data-clear-btn="true" />
+							<div wicket:id="btn-jobticket-datetime-default"
+								id="sp-btn-jobticket-datetime-default"
+								class="ui-input-btn ui-btn ui-icon-recycle ui-btn-icon-notext ui-corner-all" />
 						</td>
-						<td>
-							<input type="number" data-clear-btn="true" id="sp-jobticket-hrs"
-								min="0" max="23" step="1" value="" />
+						<td style="padding-left: 0px;">
+							<input id="sp-jobticket-date" />
 						</td>
-						<td>:</td>
-						<td>
-							<input type="number" data-clear-btn="true" id="sp-jobticket-min"
-								min="0" max="45" step="15" value="" />
-						</td>
+						<wicket:enclosure child="jobticket-delivery-time-hr">
+							<td style="padding: 0px; width: 60px;">
+								<input wicket:id="jobticket-delivery-time-hr" type="number"
+									id="sp-jobticket-hrs" min="0" max="23" step="1" value="" />
+							</td>
+							<td align="center">:</td>
+							<td style="padding: 0px; width: 60px;">
+								<input type="number" id="sp-jobticket-min" min="0" max="45"
+									step="15" value="" />
+							</td>
+						</wicket:enclosure>
 					</tr>
 				</table>
 			</wicket:enclosure>

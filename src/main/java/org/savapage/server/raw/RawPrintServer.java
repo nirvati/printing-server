@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.PerformanceLogger;
 import org.savapage.core.SpException;
@@ -41,6 +40,7 @@ import org.savapage.core.SpInfo;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
+import org.savapage.core.concurrent.ReadLockObtainFailedException;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.IppQueueDao;
@@ -54,6 +54,7 @@ import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.users.AbstractUserSource;
+import org.savapage.core.util.IOHelper;
 import org.savapage.server.WebApp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,9 +74,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class RawPrintServer extends Thread implements ServiceEntryPoint {
 
-    /**
-     * .
-     */
+    /** */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(RawPrintServer.class);
 
@@ -95,15 +94,11 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
      */
     private static final int POLL_FOR_ACTIVE_REQUESTS_MSEC = 1000;
 
-    /**
-     * .
-     */
+    /** */
     private static final QueueService QUEUE_SERVICE =
             ServiceContext.getServiceFactory().getQueueService();
 
-    /**
-     * .
-     */
+    /** */
     private boolean keepAcceptingRequests = true;
 
     /**
@@ -249,7 +244,7 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
                 }
             } finally {
                 // All data exchanged: close socket
-                IOUtils.closeQuietly(mySocket);
+                IOHelper.closeQuietly(mySocket);
             }
 
             myServer.onRequestFinish();
@@ -400,12 +395,9 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
         if (words.length >= 5 && words[0].equalsIgnoreCase(PJL_COMMAND_PFX)
                 && words[1].equalsIgnoreCase(PJL_TOKEN_SET)
                 && words[2].equalsIgnoreCase(PJL_TOKEN_USERNAME)) {
-            return StringUtils
-                    .strip(StringUtils
-                            .substring(pjlLine,
-                                    StringUtils.indexOf(pjlLine, "=") + 1)
-                            .trim(), "\"\"")
-                    .trim();
+            return StringUtils.strip(StringUtils
+                    .substring(pjlLine, StringUtils.indexOf(pjlLine, "=") + 1)
+                    .trim(), "\"\"").trim();
         }
         return null;
     }
@@ -637,14 +629,16 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
         DocContentPrintProcessor processor = null;
         IppQueue queue = null;
         boolean isAuthorized = false;
-
-        ReadWriteLockEnum.DATABASE_READONLY.setReadLock(true);
+        boolean isDbReadLock = false;
 
         /*
          * NOTE: There is NO top level database transaction. Specialized methods
          * have their own database transaction.
          */
         try {
+
+            ReadWriteLockEnum.DATABASE_READONLY.tryReadLock();
+            isDbReadLock = true;
 
             final IppQueueDao queueDao =
                     ServiceContext.getDaoContext().getIppQueueDao();
@@ -654,10 +648,12 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
             /*
              * Allowed to print?
              */
-            final String uri = "RAW:" + this.port;
+            final String uri = String.format("RAW: %d", this.port);
 
             final boolean clientIpAllowed = QUEUE_SERVICE
                     .hasClientIpAccessToQueue(queue, uri, originatorIp);
+
+            String warn = null;
 
             if (clientIpAllowed) {
 
@@ -668,13 +664,33 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
 
                 processor.processRequestingUser(userid);
 
-                isAuthorized = clientIpAllowed && processor.isAuthorized();
+                isAuthorized = processor.isAuthorized();
 
                 if (isAuthorized) {
                     processor.process(istr, DocLogProtocolEnum.RAW, null,
                             DocContentTypeEnum.PS, null);
+                } else {
+                    warn = String.format(
+                            "IP Print on queue /%s denied for "
+                                    + "user \"%s\" from %s",
+                            ReservedIppQueueEnum.RAW_PRINT.getUrlPath(), userid,
+                            originatorIp);
                 }
+
+            } else {
+                warn = String.format("IP Print on queue /%s denied for host %s",
+                        ReservedIppQueueEnum.RAW_PRINT.getUrlPath(),
+                        originatorIp);
             }
+
+            if (warn != null) {
+                LOGGER.warn(warn);
+                AdminPublisher.instance().publish(PubTopicEnum.USER,
+                        PubLevelEnum.WARN, warn);
+            }
+
+        } catch (ReadLockObtainFailedException e) {
+            LOGGER.warn("application temporarily unavailable.");
 
         } catch (Exception e) {
 
@@ -685,12 +701,16 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
             }
 
         } finally {
-            ReadWriteLockEnum.DATABASE_READONLY.setReadLock(false);
+            if (isDbReadLock) {
+                ReadWriteLockEnum.DATABASE_READONLY.setReadLock(false);
+            }
             consumeWithoutProcessing(istr);
             ServiceContext.close();
         }
 
-        processor.evaluateErrorState(isAuthorized);
+        if (processor != null) {
+            processor.evaluateErrorState(isAuthorized);
+        }
 
         PerformanceLogger.log(this.getClass(), "readAndPrint", perfStartTime,
                 userid);
@@ -785,7 +805,7 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
             }
         }
 
-        IOUtils.closeQuietly(serverSocket);
+        IOHelper.closeQuietly(serverSocket);
     }
 
     /**

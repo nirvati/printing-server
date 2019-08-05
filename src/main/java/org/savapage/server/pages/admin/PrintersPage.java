@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
@@ -52,6 +51,8 @@ import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.AbstractPagerReq;
 import org.savapage.core.dao.helpers.JsonUserGroupAccess;
 import org.savapage.core.dao.helpers.ProxyPrinterSnmpInfoDto;
+import org.savapage.core.doc.store.DocStoreBranchEnum;
+import org.savapage.core.doc.store.DocStoreTypeEnum;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.ipp.IppSyntaxException;
 import org.savapage.core.ipp.client.IppConnectException;
@@ -63,15 +64,16 @@ import org.savapage.core.json.TimeSeriesInterval;
 import org.savapage.core.print.proxy.JsonProxyPrinter;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.DeviceService;
+import org.savapage.core.services.DocStoreService;
 import org.savapage.core.services.PrinterService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.PrinterAttrLookup;
 import org.savapage.core.services.helpers.ThirdPartyEnum;
-import org.savapage.core.util.InetUtils;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.papercut.PaperCutHelper;
 import org.savapage.server.WebApp;
+import org.savapage.server.helpers.HtmlPrinterImgEnum;
 import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
@@ -104,6 +106,10 @@ public final class PrintersPage extends AbstractAdminListPage {
             ServiceContext.getServiceFactory().getDeviceService();
 
     /** */
+    private static final DocStoreService DOC_STORE_SERVICE =
+            ServiceContext.getServiceFactory().getDocStoreService();
+
+    /** */
     private static final PrinterService PRINTER_SERVICE =
             ServiceContext.getServiceFactory().getPrinterService();
 
@@ -119,6 +125,14 @@ public final class PrintersPage extends AbstractAdminListPage {
      * Note: must be odd number.
      */
     private static final int MAX_PAGES_IN_NAVBAR = 5;
+
+    /** */
+    private static final String CSS_CLASS_PRINTER_OPT_DOWNLOAD =
+            "sp-printer-opt-download";
+
+    /** */
+    private static final String CSS_CLASS_PRINTER_PPD_DOWNLOAD =
+            "sp-printer-ppd-download";
 
     /**
      * Bean for mapping JSON page request.
@@ -243,6 +257,11 @@ public final class PrintersPage extends AbstractAdminListPage {
         /** */
         private final boolean showCups;
 
+        /** */
+        private final boolean isArchiveEnabled;
+        /** */
+        private final boolean isJournalEnabled;
+
         /**
          *
          * @param id
@@ -250,7 +269,7 @@ public final class PrintersPage extends AbstractAdminListPage {
          * @param isEditor
          */
         public PrintersListView(final String id, final List<Printer> entryList,
-                final boolean isEditor) {
+                final boolean isEditor, final boolean showCupsBtn) {
 
             super(id, entryList);
 
@@ -261,10 +280,21 @@ public final class PrintersPage extends AbstractAdminListPage {
             this.showSnmp = ConfigManager.instance()
                     .isConfigValue(Key.PRINTER_SNMP_ENABLE);
 
-            this.showCups = InetUtils.isIntranetBrowserHost(
-                    this.getRequest().getClientUrl().getHost());
+            this.showCups = showCupsBtn;
+
+            this.isArchiveEnabled = DOC_STORE_SERVICE.isEnabled(
+                    DocStoreTypeEnum.ARCHIVE, DocStoreBranchEnum.OUT_PRINT);
+
+            this.isJournalEnabled = DOC_STORE_SERVICE.isEnabled(
+                    DocStoreTypeEnum.JOURNAL, DocStoreBranchEnum.OUT_PRINT);
         }
 
+        /**
+         *
+         * @param device
+         *            Device.
+         * @return Auth mode string.
+         */
         private String getProxyPrintAuthMode(final Device device) {
 
             final StringBuilder proxyPrintAuthMode = new StringBuilder();
@@ -301,6 +331,32 @@ public final class PrintersPage extends AbstractAdminListPage {
                 }
             }
             return proxyPrintAuthMode.toString();
+        }
+
+        /**
+         * @param helper
+         *            Mark-up helper.
+         * @param printer
+         *            Printer.
+         */
+        private void addDocStoreImg(final MarkupHelper helper,
+                final boolean enabled, final String png, final String widImg,
+                final NounEnum nounTitle) {
+
+            if (enabled) {
+
+                final StringBuilder imgSrc = new StringBuilder();
+                imgSrc.setLength(0);
+                imgSrc.append(WebApp.PATH_IMAGES).append('/');
+                imgSrc.append(png);
+
+                MarkupHelper.modifyLabelAttr(
+                        helper.addModifyLabelAttr(widImg, MarkupHelper.ATTR_SRC,
+                                imgSrc.toString()),
+                        MarkupHelper.ATTR_TITLE, nounTitle.uiText(getLocale()));
+            } else {
+                helper.discloseLabel(widImg);
+            }
         }
 
         @Override
@@ -373,26 +429,26 @@ public final class PrintersPage extends AbstractAdminListPage {
                 MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
                         SparklineHtml.CSS_CLASS_PRINTER);
             }
+
+            //
+            addDocStoreImg(helper, this.isArchiveEnabled && !PRINTER_SERVICE
+                    .isDocStoreDisabled(DocStoreTypeEnum.ARCHIVE, printer),
+                    "archive-16x16.png", "img-archive", NounEnum.ARCHIVE);
+
+            addDocStoreImg(helper, this.isJournalEnabled && !PRINTER_SERVICE
+                    .isDocStoreDisabled(DocStoreTypeEnum.JOURNAL, printer),
+                    "journal-16x16.png", "img-journal", NounEnum.JOURNAL);
+
             //
             item.add(new Label("displayName"));
-
-            labelWrk = new Label("printerName");
-            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_DATA_SAVAPAGE,
-                    printer.getId()));
-
-            item.add(labelWrk);
-
-            final boolean isJobTicketPrinter =
-                    PRINTER_SERVICE.isJobTicketPrinter(printer);
-
-            final String imageSrc;
 
             final Map<String, Device> terminalDevices = new HashMap<>();
             final Map<String, Device> readerDevices = new HashMap<>();
 
-            if (isJobTicketPrinter) {
+            final HtmlPrinterImgEnum printerImg =
+                    getImgSrc(printer, terminalDevices, readerDevices);
 
-                imageSrc = "printer-jobticket-32x32.png";
+            if (printerImg == HtmlPrinterImgEnum.JOBTICKET) {
 
                 helper.addLabel("ticketGroupPrompt",
                         NounEnum.GROUP.uiText(getLocale()));
@@ -400,42 +456,12 @@ public final class PrintersPage extends AbstractAdminListPage {
                 helper.addLabel(WID_TICKET_GROUP,
                         PRINTER_SERVICE.getAttributeValue(printer,
                                 PrinterAttrEnum.JOBTICKET_PRINTER_GROUP));
-
             } else {
-
-                final MutableBoolean terminalSecured = new MutableBoolean();
-                final MutableBoolean readerSecured = new MutableBoolean();
-
-                final boolean isSecured = PRINTER_SERVICE.checkPrinterSecurity(
-                        printer, terminalSecured, readerSecured,
-                        terminalDevices, readerDevices);
-
-                if (isSecured) {
-
-                    if (terminalSecured.booleanValue()
-                            && readerSecured.booleanValue()) {
-                        imageSrc = "printer-terminal-custom-or-auth-16x16.png";
-                    } else if (terminalSecured.booleanValue()) {
-                        imageSrc = "printer-terminal-custom-16x16.png";
-                    } else {
-                        imageSrc = "printer-terminal-auth-16x16.png";
-                    }
-                } else if (ConfigManager.instance()
-                        .isNonSecureProxyPrinter(printer)) {
-                    imageSrc = "printer-terminal-any-16x16.png";
-                } else {
-                    imageSrc = "printer-terminal-none-16x16.png";
-                }
-
                 helper.discloseLabel(WID_TICKET_GROUP);
             }
 
-            labelWrk = new Label("printerImage", "");
-
-            labelWrk.add(new AttributeModifier("src",
-                    String.format("%s/%s", WebApp.PATH_IMAGES, imageSrc)));
-
-            item.add(labelWrk);
+            labelWrk = helper.addModifyLabelAttr("printerImage",
+                    MarkupHelper.ATTR_SRC, printerImg.urlPath());
 
             String assocTerminal = null;
             String assocCardReader = null;
@@ -525,12 +551,12 @@ public final class PrintersPage extends AbstractAdminListPage {
             }
 
             labelWrk = new Label("userGroupsPrompt", userGroupsPrompt);
-            labelWrk.add(new AttributeModifier("class", color));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, color));
             item.add(labelWrk);
 
             labelWrk = createVisibleLabel(userGroups.length() > 0, "userGroups",
                     userGroups.toString());
-            labelWrk.add(new AttributeModifier("class", color));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, color));
 
             item.add(labelWrk);
 
@@ -569,7 +595,7 @@ public final class PrintersPage extends AbstractAdminListPage {
             labelWrk = createVisibleLabel(deviceUriImgUrl != null,
                     "deviceUriImg", "");
             if (deviceUriImgUrl != null) {
-                labelWrk.add(new AttributeModifier("src", deviceUriImgUrl));
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_SRC, deviceUriImgUrl));
             }
             item.add(labelWrk);
 
@@ -617,8 +643,8 @@ public final class PrintersPage extends AbstractAdminListPage {
             final boolean isInternal =
                     PRINTER_ATTR_DAO.isInternalPrinter(attrLookup);
 
-            final boolean isConfigured =
-                    cupsPrinter == null || PROXY_PRINT_SERVICE
+            final boolean isConfigured = cupsPrinter == null
+                    || !cupsPrinter.isPpdPresent() || PROXY_PRINT_SERVICE
                             .isPrinterConfigured(cupsPrinter, attrLookup);
 
             item.add(createVisibleLabel(!isConfigured,
@@ -629,8 +655,8 @@ public final class PrintersPage extends AbstractAdminListPage {
             String signalKey = null;
             color = null;
 
-            String location = "";
-            String info = "";
+            final Label labelPrinterName = new Label("printerName");
+            item.add(labelPrinterName);
 
             if (cupsPrinter == null) {
                 if (printer.getDeleted()) {
@@ -643,7 +669,24 @@ public final class PrintersPage extends AbstractAdminListPage {
                     color = MarkupHelper.CSS_TXT_ERROR;
                     signalKey = "signal-disconnected";
                 }
+
+                helper.discloseLabel("driver");
+                helper.discloseLabel("manufacturer");
+
             } else {
+
+                MarkupHelper.modifyLabelAttr(labelPrinterName,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        printer.getId().toString());
+
+                MarkupHelper.modifyLabelAttr(labelPrinterName,
+                        MarkupHelper.ATTR_CLASS,
+                        CSS_CLASS_PRINTER_OPT_DOWNLOAD);
+
+                MarkupHelper.appendLabelAttr(labelPrinterName,
+                        MarkupHelper.ATTR_TITLE,
+                        localized("title-download-ipp"));
+
                 if (printer.getDisabled()) {
                     color = MarkupHelper.CSS_TXT_ERROR;
                     signalKey = "signal-disabled";
@@ -654,15 +697,36 @@ public final class PrintersPage extends AbstractAdminListPage {
                     color = MarkupHelper.CSS_TXT_VALID;
                     signalKey = "signal-active";
                 }
-                location = cupsPrinter.getLocation();
 
-                if (StringUtils.isNotBlank(cupsPrinter.getPpd())) {
-                    info = cupsPrinter.getPpd() + " version "
-                            + cupsPrinter.getPpdVersion() + ": "
-                            + cupsPrinter.getModelName();
+                String nameWlk = cupsPrinter.getModelName();
+                if (StringUtils.isBlank(nameWlk)) {
+                    nameWlk = null;
                 } else {
-                    info = cupsPrinter.getModelName();
+                    if (cupsPrinter.isPpdPresent()) {
+                        nameWlk = nameWlk.concat(" ⇩ ");
+                    }
                 }
+
+                labelWrk = helper.addLabel("driver",
+                        StringUtils.defaultString(nameWlk, "-"));
+
+                if (nameWlk != null && cupsPrinter.isPpdPresent()) {
+
+                    MarkupHelper.modifyLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_DATA_SAVAPAGE,
+                            printer.getId().toString());
+
+                    MarkupHelper.appendLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_CLASS,
+                            CSS_CLASS_PRINTER_PPD_DOWNLOAD);
+
+                    MarkupHelper.appendLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_TITLE,
+                            localized("title-download-ppd"));
+                }
+                helper.encloseLabel("manufacturer",
+                        cupsPrinter.getManufacturer(),
+                        StringUtils.isNotBlank(cupsPrinter.getManufacturer()));
             }
 
             String signal = "";
@@ -674,7 +738,8 @@ public final class PrintersPage extends AbstractAdminListPage {
             labelWrk = new Label("signal", signal);
 
             if (color != null) {
-                labelWrk.add(new AttributeModifier("class", color));
+                labelWrk.add(
+                        new AttributeModifier(MarkupHelper.ATTR_CLASS, color));
             }
             item.add(labelWrk);
 
@@ -793,6 +858,7 @@ public final class PrintersPage extends AbstractAdminListPage {
                 ctx.rollback();
             }
         }
+
     }
 
     /**
@@ -842,7 +908,8 @@ public final class PrintersPage extends AbstractAdminListPage {
                 PrinterDao.Field.DISPLAY_NAME, req.getSort().getAscending());
 
         add(new PrintersListView("printers-view", entryList,
-                this.probePermissionToEdit(ACLOidEnum.A_PRINTERS)));
+                this.probePermissionToEdit(ACLOidEnum.A_PRINTERS),
+                this.isIntranetRequest()));
 
         /*
          * Display the navigation bars and write the response.

@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,10 +23,13 @@ package org.savapage.server.pages.admin;
 
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
@@ -34,9 +37,12 @@ import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dto.IppMediaCostDto;
 import org.savapage.core.dto.IppMediaSourceCostDto;
 import org.savapage.core.dto.MediaPageCostDto;
+import org.savapage.core.i18n.AdjectiveEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.ipp.attribute.syntax.IppKeyword;
 import org.savapage.core.jpa.Printer;
@@ -61,17 +67,26 @@ public final class PrinterMediaSourcePanel extends Panel {
      */
     private static final long serialVersionUID = 1L;
 
+    /** */
     private static final AccountingService ACCOUNTING_SERVICE =
             ServiceContext.getServiceFactory().getAccountingService();
 
+    /** */
     private static final PrinterService PRINTER_SERVICE =
             ServiceContext.getServiceFactory().getPrinterService();
 
+    /** */
     private static final ProxyPrintService PROXYPRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
+    /** */
+    private static final PrinterDao PRINTER_DAO =
+            ServiceContext.getDaoContext().getPrinterDao();
+
+    /** */
     private static final String DEFAULT_MARKER = "*";
 
+    /** */
     private final boolean isVisible;
 
     /**
@@ -80,6 +95,7 @@ public final class PrinterMediaSourcePanel extends Panel {
     private class MediaListView
             extends PropertyListView<JsonProxyPrinterOptChoice> {
 
+        /** */
         private final String media;
 
         /**
@@ -87,7 +103,8 @@ public final class PrinterMediaSourcePanel extends Panel {
          */
         private static final long serialVersionUID = 1L;
 
-        public MediaListView(String id, List<JsonProxyPrinterOptChoice> list,
+        public MediaListView(final String id,
+                final List<JsonProxyPrinterOptChoice> list,
                 final String media) {
 
             super(id, list);
@@ -95,17 +112,20 @@ public final class PrinterMediaSourcePanel extends Panel {
         }
 
         @Override
-        protected void populateItem(ListItem<JsonProxyPrinterOptChoice> item) {
+        protected void
+                populateItem(final ListItem<JsonProxyPrinterOptChoice> item) {
 
             final JsonProxyPrinterOptChoice dto = item.getModelObject();
 
             final Label label =
                     new Label("media-source-media", dto.getUiText());
 
-            label.add(new AttributeModifier("value", dto.getChoice()));
+            label.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                    dto.getChoice()));
 
             if (dto.getChoice().equals(this.media)) {
-                label.add(new AttributeModifier("selected", "selected"));
+                label.add(new AttributeModifier(MarkupHelper.ATTR_SELECTED,
+                        MarkupHelper.ATTR_SELECTED));
             }
 
             item.add(label);
@@ -128,6 +148,7 @@ public final class PrinterMediaSourcePanel extends Panel {
 
         private final boolean isColorPrinter;
         private final boolean isDuplexPrinter;
+        private final boolean showCost;
 
         /**
          *
@@ -140,12 +161,14 @@ public final class PrinterMediaSourcePanel extends Panel {
         public MediaSourceListView(final String id,
                 final List<IppMediaSourceCostDto> mediaSourceList,
                 List<JsonProxyPrinterOptChoice> mediaList,
-                final boolean isColorPrinter, final boolean isDuplexPrinter) {
+                final boolean isColorPrinter, final boolean isDuplexPrinter,
+                final boolean showCost) {
 
             super(id, mediaSourceList);
             this.mediaList = mediaList;
             this.isColorPrinter = isColorPrinter;
             this.isDuplexPrinter = isDuplexPrinter;
+            this.showCost = showCost;
         }
 
         /**
@@ -179,18 +202,26 @@ public final class PrinterMediaSourcePanel extends Panel {
                 throw new SpException(e);
             }
 
-            Label labelWrk = new Label(wicketId, "");
+            final Label labelWrk = new Label(wicketId, "");
 
-            labelWrk.add(new AttributeModifier("value", cost));
-            labelWrk.add(new AttributeModifier("maxlength", "10"));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_VALUE, cost));
+            labelWrk.add(
+                    new AttributeModifier(MarkupHelper.ATTR_MAXLENGTH, "10"));
 
             if (!isActive) {
-                // /labelWrk.add(new AttributeModifier("style",
-                // "display:none"));
-                labelWrk.add(new AttributeModifier("disabled", "disabled"));
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_DISABLED,
+                        MarkupHelper.ATTR_DISABLED));
             }
-
             item.add(labelWrk);
+
+            final MarkupHelper helper = new MarkupHelper(item);
+            org.apache.wicket.Component cmp =
+                    helper.addTransparant(wicketId.concat("-td"));
+
+            if (!this.showCost) {
+                MarkupHelper.appendComponentAttr(cmp, MarkupHelper.ATTR_STYLE,
+                        "display:none;");
+            }
 
         }
 
@@ -203,7 +234,7 @@ public final class PrinterMediaSourcePanel extends Panel {
             Label labelWrk;
 
             /*
-             * media-source (checkbox + label)
+             * media-source (checkbox + label + preferred)
              */
             String htmlId = ACCOUNTING_SERVICE
                     .getMediaSourceAttr(dto.getSource()).getKey();
@@ -213,14 +244,25 @@ public final class PrinterMediaSourcePanel extends Panel {
 
             item.add(labelWrk);
 
-            /*
-             * label
-             */
+            //
             String mediaMnemonic = dto.getSource();
 
             labelWrk = new Label("media-source-checkbox-label", mediaMnemonic);
-            labelWrk.add(new AttributeModifier("for", htmlId));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_FOR, htmlId));
             item.add(labelWrk);
+
+            //
+            final String preferredIcon;
+
+            if (BooleanUtils.isTrue(dto.getPreferred())) {
+                preferredIcon = MarkupHelper.CSS_PREFERRED_ICON_ON;
+            } else {
+                preferredIcon = MarkupHelper.CSS_PREFERRED_ICON_OFF;
+            }
+
+            item.add(MarkupHelper.appendLabelAttr(
+                    new Label("btn-preferred-switch", ""),
+                    MarkupHelper.ATTR_CLASS, preferredIcon));
 
             /*
              * Media cost.
@@ -252,7 +294,8 @@ public final class PrinterMediaSourcePanel extends Panel {
              */
             labelWrk = new Label("media-source-display-name", "");
 
-            labelWrk.add(new AttributeModifier("value", dto.getDisplay()));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                    dto.getDisplay()));
 
             item.add(labelWrk);
         }
@@ -277,8 +320,9 @@ public final class PrinterMediaSourcePanel extends Panel {
     /**
      *
      * @param printer
+     *            The printer.
      */
-    public void populate(final Printer printer) {
+    public void populate(final Printer printer, final boolean showCost) {
 
         final List<IppMediaSourceCostDto> mediaSourceList = new ArrayList<>();
 
@@ -324,7 +368,11 @@ public final class PrinterMediaSourcePanel extends Panel {
         } else {
             signalMediaSourceAuto = "";
         }
-        helper.addLabel("signal-media-source-auto", signalMediaSourceAuto);
+        helper.encloseLabel("signal-media-source-auto", signalMediaSourceAuto,
+                hasMediaSourceAuto);
+
+        helper.addLabel("legend-source-preferred",
+                AdjectiveEnum.PREFERRED.uiText(getLocale()).toLowerCase());
 
         /*
          * For now, ALWAYS hide media-source: auto
@@ -351,14 +399,14 @@ public final class PrinterMediaSourcePanel extends Panel {
 
             labelWrk = new Label("media-source-checkbox-manual-label",
                     mediaMnemonic);
-            labelWrk.add(new AttributeModifier("for", htmlId));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_FOR, htmlId));
             add(labelWrk);
 
             // display
             labelWrk = helper.encloseLabel("media-source-manual-display-name",
                     "", true);
-            labelWrk.add(
-                    new AttributeModifier("value", dtoManual.getDisplay()));
+            labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                    dtoManual.getDisplay()));
 
         } else {
             helper.discloseLabel("media-source-manual-display-name");
@@ -372,7 +420,7 @@ public final class PrinterMediaSourcePanel extends Panel {
                         getSession().getLocale());
 
         add(new MediaSourceListView("media-source-row", mediaSourceList,
-                mediaList, isColorPrinter, isDuplexPrinter));
+                mediaList, isColorPrinter, isDuplexPrinter, showCost));
 
         /*
          * Mark the defaults in the header.
@@ -423,6 +471,11 @@ public final class PrinterMediaSourcePanel extends Panel {
         add(new Label("th-one-sided", oneSidedMark));
         add(new Label("th-two-sided", twoSidedMark));
 
+        helper.addTransparantDisabled("th-two-sided-txt", !isDuplexPrinter);
+        helper.addTransparantDisabled("th-color-1-txt", !isColorPrinter);
+        helper.addTransparantDisabled("th-color-2-txt", !isColorPrinter);
+        helper.addTransparantDisabled("th-grayscale-2-txt", !isDuplexPrinter);
+
         final String[] markerLabels = { "th-grayscale-1", "th-color-1",
                 "th-grayscale-2", "th-color-2" };
 
@@ -441,21 +494,21 @@ public final class PrinterMediaSourcePanel extends Panel {
         /*
          * Override 'color' with monochrome?
          */
-        final String labelDefaultMonochrome = "use-grayscale-as-default";
-
         final boolean showMonochromeDefault = isColorPrinter && isDefaultColor;
-        labelWrk = helper.encloseLabel(labelDefaultMonochrome, "",
+
+        labelWrk = helper.encloseLabel("use-grayscale-as-default", "",
                 showMonochromeDefault);
 
-        // Checked?
         if (showMonochromeDefault && printer.getAttributes() != null) {
 
+            // Checked?
             final String colorModeDefault =
                     PRINTER_SERVICE.getPrintColorModeDefault(printer);
 
             if (colorModeDefault != null && colorModeDefault
                     .equalsIgnoreCase(IppKeyword.PRINT_COLOR_MODE_MONOCHROME)) {
-                labelWrk.add(new AttributeModifier("checked", "checked"));
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CHECKED,
+                        MarkupHelper.ATTR_CHECKED));
             }
         }
 
@@ -464,19 +517,96 @@ public final class PrinterMediaSourcePanel extends Panel {
         /*
          * Client-side monochrome conversion.
          */
-        final String labelClientSideMonochrome =
-                "client-side-monochrome-conversion";
+        final boolean isJobTicketPrinter =
+                PRINTER_SERVICE.isJobTicketPrinter(printer.getId());
 
-        labelWrk = helper.encloseLabel(labelClientSideMonochrome, "",
-                isColorPrinter);
+        final boolean showClientSideMonochrome =
+                isColorPrinter && !isJobTicketPrinter;
 
-        // Checked?
-        if (isColorPrinter && printer.getAttributes() != null) {
+        labelWrk = helper.encloseLabel("client-side-monochrome-conversion", "",
+                showClientSideMonochrome);
+
+        if (showClientSideMonochrome && printer.getAttributes() != null) {
+            // Checked?
             if (PRINTER_SERVICE.isClientSideMonochrome(printer)) {
-                labelWrk.add(new AttributeModifier("checked", "checked"));
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CHECKED,
+                        MarkupHelper.ATTR_CHECKED));
             }
         }
-
         add(labelWrk);
+
+        //
+        handleJobSheets(helper, printer, isJobTicketPrinter, mediaSourceList);
+    }
+
+    /**
+     * @param printer
+     *            The printer.
+     * @return The media-sources for job sheets.
+     */
+    private static Set<String> getJobSheetSources(final Printer printer) {
+        final Set<String> sources =
+                PRINTER_SERVICE.getJobSheetsMediaSources(printer);
+        if (sources == null) {
+            return new HashSet<>();
+        }
+        return sources;
+    }
+
+    /**
+     * Encloses selection of preferred media-source for
+     * {@link IppDictJobTemplateAttr#ORG_SAVAPAGE_ATTR_JOB_SHEETS}.
+     *
+     * @param helper
+     *            The helper.
+     * @param printer
+     *            The printer.
+     * @param jobTicketPrinter
+     *            {@code true} if job ticket printer.
+     * @param mediaSourceList
+     *            The list of media sources.
+     */
+    private void handleJobSheets(final MarkupHelper helper,
+            final Printer printer, final boolean jobTicketPrinter,
+            final List<IppMediaSourceCostDto> mediaSourceList) {
+
+        final boolean enclose = !jobTicketPrinter
+                && PRINTER_DAO.isJobTicketRedirectPrinter(printer.getId());
+
+        helper.encloseLabel("job-sheets-label",
+                PrintOutNounEnum.JOB_SHEET.uiText(getLocale(), true), enclose);
+
+        if (!enclose) {
+            return;
+        }
+
+        final Set<String> jobSheetSources = getJobSheetSources(printer);
+
+        add(new PropertyListView<IppMediaSourceCostDto>(
+                "job-sheets-media-source-select", mediaSourceList) {
+
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void
+                    populateItem(final ListItem<IppMediaSourceCostDto> item) {
+
+                final IppMediaSourceCostDto dto = item.getModelObject();
+
+                final Label label =
+                        new Label("job-sheets-media-source", dto.getSource());
+
+                label.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                        dto.getSource()));
+
+                if (jobSheetSources.contains(dto.getSource())) {
+                    label.add(new AttributeModifier(MarkupHelper.ATTR_SELECTED,
+                            MarkupHelper.ATTR_SELECTED));
+                }
+
+                item.add(label);
+            }
+        });
+
     }
 }

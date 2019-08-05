@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,11 +22,11 @@
 package org.savapage.server.pages;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.MessageFormat;
 import java.text.ParseException;
 import java.util.List;
 
-import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.behavior.AttributeAppender;
@@ -37,6 +37,7 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.AccountTrxDao;
 import org.savapage.core.dao.AccountTrxDao.ListFilter;
 import org.savapage.core.dao.enums.ACLOidEnum;
@@ -54,15 +55,17 @@ import org.savapage.core.jpa.DocLog;
 import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserAccount;
+import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.services.helpers.JobTicketSupplierData;
+import org.savapage.core.services.helpers.PrintSupplierData;
+import org.savapage.core.services.helpers.account.UserAccountContextFactory;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.BitcoinUtil;
 import org.savapage.core.util.CurrencyUtil;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.ext.payment.PaymentMethodEnum;
 import org.savapage.server.WebApp;
 import org.savapage.server.session.SpSession;
-import org.savapage.server.webapp.WebAppTypeEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,10 +75,12 @@ import org.slf4j.LoggerFactory;
  */
 public final class AccountTrxPage extends AbstractListPage {
 
-    /**
-     *
-     */
+    /** */
     private static final long serialVersionUID = 1L;
+
+    /** */
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
 
     /**
      * The logger.
@@ -99,10 +104,21 @@ public final class AccountTrxPage extends AbstractListPage {
 
         private static final long serialVersionUID = 1L;
 
-        final int balanceDecimals;
-        final String bitcoinUrlPatternTrx;
+        /** */
+        private static final String WID_BALANCE_SAVAPAGE_ICON =
+                "balance-savapage-icon";
+
+        /** */
+        private final int balanceDecimals;
+        /** */
+        private final String bitcoinUrlPatternTrx;
+
+        /** */
         @SuppressWarnings("unused")
-        final String bitcoinUrlPatternAddr;
+        private final String bitcoinUrlPatternAddr;
+
+        /** */
+        private final boolean hasPaperCutUserAccountView;
 
         /**
          *
@@ -124,6 +140,8 @@ public final class AccountTrxPage extends AbstractListPage {
             this.bitcoinUrlPatternAddr = cm.getConfigValue(
                     Key.FINANCIAL_BITCOIN_USER_PAGE_URL_PATTERN_ADDRESS);
 
+            this.hasPaperCutUserAccountView =
+                    UserAccountContextFactory.hasContextPaperCut();
         }
 
         /**
@@ -167,6 +185,15 @@ public final class AccountTrxPage extends AbstractListPage {
             //
             item.add(new Label("trxActor", accountTrx.getTransactedBy()));
 
+            if (this.hasPaperCutUserAccountView) {
+                helper.addTransparant(WID_BALANCE_SAVAPAGE_ICON)
+                        .add(new AttributeModifier(MarkupHelper.ATTR_SRC,
+                                WebApp.getExtSupplierEnumImgUrl(
+                                        ExternalSupplierEnum.SAVAPAGE)));
+            } else {
+                helper.discloseLabel(WID_BALANCE_SAVAPAGE_ICON);
+            }
+
             //
             final String currencySymbol = String.format("%s ",
                     CurrencyUtil.getCurrencySymbol(accountTrx.getCurrencyCode(),
@@ -197,7 +224,7 @@ public final class AccountTrxPage extends AbstractListPage {
 
             labelWrk = new Label("balance", balance);
             if (accountTrx.getBalance().compareTo(BigDecimal.ZERO) < 0) {
-                labelWrk.add(new AttributeModifier("class",
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS,
                         MarkupHelper.CSS_AMOUNT_MIN));
             }
             item.add(labelWrk);
@@ -207,7 +234,7 @@ public final class AccountTrxPage extends AbstractListPage {
             } else {
                 labelWrk = helper.encloseLabel("amount", amount, true);
                 if (accountTrx.getAmount().compareTo(BigDecimal.ZERO) < 0) {
-                    labelWrk.add(new AttributeModifier("class",
+                    labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS,
                             MarkupHelper.CSS_AMOUNT_MIN));
                 }
             }
@@ -236,42 +263,16 @@ public final class AccountTrxPage extends AbstractListPage {
             String jobticket = null;
 
             //
-            String key;
-
             switch (trxType) {
 
-            case INITIAL:
-                key = "type-initial";
-                break;
-
-            case ADJUST:
-                key = "type-adjust";
-                break;
-
-            case DEPOSIT:
-                key = "type-deposit";
-                break;
-
             case GATEWAY:
-
                 if (extPaymentMethod != null) {
                     imageSrc = WebApp.getPaymentMethodImgUrl(extPaymentMethod,
                             false);
                 }
-
-                key = "type-gateway";
-                break;
-
-            case TRANSFER:
-                key = "type-transfer";
-                break;
-
-            case VOUCHER:
-                key = "type-voucher";
                 break;
 
             case PRINT_IN:
-
                 /*
                  * PRINT_IN account transactions are tied to a DocLog/PrintOut
                  * when the print was released by an external system (PaperCut).
@@ -280,8 +281,6 @@ public final class AccountTrxPage extends AbstractListPage {
                  * when the print was is pending (on hold) in an external system
                  * (PaperCut).
                  */
-                key = "type-print-in";
-
                 final StringBuilder cmt = new StringBuilder();
 
                 if (printOut != null) {
@@ -316,32 +315,43 @@ public final class AccountTrxPage extends AbstractListPage {
                             + "] : unhandled cost source");
                 }
 
-                key = "type-print-out";
-
                 final int totalPagesOut = docLog.getNumberOfPages().intValue();
 
                 printOutInfo.append(String.format("%d %s", totalPagesOut,
                         PrintOutNounEnum.PAGE.uiText(getLocale(),
                                 totalPagesOut > 1)));
 
-                final int nCopies =
-                        accountTrx.getTransactionWeight().intValue();
+                final BigDecimal costPerCopy = ACCOUNTING_SERVICE
+                        .calcCostPerPrintedCopy(docLog.getCostOriginal(),
+                                printOut.getNumberOfCopies());
+
+                final LocaleHelper localeHelper = new LocaleHelper(getLocale());
+
+                final BigDecimal printedCopies;
+                if (costPerCopy.compareTo(BigDecimal.ZERO) == 0) {
+                    printedCopies = BigDecimal.ZERO;
+                } else {
+                    printedCopies = ACCOUNTING_SERVICE.calcPrintedCopies(
+                            accountTrx.getAmount(), costPerCopy, 2).abs();
+                }
+
+                final int nCopies = printedCopies
+                        .setScale(0, RoundingMode.HALF_UP).intValue();
 
                 //
-                final int nSheets =
-                        nCopies * printOut.getNumberOfSheets().intValue()
-                                / printOut.getNumberOfCopies().intValue();
+                final int nSheets = printOut.getNumberOfSheets().intValue()
+                        / printOut.getNumberOfCopies().intValue();
 
-                helper.encloseLabel("printOutCopies",
-                        String.format("%d %s",
-                                nCopies, PrintOutNounEnum.COPY
-                                        .uiText(getLocale(), nCopies > 1)),
+                helper.encloseLabel("printOutCopies", String.format("%s %s",
+                        localeHelper.asExactIntegerOrScaled(printedCopies),
+                        PrintOutNounEnum.COPY.uiText(getLocale(), nCopies > 1)),
                         true);
 
-                helper.encloseLabel("printOutSheets",
-                        String.format("%d %s",
-                                nSheets, PrintOutNounEnum.SHEET
-                                        .uiText(getLocale(), nSheets > 1)),
+                helper.encloseLabel(
+                        "printOutSheets", String
+                                .format("%d %s", nSheets,
+                                        PrintOutNounEnum.SHEET.uiText(
+                                                getLocale(), nSheets > 1)),
                         true);
                 //
                 comment = printOut.getPrinter().getDisplayName();
@@ -368,8 +378,8 @@ public final class AccountTrxPage extends AbstractListPage {
                     }
                 }
 
-                final PrintModeEnum printMode = EnumUtils
-                        .getEnum(PrintModeEnum.class, printOut.getPrintMode());
+                final PrintModeEnum printMode =
+                        DaoEnumHelper.getPrintMode(printOut);
 
                 if (printMode == PrintModeEnum.TICKET
                         || printMode == PrintModeEnum.TICKET_C
@@ -381,10 +391,8 @@ public final class AccountTrxPage extends AbstractListPage {
                         operator = null;
 
                     } else {
-                        final JobTicketSupplierData supplierData =
-                                JobTicketSupplierData.create(
-                                        JobTicketSupplierData.class,
-                                        docLog.getExternalData());
+                        final PrintSupplierData supplierData = PrintSupplierData
+                                .createFromData(docLog.getExternalData());
                         operator = supplierData.getOperator();
                     }
                     jobticket = String.format("%s %s (%s)",
@@ -392,8 +400,16 @@ public final class AccountTrxPage extends AbstractListPage {
                             StringUtils.defaultString(docLog.getExternalId(),
                                     "???"),
                             StringUtils.defaultString(operator, "???"));
+                } else if (StringUtils.isNotBlank(docLog.getExternalId())) {
+                    jobticket = docLog.getExternalId();
                 }
+                break;
 
+            case INITIAL:
+            case ADJUST:
+            case DEPOSIT:
+            case TRANSFER:
+            case VOUCHER:
                 break;
 
             default:
@@ -432,7 +448,8 @@ public final class AccountTrxPage extends AbstractListPage {
             } else {
                 labelWrk =
                         MarkupHelper.createEncloseLabel("trxImage", "", true);
-                labelWrk.add(new AttributeModifier("src", imageSrc));
+                labelWrk.add(
+                        new AttributeModifier(MarkupHelper.ATTR_SRC, imageSrc));
                 item.add(labelWrk);
             }
 
@@ -445,7 +462,7 @@ public final class AccountTrxPage extends AbstractListPage {
                 item.add(new Label("trxType",
                         extPaymentMethod.toString().toLowerCase()));
             } else {
-                item.add(new Label("trxType", localized(key)));
+                item.add(new Label("trxType", trxType.uiText(getLocale())));
             }
 
             //
@@ -657,6 +674,10 @@ public final class AccountTrxPage extends AbstractListPage {
 
             userId = req.getSelect().getUserId();
             accountId = req.getSelect().getAccountId();
+
+        } else if (this.getSessionWebAppType() == WebAppTypeEnum.PRINTSITE) {
+
+            userId = req.getSelect().getUserId();
 
         } else {
             /*

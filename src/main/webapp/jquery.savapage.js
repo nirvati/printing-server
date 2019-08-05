@@ -1,9 +1,9 @@
-/*! SavaPage jQuery Mobile Common | (c) 2011-2018 Datraverse B.V. | GNU Affero
+/*! SavaPage jQuery Mobile Common | (c) 2011-2019 Datraverse B.V. | GNU Affero
  * General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,28 +33,18 @@
         /*jslint browser: true*/
         /*global $, jQuery, alert*/
 
-        var
-        //-----------------------------------------------
-        _watchdogHeartbeatSecs,
-            _watchdogTimeoutSecs
-        //
-        ,
+        var _watchdogHeartbeatSecs,
+            _watchdogTimeoutSecs,
             _watchdogTimer,
             _onWatchdogHeartbeat,
-            _lastAppHeartbeat
-        //
-        ,
+            _lastAppHeartbeat,
             _deferAppWakeUp,
             _onAppWakeUp,
-            _onAppWakeUpAutoRestore
-
+            _onAppWakeUpAutoRestore,
         //
-        ,
             _doAppHeartbeat = function() {
             _lastAppHeartbeat = new Date().getTime();
-        }
-        //
-        ;
+        };
 
         /**
          * Common initializing actions for all Web App types.
@@ -74,6 +64,24 @@
              */
             $(document).bind('drop dragover', function(e) {
                 e.preventDefault();
+            });
+
+            /*
+             * Listener for .ajax HTML status codes. All codes are reported
+             * (including informational and succes).
+             */
+            $(document).ajaxError(function(event, request, settings) {
+                /*
+                 * Do not alert 1xx Informational response and 2xx Success. Also,
+                 * do not alert on 401 (Unauthorized), since this code is
+                 * returned with a valid JSON result.code === '9', and handled
+                 * accordingly.
+                 * https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+                 */
+                if (request.status !== 401 && request.status >= 300) {
+                    _ns.logger.warn('[' + settings.url + '] status ' + request.status + ' (' + request.statusText + ')');
+                    alert('Request: ' + settings.url + '\nStatus: ' + request.status + ' (' + request.statusText + ')');
+                }
             });
         };
 
@@ -204,16 +212,10 @@
          * the after successful login. Use stop() to stop after logout.
          */
         _ns.Cometd = function() {
-
-            var _super = new _ns.Base()
-            //
-            ,
-                _self = _ns.derive(_super)
-            //
-            ,
-                _connected = false
+            var _super = new _ns.Base(),
+                _self = _ns.derive(_super),
+                _connected = false,
             // TODO: _isOn is ambiguous and needs rework
-            ,
                 _isOn = false;
 
             /**
@@ -463,7 +465,6 @@
          * Constructor
          */
         _ns.Api = function(_i18n, _user) {
-
             var _onExpired = null,
                 _onDisconnected = null;
 
@@ -529,7 +530,6 @@
              *
              */
             this.call = function(apiData) {
-
                 var res,
                     json;
 
@@ -539,7 +539,7 @@
 
                 apiData.webAppType = _ns.WEBAPP_TYPE;
 
-                if (_user.loggedIn) {
+                if (_user && _user.loggedIn) {
                     apiData.user = _user.id;
                 }
 
@@ -654,9 +654,7 @@
             loadListPage : function(panel, wClassPage, jqId) {
 
                 var data = null,
-                    jsonData = null
-                //
-                ,
+                    jsonData = null,
                     url = '/pages/' + wClassPage + _ns.WebAppTypeUrlParm();
 
                 _ns.logger.debug(url);
@@ -762,18 +760,10 @@
             },
 
             v2m : function(my) {
-                var _view = _ns.PanelCommon.view
-                //
-                ,
-                    sel = $('#sp-accounttrx-date-from')
-                //
-                ,
-                    date = _view.mobipickGetDate(sel)
-                //
-                ,
-                    val
-                //
-                ,
+                var _view = _ns.PanelCommon.view,
+                    sel = $('#sp-accounttrx-date-from'),
+                    date = _view.mobipickGetDate(sel),
+                    val,
                     present = (sel.val().length > 0);
 
                 //
@@ -815,7 +805,7 @@
                 select : {
                     user_id : null,
                     account_id : null,
-                    // See Java: org.savapage.core.jpa.AccountTrx.TrxType
+                    // See Java: org.savapage.core.dao.enums.AccountTrxTypeEnum
                     trxType : null,
                     date_from : null,
                     date_to : null,
@@ -884,6 +874,154 @@
         };
 
         /**
+         *
+         */
+        _ns.PanelPaperCutAccountTrxBase = {
+
+            // The HTML id attribute of the Panel.
+            jqId : null,
+
+            applyDefaults : function(my) {
+
+                my.input.page = 1;
+                my.input.maxResults = 10;
+
+                my.input.select.user_id = null;
+
+                my.input.select.text = null;
+
+                my.input.select.trxType = null;
+                my.input.select.date_from = null;
+                my.input.select.date_to = null;
+
+                my.input.sort.field = 'TRX_DATE';
+                my.input.sort.ascending = false;
+
+            },
+
+            beforeload : function(my) {
+                my.applyDefaults(my);
+            },
+
+            afterload : function(my) {
+                var _view = _ns.PanelCommon.view;
+
+                _view.mobipick($("#sp-accounttrx-date-from-pc"));
+                _view.mobipick($("#sp-accounttrx-date-to-pc"));
+
+                my.m2v(my);
+                my.page(my, my.input.page);
+            },
+
+            m2v : function(my) {
+                var _view = _ns.PanelCommon.view;
+
+                $('#sp-accounttrx-containing-text-pc').val('');
+
+                _view.checkRadio('sp-accounttrx-select-type-pc', 'sp-accounttrx-select-type-all-pc');
+
+                _view.mobipickSetDate($('#sp-accounttrx-date-from-pc'), my.input.select.date_from);
+                _view.mobipickSetDate($('#sp-accounttrx-date-to-pc'), my.input.select.date_to);
+
+                _view.checkRadio('sp-accounttrx-sort-by-pc', 'sp-accounttrx-sort-by-date-pc');
+                _view.checkRadio('sp-accounttrx-sort-dir-pc', 'sp-accounttrx-sort-dir-desc-pc');
+            },
+
+            v2m : function(my) {
+                var _view = _ns.PanelCommon.view,
+                    sel = $('#sp-accounttrx-date-from-pc'),
+                    date = _view.mobipickGetDate(sel),
+                    val,
+                    present = (sel.val().length > 0);
+
+                my.input.select.date_from = ( present ? date.getTime() : null);
+
+                my.input.select.user_id = $('#sp-accounttrx-hidden-user-id-pc').val();
+
+                val = _view.getRadioValue('sp-accounttrx-select-type-pc');
+                present = (val.length > 0);
+                my.input.select.trxType = ( present ? val : null);
+
+                sel = $('#sp-accounttrx-date-to-pc');
+                date = _view.mobipickGetDate(sel);
+                present = (sel.val().length > 0);
+                my.input.select.date_to = ( present ? date.getTime() : null);
+
+                sel = $('#sp-accounttrx-containing-text-pc');
+                present = (sel.val().length > 0);
+                my.input.select.text = ( present ? sel.val() : null);
+
+                my.input.sort.field = _view.getRadioValue('sp-accounttrx-sort-by-pc');
+                my.input.sort.ascending = _view.isRadioIdSelected('sp-accounttrx-sort-dir-pc', 'sp-accounttrx-sort-dir-asc-pc');
+
+            },
+
+            // JSON input
+            input : {
+                page : 1,
+                maxResults : 10,
+                select : {
+                    user_id : null,
+                    // org.savapage.ext.papercut.PapercutAccountTrx.TrxType
+                    trxType : null,
+                    date_from : null,
+                    date_to : null,
+                    text : null
+                },
+                sort : {
+                    // org.savapage.ext.papercut.PaperCutDb.Field
+                    field : 'TRX_DATE',
+                    ascending : false
+                }
+            },
+
+            // JSON output
+            output : {
+                lastPage : null,
+                nextPage : null,
+                prevPage : null
+            },
+
+            refresh : function(my, skipBeforeLoad) {
+                _ns.PanelCommon.refreshPanelCommon('PaperCutAccountTrxBase', skipBeforeLoad, my);
+            },
+
+            // show page
+            page : function(my, nPage) {
+                _ns.PanelCommon.onValidPage(function() {
+                    my.input.page = nPage;
+                    my.v2m(my);
+                    _ns.PanelCommon.loadListPageCommon(my, 'PaperCutAccountTrxPage', '#sp-accounttrx-list-page-pc');
+                });
+            },
+
+            getInput : function(my) {
+                return my.input;
+            },
+
+            onOutput : function(my, output) {
+
+                my.output = output;
+                /*
+                 * NOTICE the $().one() construct. Since the page get
+                 * reloaded all the time, we want a single-shot binding.
+                 */
+                $(".sp-accounttrx-page-pc").one('click', null, function() {
+                    my.page(my, parseInt($(this).text(), 10));
+                    return false;
+                });
+                $(".sp-accounttrx-page-pc-next").one('click', null, function() {
+                    my.page(my, my.output.nextPage);
+                    return false;
+                });
+                $(".sp-accounttrx-page-pc-prev").one('click', null, function() {
+                    my.page(my, my.output.prevPage);
+                    return false;
+                });
+            }
+        };
+
+        /**
          * NOTE: null values need to be set be the client.
          */
         _ns.PanelDocLogBase = {
@@ -891,8 +1029,10 @@
             // The HTML id attribute of the Panel.
             jqId : null,
 
-            doc_type_default: undefined,
-            
+            doc_type_default : undefined,
+
+            // HACK: hidden fields must be present/set in the container of
+            // this panel.
             clearHiddenUserid : function() {
                 $('#sp-doclog-hidden-user-id').val("");
                 $("#sp-doclog-user-title").html("");
@@ -904,6 +1044,11 @@
             applyDefaultForTicket : function(my) {
                 my.applyDefaults(my);
                 my.input.select.doc_type = 'TICKET';
+            },
+
+            applyDefaultForPrintSite : function(my) {
+                my.applyDefaults(my);
+                my.input.select.doc_type = 'PRINT';
             },
 
             /*
@@ -1007,9 +1152,7 @@
 
             m2v : function(my) {
                 var val,
-                    id
-                //
-                ,
+                    id,
                     _view = _ns.PanelCommon.view;
 
                 $('#sp-doclog-document-name').val(my.input.select.doc_name);
@@ -1042,11 +1185,11 @@
 
                 //--
                 if (!my.doc_type_default) {
-                    // Initialize default from first-time setting. 
+                    // Initialize default from first-time setting.
                     my.doc_type_default = _view.getRadioValue('sp-doclog-select-type');
                     my.input.select.doc_type = my.doc_type_default;
                 }
-                
+
                 _view.checkRadioValue('sp-doclog-select-type', my.input.select.doc_type);
 
                 val = my.input.select.letterhead;
@@ -1063,9 +1206,7 @@
             },
 
             v2m : function(my) {
-                var _view = _ns.PanelCommon.view
-                //
-                ,
+                var _view = _ns.PanelCommon.view,
                     val,
                     sel,
                     date,
@@ -1080,12 +1221,14 @@
                     return;
                 }
 
-                //
+                // HACK: hidden field must be present/set in the container of
+                // this panel.
                 val = $('#sp-doclog-hidden-user-id').val();
                 present = (val.length > 0);
                 my.input.select.user_id = ( present ? val : null);
 
-                //
+                // HACK: hidden field must be present/set in the container of
+                // this panel.
                 val = $('#sp-doclog-hidden-account-id').val();
                 present = (val.length > 0);
                 my.input.select.account_id = ( present ? val : null);
@@ -1133,7 +1276,7 @@
                 my.input.select.destination = ( present ? sel.val() : null);
 
                 // val is undefined when radiobutton 'sp-doc-out-lh' is missing,
-                // due to user privileges. 
+                // due to user privileges.
                 val = _view.getRadioValue('sp-doc-out-lh');
                 my.input.select.letterhead = (!val || val === "" ? undefined : (val === "1"));
 
@@ -1218,7 +1361,6 @@
             },
 
             onOutput : function(my, output) {
-                var _view = _ns.PanelCommon.view;
 
                 my.output = output;
                 /*
@@ -1259,13 +1401,11 @@
          * Constructor
          */
         _ns.QuickUserSearch = function(_view, _api) {
-
             var _this,
                 _quickUserCache = [],
                 _quickUserSelected,
-                _lastFilter
+                _lastFilter,
             //
-            ,
                 _onQuickUserSearch = function(target, filter) {
                 /* QuickSearchFilterDto */
                 var res,
@@ -1302,9 +1442,7 @@
                     }
                 }
                 target.html(html).filterable("refresh");
-            }
-            //
-            ;
+            };
 
             this.onCreate = function(parent, filterId, onSelectUser, onClearUser, onQuickSearchBefore) {
                 var filterableUserId = $("#" + filterId);
@@ -1383,7 +1521,6 @@
          * Constructor
          */
         _ns.PageLanguage = function(_i18n, _view) {
-
             var _page,
                 _self,
                 _onSelectLocale;
@@ -1419,7 +1556,6 @@
          * Constructor
          */
         _ns.PageUserPasswordReset = function(_i18n, _view) {
-
             var _page,
                 _self,
                 _onSelectReset;
@@ -1459,12 +1595,8 @@
          * NOTE: this 'class' is only used locally in this file by 'page-login'.
          */
         _ns.PageAbout = function(_i18n, _view) {
-            var _page = new _ns.Page(_i18n, _view, '#page-info', 'AppAbout')
-            //
-            ,
-                _self = _ns.derive(_page)
-            //
-            ;
+            var _page = new _ns.Page(_i18n, _view, '#page-info', 'AppAbout'),
+                _self = _ns.derive(_page);
 
             $(_self.id()).on('pagebeforehide', function(event, ui) {
                 if (_self.onHide) {
@@ -1485,110 +1617,58 @@
             var _page,
                 _self,
                 _pageAbout,
-                _util = _ns.Utils
-            //
-            ,
+                _util = _ns.Utils,
                 _onLanguage,
                 _onLogin,
-                _onShow
-            //
-            ,
+                _onShow,
                 _authName,
                 _authId,
                 _authCardLocal,
                 _authCardIp,
-                _authYubiKey
-            //
-            ,
+                _authYubiKey,
                 _authCardPinReq,
-                _authCardSelfAssoc
-            //
-            ,
-                _ID_MODE_NAME = '#sp-div-login-name'
-            //
-            ,
-                _ID_MODE_ID = '#sp-div-login-number'
-            //
-            ,
-                _ID_MODE_YUBIKEY = '#sp-div-login-yubikey'
-            //
-            ,
-                _ID_MODE_CARD_LOCAL = '#sp-div-login-card-local'
-            //
-            ,
-                _ID_MODE_CARD_IP = '#sp-div-login-card-ip'
-            //
-            ,
-                _ID_MODE_CARD_ASSOC = '#sp-div-login-card-assoc'
-            //
-            ,
-                _ID_BTN_MODE_NAME = '#sp-btn-login-mode-name'
-            //
-            ,
-                _ID_BTN_MODE_ID = '#sp-btn-login-mode-id'
-            //
-            ,
-                _ID_BTN_MODE_YUBIKEY = '#sp-btn-login-mode-yubikey'
-            //
-            ,
-                _ID_BTN_MODE_CARD_LOCAL = '#sp-btn-login-mode-card-local'
-            //
-            ,
-                _ID_BTN_MODE_CARD_IP = '#sp-btn-login-mode-card-ip'
-            //
-            ,
-                _ID_BTN_LOGIN_NAME = '#sp-btn-login-name'
-            //
-            ,
-                _ID_BTN_LOGIN_ID = '#sp-btn-login-number'
-            //
-            ,
-                _ID_BTN_LOGIN_YUBIKEY = '#sp-btn-login-yubikey'
-            //
-            ,
-                _ID_BTN_LOGIN_CARD_LOCAL = '#sp-btn-login-card-local'
-            //
-            ,
-                _ID_BTN_LOGIN_CARD_IP = '#sp-btn-login-card-ip'
-            //
-            ,
-                _ID_BTN_LOGIN_CARD_ASSOC = '#sp-btn-login-card-assoc'
-            //
-            ,
+                _authCardSelfAssoc,
+
+                _ID_MODE_NAME = '#sp-div-login-name',
+                _ID_MODE_ID = '#sp-div-login-number',
+                _ID_MODE_YUBIKEY = '#sp-div-login-yubikey',
+                _ID_MODE_CARD_LOCAL = '#sp-div-login-card-local',
+                _ID_MODE_CARD_IP = '#sp-div-login-card-ip',
+                _ID_MODE_CARD_ASSOC = '#sp-div-login-card-assoc',
+                _ID_BTN_MODE_NAME = '#sp-btn-login-mode-name',
+                _ID_BTN_MODE_ID = '#sp-btn-login-mode-id',
+                _ID_BTN_MODE_YUBIKEY = '#sp-btn-login-mode-yubikey',
+                _ID_BTN_MODE_CARD_LOCAL = '#sp-btn-login-mode-card-local',
+                _ID_BTN_MODE_CARD_IP = '#sp-btn-login-mode-card-ip',
+                _ID_BTN_LOGIN_NAME = '#sp-btn-login-name',
+                _ID_BTN_LOGIN_ID = '#sp-btn-login-number',
+                _ID_BTN_LOGIN_YUBIKEY = '#sp-btn-login-yubikey',
+                _ID_BTN_LOGIN_CARD_LOCAL = '#sp-btn-login-card-local',
+                _ID_BTN_LOGIN_CARD_IP = '#sp-btn-login-card-ip',
+                _ID_BTN_LOGIN_CARD_ASSOC = '#sp-btn-login-card-assoc',
                 _authModeDefault,
                 _onAuthModeSelect,
-                _modeSelected
-            //
-            ,
-                _authKeyLoggerStartTime = null
+                _modeSelected,
+                _authKeyLoggerStartTime = null,
             //
             // The max number of milliseconds allowed for entering the
             // local card number.
-            ,
-                _MAX_CARD_NUMBER_MSECS = 500
+                _MAX_CARD_NUMBER_MSECS = 500,
             //
             // The max number of milliseconds allowed for entering the
             // YubiKey OTP.
-            ,
-                _MAX_YUBIKEY_MSECS = 1500
+                _MAX_YUBIKEY_MSECS = 1500,
             //
             // The YubiKey OTP,    or collected local card number from individual
             // keystrokes,  or the cached Card Number to associate with a user.
-            ,
-                _authKeyLoggerCollected
-            //
-            ,
+                _authKeyLoggerCollected,
                 _timeoutCardAssoc,
-                _countdownCardAssoc
+                _countdownCardAssoc,
             //
             // Max number of seconds the assoc card dialog is visible.
-            ,
-                _MAX_CARD_ASSOC_SECS = 30
-            //
-            ,
-                _isCardRegistered
-            //
-            ;
+                _MAX_CARD_ASSOC_SECS = 30,
+
+                _isCardRegistered;
 
             _page = new _ns.Page(_i18n, _view, '#page-login', 'Login');
             _self = _ns.derive(_page);
@@ -1629,6 +1709,7 @@
             };
 
             _self.notifyLogout = function() {
+                $.noop();
             };
 
             /**
@@ -1698,7 +1779,6 @@
              *
              */
             _onAuthModeSelect = function(modeSelected) {
-
                 var nMethods = 0;
 
                 // clean all input
@@ -1957,7 +2037,8 @@
                     var res = _api.call({
                         request : "oauth-url",
                         dto : JSON.stringify({
-                            provider : $(this).attr('data-savapage')
+                            provider : $(this).attr('data-savapage'),
+                            instanceId : $(this).attr('data-savapage-type')
                         })
                     });
 
@@ -2028,11 +2109,10 @@
 
                     $(_ID_BTN_LOGIN_ID).click(function() {
                         var selNum = $('#sp-login-id-number'),
-                            num = selNum.val()
-                        //
-                        ,
+                            num = selNum.val(),
                             selPin = $('#sp-login-id-pin'),
                             pin = selPin.val();
+
                         selNum.val('');
                         selPin.val('');
 
@@ -2089,16 +2169,11 @@
 
                     $(_ID_BTN_LOGIN_CARD_LOCAL).click(function() {
                         var selCard = $('#sp-login-card-local-number'),
-                            card = selCard.val()
-                        //
-                        ,
+                            card = selCard.val(),
                             selPin = $('#sp-login-card-local-pin'),
-                            pin = selPin.val()
+                            pin = selPin.val(),
                         // Elapsed time since the first keyup in the key logger.
-                        ,
-                            authKeyLoggerElapsed
-                        //
-                        ;
+                            authKeyLoggerElapsed;
 
                         if (card.length === 0) {
                             $('#sp-login-card-local-number-group').focus();
@@ -2145,20 +2220,15 @@
                     });
 
                     $(_ID_BTN_LOGIN_CARD_IP).click(function() {
+                        var
                         // hidden field
-                        var selCard = $('#sp-login-card-ip-number')
+                        selCard = $('#sp-login-card-ip-number'),
                         //
-                        ,
-                            card = selCard.val()
-                        //
-                        ,
+                            card = selCard.val(),
                             selPin = $('#sp-login-card-ip-pin'),
-                            pin = selPin.val()
-                        //
-                        ;
+                            pin = selPin.val();
 
                         if (_authCardPinReq && pin.length === 0) {
-
                             /*
                              * Check if card is registered (if card sef assoc is
                              * active).
@@ -2224,8 +2294,8 @@
          * Note: _api is used for 'jqplot' requests.
          */
         _ns.View = function(_i18n, _api) {
-
-            var _view = this, _onDisconnected = null;
+            var _view = this,
+                _onDisconnected = null;
 
             /*
              * AUTH Modes used for login. These names are reserved and are
@@ -2242,7 +2312,7 @@
             this.AUTH_MODE_CARD_ASSOC = '_CA';
 
             // HTML color: to be set from 'constants' API.
-            this.userChartColors = ['printOut', 'printIn', 'pdfOut'];
+            this.userChartColors = ['printIn', 'printOut', 'pdfOut'];
 
             this.imgBase64 = false;
 
@@ -2445,7 +2515,6 @@
              * @param data Object with data.
              */
             this.getPageHtml = function(page, data) {
-
                 var html,
                     url = '/pages/' + page + _ns.WebAppTypeUrlParm();
 
@@ -2492,7 +2561,7 @@
             this.loadAdminPage = function(sel, page) {
                 return this.loadPage(sel, 'admin/' + page);
             };
-            
+
             /**
              * Gets HTML of a User page (synchronous).
              * @param page
@@ -2535,8 +2604,7 @@
             };
 
             this.showPageAsync = function(sel, page, onDone, jsonData) {
-                var _this = this,
-                    url;
+                var url;
 
                 if ($(sel).children().length === 0) {
 
@@ -2620,7 +2688,6 @@
             };
 
             this.apiResMsg = function(result) {
-
                 var title,
                     cssClass,
                     txt,
@@ -2796,12 +2863,8 @@
              * Checks a radiobutton value.
              */
             this.checkRadioValue = function(name, value) {
-                var radio = 'input[name="' + name + '"]'
-                //
-                ,
-                    sel = $(radio + '[value="' + value + '"]')
-                //
-                ;
+                var radio = 'input[name="' + name + '"]',
+                    sel = $(radio + '[value="' + value + '"]');
                 $(radio).prop('checked', false);
                 sel.prop('checked', true);
                 $(radio).checkboxradio("refresh");
@@ -2824,6 +2887,13 @@
              */
             this.setSelectedValue = function(sel, val) {
                 sel.val(val).selectmenu('refresh');
+            };
+
+            /**
+             * Select first option.
+             */
+            this.setSelectedFirst = function(sel) {
+                this.setSelectedValue(sel, sel.find("option:first").val());
             };
 
             /**
@@ -2850,9 +2920,10 @@
                 }
             };
 
-            this.mobipick = function(sel) {
+            this.mobipick = function(sel, localeDate) {
                 return sel.mobipick({
-                    locale : _view.language
+                    locale : _view.language,
+                    intlStdDate : !localeDate
                 });
             };
 
@@ -2885,7 +2956,7 @@
             };
 
             /**
-             * Enables/Disables jQuery selector (this does not work for radio
+             * Enables/Disables jQuery selector (does not work for radio
              * buttons).
              */
             this.enable = function(jqsel, enable) {
@@ -2894,6 +2965,19 @@
                     jqsel.removeAttr(attr);
                 } else {
                     jqsel.attr(attr, "");
+                }
+            };
+
+            /**
+             * Enables/Disables jQuery selector with ui-disabled (does not
+             * work for radio buttons).
+             */
+            this.enableUI = function(jqsel, enable) {
+                var clazz = "ui-disabled";
+                if (enable) {
+                    jqsel.removeClass(clazz).attr('tabindex', '0');
+                } else {
+                    jqsel.addClass(clazz).attr('tabindex', '-1');
                 }
             };
 
@@ -2909,7 +2993,6 @@
              *
              */
             this.checkPwMatch = function(jqPassw, jqConfirm, canBeVoid) {
-
                 var pw_valid = false,
                     pw1 = jqPassw.val(),
                     pw2 = jqConfirm.val(),
@@ -2936,6 +3019,64 @@
     }(jQuery, this, this.document, this.org.savapage));
 
 //--------------------------------------------------------------
+// Logger for Keyboard Emulator Cards/Keys (NFC, Barcode, Yubikey)
+//--------------------------------------------------------------
+( function(window, document, navigator, _ns) {
+        "use strict";
+
+        _ns.KeyboardLogger = {
+
+            /** */
+            setCallback : function(keyzone, maxMsecs, fooFocusIn, fooFocusOut, fooInfo) {
+                var _obj = this,
+                    _hasFocus = false,
+                    _collectStartTime = null,
+                    _collectedKeys = '';
+
+                keyzone.focusin(function() {
+                    _collectStartTime = null;
+                    _hasFocus = true;
+                    fooFocusIn();
+                }).focusout(function() {
+                    _collectStartTime = null;
+                    _hasFocus = false;
+                    fooFocusOut();
+                }).keyup(function(e) {
+                    var key,
+                        collectTimeElapsed;
+                    if (!_hasFocus) {
+                        return;
+                    }
+                    key = e.keyCode || e.which;
+                    if (key === 13) {// <Enter>
+                        if (_collectStartTime) {
+                            collectTimeElapsed = new Date().getTime() - _collectStartTime;
+                            _collectStartTime = null;
+                            if (collectTimeElapsed > maxMsecs) {
+                                return false;
+                            }
+                        }
+                        fooInfo(_collectedKeys);
+                    } else {
+                        /*
+                         * IMPORTANT: only look at printable chars. When doing an
+                         * alt-tab to return to THIS application we do not want
+                         * to collect !!!
+                         */
+                        if (32 < key && key < 127) {
+                            if (_collectStartTime === null) {
+                                _collectStartTime = new Date().getTime();
+                                _collectedKeys = '';
+                            }
+                            _collectedKeys += String.fromCharCode(key);
+                        }
+                    }
+                });
+            }
+        };
+    }(this, this.document, this.navigator, this.org.savapage));
+
+//--------------------------------------------------------------
 // Drop & Drop File Upload
 //--------------------------------------------------------------
 ( function(window, document, navigator, _ns) {
@@ -2952,6 +3093,7 @@
                     nameWlk,
                     statWlk,
                     htmlWlk,
+                    fileSize,
                     htmlAccepted = '',
                     htmlRejected = '';
 
@@ -2960,8 +3102,13 @@
                         nameWlk = files[i].name;
                         statWlk = filesStatus[nameWlk];
                         if (statWlk !== undefined) {
+                            fileSize = this.humanFileSize(files[i].size);
                             htmlWlk = '<span class="sp-txt-' + ( statWlk ? 'valid' : 'warn') + '">';
-                            htmlWlk += '&bull; ' + nameWlk + ' (' + this.humanFileSize(files[i].size) + ')</span><br>';
+                            htmlWlk += '&bull; ' + nameWlk;
+                            if (fileSize) {
+                                htmlWlk += ' (' + fileSize + ')';
+                            }
+                            htmlWlk += '</span><br>';
                             if (statWlk) {
                                 htmlAccepted += htmlWlk;
                             } else {
@@ -3024,7 +3171,7 @@
                     unit = bin ? 1024 : 1000,
                     unitArray = bin ? ['', 'Ki', 'Mi', 'Gi', 'Ti'] : ['', 'k', 'M', 'G', 'T'];
                 i = Math.floor(Math.log(size) / Math.log(unit));
-                return (size / Math.pow(unit, i) ).toFixed(decimals) * 1 + '&nbsp;' + unitArray[i] + 'B';
+                return size ? ((size / Math.pow(unit, i) ).toFixed(decimals) * 1 + '&nbsp;' + unitArray[i] + 'B') : undefined;
             },
 
             /**
@@ -3041,7 +3188,14 @@
                 }
                 return false;
             },
-
+            /**
+             *
+             */
+            isHtmlTypeSupported : function(fileExt) {
+                var wlk = [];
+                wlk.name = 'probe.html';
+                return this.isFileTypeSupported(fileExt, wlk);
+            },
             /**
              *
              */
@@ -3113,7 +3267,7 @@
                     if (res.result.code !== '0') {
                         fooWarn(res.result.txt, infoArray, res.filesStatus);
                     } else if (fooInfo) {
-                        fooInfo(infoArray);
+                        fooInfo(infoArray, res.result.txt);
                     }
                 }).fail(function() {
                     _ns.PanelCommon.onDisconnected();
@@ -3127,9 +3281,74 @@
 
             /**
              *
+             */
+            printURL : function(dataTransfer, url, fontEnum, fileExt, i18n, fooBefore, fooAfter, fooWarn, fooInfo) {
+                var _obj = this,
+                // Note: "URL" is not supported by Firefox.
+                    dataUrl = dataTransfer.getData("URL"),
+                    dataText,
+                    wlk,
+                    res;
+
+                if (fooBefore) {
+                    fooBefore();
+                }
+
+                if (dataUrl.length === 0) {
+                    dataText = dataTransfer.getData("TEXT").trim();
+                    /*
+                     * Be kind to Firefox, and interpret drag/drop of
+                     * selected text as http(s) URL along the way :-)
+                     */
+                    if (dataText.indexOf(' ') < 0 && (dataText.startsWith('http://') || dataText.startsWith('https://'))) {
+                        dataUrl = dataText;
+                    } else {
+                        fooWarn('[' + dataText + '] is not supported.');
+                        return;
+                    }
+                }
+
+                wlk = [];
+                wlk.name = dataUrl;
+
+                if (!_obj.isFileTypeSupported(fileExt, wlk) && !_obj.isHtmlTypeSupported(fileExt)) {
+                    fooWarn(i18n.format('msg-file-upload-type-unsupported', [dataUrl]));
+                    return;
+                }
+
+                $.mobile.loading("show");
+                _ns.Utils.asyncFoo(function() {
+                    res = _ns.api.call({
+                        request : 'url-print',
+                        dto : JSON.stringify({
+                            url : dataUrl,
+                            fontEnum : fontEnum
+                        })
+                    });
+                    if (res.result.code === '0') {
+                        if (fooInfo) {
+                            wlk = [];
+                            wlk.push({
+                                name : dataUrl,
+                                size : undefined
+                            });
+                            fooInfo(wlk);
+                        }
+                        if (fooAfter) {
+                            fooAfter();
+                        }
+                    } else {
+                        fooWarn(res.result.txt);
+                    }
+                    $.mobile.loading("hide");
+                });
+            },
+
+            /**
+             *
              * @param {Object} dropzone (JQuery selector).
              */
-            setCallbacks : function(dropzone, cssClassDragover, url, fileField, fontField, fooFontEnum, maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo) {
+            setCallbacks : function(dropzone, cssClassDragover, url, fileField, fontField, fooFontEnum, maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo, forPrint) {
                 var _obj = this;
 
                 dropzone.bind('dragover', function(e) {
@@ -3143,15 +3362,92 @@
                 });
 
                 dropzone.bind('drop', function(e) {
-                    var files = e.originalEvent.dataTransfer.files;
+                    var dataTransfer = e.originalEvent.dataTransfer,
+                        files = dataTransfer.files,
+                        fontEnum = fooFontEnum();
+
                     $(this).removeClass(cssClassDragover);
-                    // A drop of meaningless item(s) results in files.length ===
-                    // zero.
+
                     if (files.length > 0) {
-                        _obj.sendFiles(files, url, fileField, fontField, fooFontEnum(), maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo);
+                        _obj.sendFiles(files, url, fileField, fontField, fontEnum, maxBytes, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo);
+                    } else if (forPrint) {
+                        _obj.printURL(dataTransfer, url, fontEnum, fileExt, i18n, fooBeforeSend, fooAfterSend, fooWarn, fooInfo);
+                    } else {
+                        fooWarn(i18n.format('msg-file-upload-type-unsupported', ['TEXT']));
                     }
                     return false;
                 });
+            }
+        };
+
+    }(this, this.document, this.navigator, this.org.savapage));
+
+//--------------------------------------------------------------
+// Switch Buttons
+//--------------------------------------------------------------
+( function($, window, document, _ns) {
+        "use strict";
+
+        //-----------------------------------------
+        _ns.GenericButtonSwitch = {};
+        _ns.GenericButtonSwitch.toggle = function(button, icons) {
+            var classRem,
+                classAdd;
+
+            if (button.hasClass(icons.CLASS_ICON_ON)) {
+                classRem = icons.CLASS_ICON_ON;
+                classAdd = icons.CLASS_ICON_OFF;
+            } else {
+                classRem = icons.CLASS_ICON_OFF;
+                classAdd = icons.CLASS_ICON_ON;
+            }
+
+            button.removeClass(classRem);
+            button.addClass(classAdd);
+
+            return classAdd === icons.CLASS_ICON_ON;
+        };
+
+        _ns.GenericButtonSwitch.isOn = function(button, icons) {
+            return button.hasClass(icons.CLASS_ICON_ON);
+        };
+
+        _ns.GenericButtonSwitch.setState = function(button, isOn, icons) {
+            button.removeClass(icons.CLASS_ICON_ON);
+            button.removeClass(icons.CLASS_ICON_OFF);
+            button.addClass( isOn ? icons.CLASS_ICON_ON : icons.CLASS_ICON_OFF);
+        };
+
+        //-----------------------------------------
+        _ns.PreferredButtonSwitch = {
+            icons : {
+                CLASS_ICON_ON : 'ui-icon-mini-preferred-on',
+                CLASS_ICON_OFF : 'ui-icon-mini-preferred-off'
+            },
+            toggle : function(button) {
+                return _ns.GenericButtonSwitch.toggle(button, this.icons);
+            },
+            isOn : function(button) {
+                return _ns.GenericButtonSwitch.isOn(button, this.icons);
+            },
+            setState : function(button, isOn) {
+                _ns.GenericButtonSwitch.setState(button, isOn, this.icons);
+            }
+        };
+        //-----------------------------------------
+        _ns.SelectAllButtonSwitch = {
+            icons : {
+                CLASS_ICON_ON : 'ui-icon-mini-select-all-on',
+                CLASS_ICON_OFF : 'ui-icon-mini-select-all-off'
+            },
+            toggle : function(button) {
+                return _ns.GenericButtonSwitch.toggle(button, this.icons);
+            },
+            isOn : function(button) {
+                return _ns.GenericButtonSwitch.isOn(button, this.icons);
+            },
+            setState : function(button, isOn) {
+                _ns.GenericButtonSwitch.setState(button, isOn, this.icons);
             }
         };
 
@@ -3164,64 +3460,63 @@
         "use strict";
 
         _ns.NumberUpPreview = {};
-                            
-         _ns.NumberUpPreview.classStaple = {
-             '3' : null,
-             '20' : 'sp-nup-staple-top-left',
-             '21' : 'sp-nup-staple-bottom-left',
-             '22' : 'sp-nup-staple-top-right',
-             '23' : 'sp-nup-staple-bottom-right',
-             '24' : '',
-             '25' : '',
-             '26' : '',
-             '27' : '',
-             '28' : 'sp-nup-staple-left-dual',
-             '29' : 'sp-nup-staple-top-dual',
-             '30' : 'sp-nup-staple-right-dual',
-             '31' : 'sp-nup-staple-bottom-dual',
-             '32' : 'sp-nup-staple-left-triple',
-             '33' : 'sp-nup-staple-top-triple',
-             '34' : 'sp-nup-staple-right-triple',
-             '35' : 'sp-nup-staple-bottom-triple'
-         }; 
-         _ns.NumberUpPreview.classPunch = {
-             '3' : null,
-             '70' : '',
-             '71' : '',
-             '72' : '',
-             '73' : '',
-             '74' : 'sp-nup-punch-left',
-             '75' : 'sp-nup-punch-top',
-             '76' : 'sp-nup-punch-right',
-             '77' : 'sp-nup-punch-bottom',
-             '78' : 'sp-nup-punch-left',
-             '79' : 'sp-nup-punch-top',
-             '80' : 'sp-nup-punch-right',
-             '81' : 'sp-nup-punch-bottom',
-             '82' : 'sp-nup-punch-left',
-             '83' : 'sp-nup-punch-top',
-             '84' : 'sp-nup-punch-right',
-             '85' : 'sp-nup-punch-bottom'
-         }; 
-                            
+
+        _ns.NumberUpPreview.classStaple = {
+            '3' : null,
+            '20' : 'sp-nup-staple-top-left',
+            '21' : 'sp-nup-staple-bottom-left',
+            '22' : 'sp-nup-staple-top-right',
+            '23' : 'sp-nup-staple-bottom-right',
+            '24' : '',
+            '25' : '',
+            '26' : '',
+            '27' : '',
+            '28' : 'sp-nup-staple-left-dual',
+            '29' : 'sp-nup-staple-top-dual',
+            '30' : 'sp-nup-staple-right-dual',
+            '31' : 'sp-nup-staple-bottom-dual',
+            '32' : 'sp-nup-staple-left-triple',
+            '33' : 'sp-nup-staple-top-triple',
+            '34' : 'sp-nup-staple-right-triple',
+            '35' : 'sp-nup-staple-bottom-triple'
+        };
+        _ns.NumberUpPreview.classPunch = {
+            '3' : null,
+            '70' : '',
+            '71' : '',
+            '72' : '',
+            '73' : '',
+            '74' : 'sp-nup-punch-left',
+            '75' : 'sp-nup-punch-top',
+            '76' : 'sp-nup-punch-right',
+            '77' : 'sp-nup-punch-bottom',
+            '78' : 'sp-nup-punch-left',
+            '79' : 'sp-nup-punch-top',
+            '80' : 'sp-nup-punch-right',
+            '81' : 'sp-nup-punch-bottom',
+            '82' : 'sp-nup-punch-left',
+            '83' : 'sp-nup-punch-top',
+            '84' : 'sp-nup-punch-right',
+            '85' : 'sp-nup-punch-bottom'
+        };
+
         _ns.NumberUpPreview.show = function(_view, numberUp, rotate180, punch, staple, landscape) {
-            
-            var clazz
-                , sel = $('.sp-nup-preview-sheet').filter('[data-savapage='+ numberUp + '-' + (landscape ? 'l' : 'p') + ']')
-                , selTbl = sel.find('table');
-            
+            var clazz,
+                sel = $('.sp-nup-preview-sheet').filter('[data-savapage=' + numberUp + '-' + ( landscape ? 'l' : 'p') + ']'),
+                selTbl = sel.find('table');
+
             _view.visible($('.sp-nup-preview'), true);
-            
+
             _view.visible($('.sp-nup-preview-portrait'), !landscape && !rotate180);
             _view.visible($('.sp-nup-preview-portrait-180'), !landscape && rotate180);
             _view.visible($('.sp-nup-preview-landscape'), landscape && !rotate180);
             _view.visible($('.sp-nup-preview-landscape-180'), landscape && rotate180);
-            
+
             _view.visible($('.sp-nup-preview-sheet'), false);
             _view.visible(sel, true);
-            
+
             selTbl.attr('class', '');
-            
+
             clazz = this.classPunch[punch];
             if (clazz && clazz.length) {
                 selTbl.addClass(clazz);
@@ -3230,7 +3525,7 @@
             if (clazz && clazz.length) {
                 selTbl.addClass(clazz);
             }
-            
-        }; 
-        
+
+        };
+
     }(jQuery, this, this.document, this.org.savapage));

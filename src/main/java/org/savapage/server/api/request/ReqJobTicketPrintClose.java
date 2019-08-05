@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,7 +25,6 @@ import java.io.IOException;
 
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
-import org.savapage.core.dao.UserDao;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.jpa.User;
@@ -33,6 +32,8 @@ import org.savapage.core.msg.UserMsgIndicator;
 import org.savapage.core.outbox.OutboxInfoDto.OutboxJobDto;
 import org.savapage.core.services.JobTicketService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.ext.notification.JobTicketCancelEvent;
+import org.savapage.ext.notification.JobTicketCloseEvent;
 
 /**
  *
@@ -71,7 +72,8 @@ public final class ReqJobTicketPrintClose extends ApiRequestMixin {
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
 
-        final DtoReq dtoReq = DtoReq.create(DtoReq.class, getParmValue("dto"));
+        final DtoReq dtoReq =
+                DtoReq.create(DtoReq.class, this.getParmValueDto());
 
         final OutboxJobDto dto =
                 JOBTICKET_SERVICE.closeTicketPrint(dtoReq.getJobFileName());
@@ -101,9 +103,7 @@ public final class ReqJobTicketPrintClose extends ApiRequestMixin {
         final Long userKey = dto.getUserId();
         final IppJobStateEnum jobState = dto.getIppJobState();
 
-        final UserDao userDao = ServiceContext.getDaoContext().getUserDao();
-
-        final User user = userDao.findById(userKey);
+        final User user = USER_DAO.findById(userKey);
 
         if (UserMsgIndicator.isSafePagesDirPresent(user.getUserId())) {
 
@@ -120,7 +120,20 @@ public final class ReqJobTicketPrintClose extends ApiRequestMixin {
                     ServiceContext.getTransactionDate(), userMsgInd, null);
         }
 
+        //
         sendEmailNotification(requestingUser, user, dto, jobState);
+
+        if (hasNotificationListener()) {
+
+            if (jobState == IppJobStateEnum.IPP_JOB_COMPLETED) {
+                getNotificationListener().onJobTicketEvent(fillEvent(
+                        new JobTicketCloseEvent(), requestingUser, user, dto));
+            } else {
+                getNotificationListener()
+                        .onJobTicketEvent(fillEvent(new JobTicketCancelEvent(),
+                                requestingUser, user, dto, "-"));
+            }
+        }
     }
 
     /**

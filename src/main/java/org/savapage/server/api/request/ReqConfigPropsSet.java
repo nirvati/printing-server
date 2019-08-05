@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Authors: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -39,11 +39,12 @@ import org.savapage.core.jpa.PrinterGroup;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.SOfficeService;
 import org.savapage.core.services.ServiceContext;
-import org.savapage.core.services.helpers.JobTicketTagCache;
+import org.savapage.core.services.helpers.JobTicketLabelCache;
 import org.savapage.core.services.helpers.SOfficeConfigProps;
 import org.savapage.core.util.BigDecimalUtil;
+import org.savapage.ext.papercut.services.PaperCutService;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
-import org.savapage.server.webprint.WebPrintHelper;
+import org.savapage.server.dropzone.WebPrintHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +66,10 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
     private static final SOfficeService SOFFICE_SERVICE =
             ServiceContext.getServiceFactory().getSOfficeService();
 
+    /** */
+    private static final PaperCutService PAPERCUT_SERVICE =
+            ServiceContext.getServiceFactory().getPaperCutService();
+
     @Override
     protected void onRequest(final String requestingUser, final User lockedUser)
             throws IOException {
@@ -74,7 +79,7 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
         final JsonNode list;
 
         try {
-            list = new ObjectMapper().readTree(getParmValue("dto"));
+            list = new ObjectMapper().readTree(this.getParmValueDto());
         } catch (IOException e) {
             throw new SpException(e.getMessage(), e);
         }
@@ -183,11 +188,13 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                         SpJobScheduler.interruptPaperCutPrintMonitor();
                         msgKey = "msg-config-props-applied-"
                                 + "papercut-print-monitor-stopped";
+                        PAPERCUT_SERVICE.resetDbConnectionPool();
                     } else if (!preValue && cm.isConfigValue(configKey)) {
                         SpJobScheduler.instance()
                                 .scheduleOneShotPaperCutPrintMonitor(0);
                         msgKey = "msg-config-props-applied-"
                                 + "papercut-print-monitor-started";
+                        PAPERCUT_SERVICE.resetDbConnectionPool();
                     }
 
                 } else if (configKey == Key.PRINT_IMAP_ENABLE && preValue
@@ -208,10 +215,17 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                     // Provoke errors/warnings in server.log.
                     WebPrintHelper.getExcludeTypes();
 
+                } else if (configKey == Key.JOBTICKET_DOMAINS
+                        && StringUtils.isNotBlank(value)) {
+                    JobTicketLabelCache.initTicketDomains(value);
+
+                } else if (configKey == Key.JOBTICKET_USES
+                        && StringUtils.isNotBlank(value)) {
+                    JobTicketLabelCache.initTicketUses(value);
+
                 } else if (configKey == Key.JOBTICKET_TAGS
                         && StringUtils.isNotBlank(value)) {
-                    JobTicketTagCache.setTicketTags(
-                            JobTicketTagCache.parseTicketTags(value));
+                    JobTicketLabelCache.initTicketTags(value);
                 }
 
             } else {
@@ -329,15 +343,20 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
             }
         }
 
-        if (key == Key.JOBTICKET_TAGS && StringUtils.isNotBlank(value)) {
+        if (StringUtils.isNotBlank(value)) {
             try {
-                JobTicketTagCache.parseTicketTags(value);
+                if (key == Key.JOBTICKET_DOMAINS) {
+                    JobTicketLabelCache.parseTicketDomains(value);
+                } else if (key == Key.JOBTICKET_USES) {
+                    JobTicketLabelCache.parseTicketUses(value);
+                } else if (key == Key.JOBTICKET_TAGS) {
+                    JobTicketLabelCache.parseTicketTags(value);
+                }
             } catch (IllegalArgumentException e) {
                 setApiResultText(ApiResultCodeEnum.ERROR, e.getMessage());
                 return false;
             }
         }
-
         return true;
     }
 

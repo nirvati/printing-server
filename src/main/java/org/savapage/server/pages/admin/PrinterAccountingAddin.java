@@ -1,6 +1,6 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2019 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,9 +30,12 @@ import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.jpa.Printer;
+import org.savapage.core.print.proxy.JsonProxyPrinter;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.BigDecimalUtil;
+import org.savapage.ext.papercut.PaperCutIntegrationEnum;
+import org.savapage.ext.papercut.services.PaperCutService;
 import org.savapage.server.pages.MarkupHelper;
 
 /**
@@ -47,9 +50,11 @@ public final class PrinterAccountingAddin extends AbstractAdminPage {
      */
     private static final long serialVersionUID = 1L;
 
-    /**
-     *
-     */
+    /** */
+    private static final PaperCutService PAPERCUT_SERVICE =
+            ServiceContext.getServiceFactory().getPaperCutService();
+
+    /** */
     private static final ProxyPrintService PROXYPRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
@@ -69,6 +74,32 @@ public final class PrinterAccountingAddin extends AbstractAdminPage {
     }
 
     /**
+     * Checks extra visibility conditions (PaperCut).
+     *
+     * @param printer
+     *            Printer
+     * @return {@code true} if visible.
+     */
+    public static boolean isVisibleExt(final Printer printer) {
+        final boolean showMediaCost;
+
+        if (PAPERCUT_SERVICE.isExtPaperCutPrint(printer.getPrinterName())) {
+            showMediaCost = PAPERCUT_SERVICE
+                    .getPrintIntegration() != PaperCutIntegrationEnum.PERSONAL_PRINT;
+        } else {
+            showMediaCost = true;
+        }
+
+        if (showMediaCost) {
+            final JsonProxyPrinter proxyPrinter = PROXYPRINT_SERVICE
+                    .getCachedPrinter(printer.getPrinterName());
+            return !proxyPrinter.hasCustomCostRulesMedia();
+        }
+
+        return showMediaCost;
+    }
+
+    /**
      * @param printerId
      *            The database key of the printer.
      */
@@ -84,22 +115,25 @@ public final class PrinterAccountingAddin extends AbstractAdminPage {
 
         final boolean isVisible;
 
-        if (!PROXYPRINT_SERVICE.isCupsPrinterDetails(printerName)) {
-            isVisible = false;
-        } else if (PROXYPRINT_SERVICE.getProxyPrinterCostMediaSource(printer)
-                .isEmpty()) {
-            isVisible = true;
+        if (PROXYPRINT_SERVICE.isCupsPrinterDetails(printerName)) {
+            if (PROXYPRINT_SERVICE.hasMediaSourceManual(printerName)) {
+                isVisible = true;
+            } else {
+                isVisible = PROXYPRINT_SERVICE
+                        .getProxyPrinterCostMediaSource(printer).isEmpty();
+            }
         } else {
-            isVisible = PROXYPRINT_SERVICE.hasMediaSourceManual(printerName);
+            isVisible = false;
         }
+        final boolean isVisibleExt = isVisible && isVisibleExt(printer);
 
         final PrinterAccountingPanel pageTotalPanel =
                 new PrinterAccountingPanel("printer-accounting-panel",
-                        isVisible);
+                        isVisibleExt);
 
         add(pageTotalPanel);
 
-        if (isVisible) {
+        if (isVisibleExt) {
             pageTotalPanel.populate(printer);
         }
 

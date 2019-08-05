@@ -1,6 +1,6 @@
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2016 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2011-2018 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -27,7 +27,6 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.markup.ComponentTag;
 import org.apache.wicket.markup.MarkupStream;
@@ -36,9 +35,9 @@ import org.apache.wicket.request.Response;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.server.WebApp;
-import org.savapage.server.webapp.WebAppTypeEnum;
 
 /**
  *
@@ -82,6 +81,19 @@ public final class HtmlInjectComponent extends WebComponent {
                 break;
             case LOGIN:
                 configKey = Key.WEBAPP_HTML_ADMIN_LOGIN;
+                break;
+            default:
+                configKey = null;
+                break;
+            }
+            break;
+        case PRINTSITE:
+            switch (this.htmlInject) {
+            case ABOUT:
+                configKey = Key.WEBAPP_HTML_PRINTSITE_ABOUT;
+                break;
+            case LOGIN:
+                configKey = Key.WEBAPP_HTML_PRINTSITE_LOGIN;
                 break;
             default:
                 configKey = null;
@@ -199,11 +211,11 @@ public final class HtmlInjectComponent extends WebComponent {
 
         final Response response = getRequestCycle().getResponse();
 
-        BufferedReader br = null;
+        try (BufferedReader br =
+                new BufferedReader(new FileReader(htmlFile));) {
 
-        try {
-            br = new BufferedReader(new FileReader(htmlFile));
             String line = null;
+
             while ((line = br.readLine()) != null) {
                 response.write(line);
             }
@@ -214,8 +226,6 @@ public final class HtmlInjectComponent extends WebComponent {
             response.write("\">");
             response.write(e.getMessage());
             response.write("<span>");
-        } finally {
-            IOUtils.closeQuietly(br);
         }
     }
 
