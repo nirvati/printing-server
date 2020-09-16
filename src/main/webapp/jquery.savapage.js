@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile Common | (c) 2011-2019 Datraverse B.V. | GNU Affero
+/*! SavaPage jQuery Mobile Common | © 2020 Datraverse B.V. | GNU Affero
  * General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -524,6 +527,19 @@
                 $(form + " input[name='user']").attr("value", _user.id);
                 $(form + " input[name='data']").attr("value", JSON.stringify(data));
                 $(form).submit();
+            };
+
+            /** */
+            this.unloadWebApp = function() {
+                var request = 'webapp-unload';
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon('/api?request=' + request + '&webAppType=' + _ns.WEBAPP_TYPE + '&user=' + _user.id, null);
+                } else {
+                    this.removeCallbacks();
+                    this.call({
+                        request : request
+                    });
+                }
             };
 
             /**
@@ -1398,17 +1414,18 @@
 
         // =========================================================================
         /**
-         * Constructor
+         * Constructor: Generic Quick Search on Object
          */
-        _ns.QuickUserSearch = function(_view, _api) {
+        _ns.QuickObjectSearch = function(_view, _api) {
             var _this,
-                _quickUserCache = [],
-                _quickUserSelected,
+                _quickObjectCache = [],
+                _quickObjectSelected,
                 _lastFilter,
             //
-                _onQuickUserSearch = function(target, filter) {
+                _onQuickObjectSearch = function(target, request, filter, onFilterProps, onDisplayObject) {
                 /* QuickSearchFilterDto */
                 var res,
+                    filterProps,
                     html = "";
 
                 // Prevent duplicate search on "focusout" of search field.
@@ -1417,55 +1434,68 @@
                 }
                 _lastFilter = filter;
 
-                _quickUserCache = [];
-                _quickUserSelected = undefined;
+                _quickObjectCache = [];
+                _quickObjectSelected = undefined;
 
                 if (filter && filter.length > 0) {
+
+                    filterProps = {
+                        filter : filter,
+                        maxResults : 5
+                    };
+                    if (onFilterProps) {
+                        onFilterProps(filterProps);
+                    }
+
                     res = _api.call({
-                        request : "user-quick-search",
-                        dto : JSON.stringify({
-                            filter : filter,
-                            maxResults : 5
-                        })
+                        request : request,
+                        dto : JSON.stringify(filterProps)
                     });
                     if (res.result.code === '0') {
-                        _quickUserCache = res.dto.items;
-                        $.each(_quickUserCache, function(key, item) {
-                            html += "<li class=\"ui-mini\" data-icon=\"false\" data-savapage=\"" + key + "\"><a tabindex=\"0\" href=\"#\">" + item.text + " &bull; " + (item.email || "&nbsp;") + "</a></li>";
+                        _quickObjectCache = res.dto.items;
+                        $.each(_quickObjectCache, function(key, item) {
+                            html += "<li class=\"ui-mini\" data-icon=\"false\" data-savapage=\"" + key + "\">";
+                            html += "<a tabindex=\"0\" href=\"#\">";
+                            if (onDisplayObject) {
+                                html += onDisplayObject(item);
+                            } else {
+                                html += item.text;
+                            }
+                            html += "</a></li>";
                         });
                     } else {
                         _view.showApiMsg(res);
                     }
                 } else {
-                    if (_this.onClearUser) {
-                        _this.onClearUser();
+                    if (_this.onClearObject) {
+                        _this.onClearObject();
                     }
                 }
                 target.html(html).filterable("refresh");
             };
 
-            this.onCreate = function(parent, filterId, onSelectUser, onClearUser, onQuickSearchBefore) {
-                var filterableUserId = $("#" + filterId);
+            this.onCreate = function(parent, filterId, request, onFilterProps, onDisplayObject, onSelectObject, onClearObject, onQuickSearchBefore) {
+                var filterableObjectId = $("#" + filterId);
 
                 _this = this;
 
-                this.onSelectUser = onSelectUser;
-                this.onClearUser = onClearUser;
+                this.onSelectObject = onSelectObject;
+                this.onClearObject = onClearObject;
                 this.onQuickSearchBefore = onQuickSearchBefore;
 
-                filterableUserId.on("filterablebeforefilter", function(e, data) {
+                filterableObjectId.on("filterablebeforefilter", function(e, data) {
                     if (_this.onQuickSearchBefore) {
                         onQuickSearchBefore();
                     }
-                    _onQuickUserSearch($(this), data.input.get(0).value);
+                    _onQuickObjectSearch($(this), request, data.input.get(0).value, onFilterProps, onDisplayObject);
                 });
 
                 parent.on('click', '#' + filterId + ' li', null, function() {
                     var attr = "data-savapage";
-                    _quickUserSelected = _quickUserCache[$(this).attr(attr)];
-                    filterableUserId.empty().filterable("refresh");
-                    if (_this.onSelectUser) {
-                        _this.onSelectUser(_quickUserSelected);
+                    _quickObjectSelected = _quickObjectCache[$(this).attr(attr)];
+                    filterableObjectId.empty().filterable("refresh");
+                    if (_this.onSelectObject) {
+                        _this.onSelectObject(_quickObjectSelected);
                     }
                 });
 
@@ -1635,6 +1665,8 @@
                 _ID_MODE_CARD_LOCAL = '#sp-div-login-card-local',
                 _ID_MODE_CARD_IP = '#sp-div-login-card-ip',
                 _ID_MODE_CARD_ASSOC = '#sp-div-login-card-assoc',
+                _ID_MODE_TOTP = '#sp-div-login-totp',
+
                 _ID_BTN_MODE_NAME = '#sp-btn-login-mode-name',
                 _ID_BTN_MODE_ID = '#sp-btn-login-mode-id',
                 _ID_BTN_MODE_YUBIKEY = '#sp-btn-login-mode-yubikey',
@@ -1645,7 +1677,20 @@
                 _ID_BTN_LOGIN_YUBIKEY = '#sp-btn-login-yubikey',
                 _ID_BTN_LOGIN_CARD_LOCAL = '#sp-btn-login-card-local',
                 _ID_BTN_LOGIN_CARD_IP = '#sp-btn-login-card-ip',
+
                 _ID_BTN_LOGIN_CARD_ASSOC = '#sp-btn-login-card-assoc',
+                _ID_BTN_LOGIN_CARD_ASSOC_CANCEL = '#sp-btn-login-card-assoc-cancel',
+
+                _ID_BTN_LOGIN_TOTP_VERIFY = '#sp-btn-login-totp-verify',
+                _ID_BTN_LOGIN_TOTP_VERIFY_CODE_SENT = '#sp-btn-login-totp-verify-code-sent',
+                _ID_BTN_LOGIN_TOTP_CANCEL = '#sp-btn-login-totp-cancel',
+                _ID_BTN_LOGIN_TOTP_SEND_CODE = '#sp-btn-login-totp-send-code',
+
+                _ID_LOGIN_TOTP_CODE = '#sp-login-user-totp-code',
+                _ID_LOGIN_TOTP_CODE_SENT = '#sp-login-user-totp-code-sent',
+
+                _authTOTP,
+
                 _authModeDefault,
                 _onAuthModeSelect,
                 _modeSelected,
@@ -1754,6 +1799,13 @@
             /**
              *
              */
+            _self.notifyTOTPRequired = function() {
+                _onAuthModeSelect(_view.AUTH_MODE_TOTP);
+            };
+
+            /**
+             *
+             */
             _self.notifyLoginFailed = function(modeSelected, msg) {
                 _onAuthModeSelect(modeSelected || _authModeDefault);
                 // Do NOT use _view.showApiMsg(data), cause it spoils the
@@ -1785,6 +1837,11 @@
                 $('#page-login-content :text, :password').val('');
 
                 //
+                if (_authTOTP) {
+                    $(_ID_BTN_LOGIN_TOTP_SEND_CODE).closest('[data-role=collapsible]').collapsible('collapse');
+                }
+
+                //
                 if (_timeoutCardAssoc) {
                     window.clearTimeout(_timeoutCardAssoc);
                     _timeoutCardAssoc = null;
@@ -1799,6 +1856,7 @@
                 $(_ID_MODE_CARD_LOCAL).hide();
                 $(_ID_MODE_CARD_IP).hide();
                 $(_ID_MODE_CARD_ASSOC).hide();
+                $(_ID_MODE_TOTP).hide();
 
                 $(_ID_BTN_MODE_NAME).hide();
                 $(_ID_BTN_MODE_ID).hide();
@@ -1926,7 +1984,13 @@
 
                 }
 
-                if (modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
+                if (modeSelected === _view.AUTH_MODE_TOTP) {
+
+                    $('.sp-login-dialog').hide();
+                    $(_ID_MODE_TOTP).show();
+                    $(_ID_LOGIN_TOTP_CODE).focus();
+
+                } else if (modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
 
                     $('.sp-login-dialog').hide();
                     $('.sp-login-dialog-assoc').show();
@@ -1940,7 +2004,7 @@
                     _timeoutCardAssoc = window.setInterval(function() {
                         $('#sp-login-card-assoc-countdown').text(_countdownCardAssoc);
                         if (_countdownCardAssoc-- === 0) {
-                            $(_ID_BTN_LOGIN_CARD_ASSOC + '-cancel').click();
+                            $(_ID_BTN_LOGIN_CARD_ASSOC_CANCEL).click();
                         }
                     }, 1000);
 
@@ -1997,14 +2061,22 @@
                             selClick = $(_ID_BTN_LOGIN_CARD_IP);
                         } else if (_modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
                             selClick = $(_ID_BTN_LOGIN_CARD_ASSOC);
+                        } else if (_modeSelected === _view.AUTH_MODE_TOTP) {
+                            if ($(_ID_LOGIN_TOTP_CODE).is(':focus')) {
+                                selClick = $(_ID_BTN_LOGIN_TOTP_VERIFY);
+                            } else if ($(_ID_LOGIN_TOTP_CODE_SENT).is(':focus')) {
+                                selClick = $(_ID_BTN_LOGIN_TOTP_VERIFY_CODE_SENT);
+                            }
                         }
                         // Mantis #735
-                        if (!selClick.is(':focus')) {
+                        if (selClick && !selClick.is(':focus')) {
                             selClick.click();
                         }
                     } else if (key === 27) {
                         if (_modeSelected === _view.AUTH_MODE_CARD_ASSOC) {
-                            $(_ID_BTN_LOGIN_CARD_ASSOC + '-cancel').click();
+                            $(_ID_BTN_LOGIN_CARD_ASSOC_CANCEL).click();
+                        } else if (_modeSelected === _view.AUTH_MODE_TOTP) {
+                            $(_ID_BTN_LOGIN_TOTP_CANCEL).click();
                         }
                     } else if ((_modeSelected === _view.AUTH_MODE_CARD_LOCAL && $('#sp-login-card-local-number').val().length === 0) || (_modeSelected === _view.AUTH_MODE_YUBIKEY && $('#sp-login-yubikey').val().length === 0)) {
                         /*
@@ -2257,9 +2329,32 @@
                         _onLogin(_view.AUTH_MODE_NAME, $('#sp-login-user-name-assoc').val(), $('#sp-login-user-password-assoc').val(), _authKeyLoggerCollected);
                         return false;
                     });
-                    $(_ID_BTN_LOGIN_CARD_ASSOC + '-cancel').click(function() {
+                    $(_ID_BTN_LOGIN_CARD_ASSOC_CANCEL).click(function() {
                         _onAuthModeSelect(_authModeDefault);
                         _self.onCardAssocCancel();
+                        return false;
+                    });
+                }
+
+                _authTOTP = $(_ID_MODE_TOTP).length > 0;
+
+                if (_authTOTP) {
+                    $(_ID_BTN_LOGIN_TOTP_VERIFY).click(function() {
+                        _onLogin(null, $(_ID_LOGIN_TOTP_CODE).val());
+                        return false;
+                    });
+                    $(_ID_BTN_LOGIN_TOTP_VERIFY_CODE_SENT).click(function() {
+                        _onLogin(null, null, $(_ID_LOGIN_TOTP_CODE_SENT).val());
+                        return false;
+                    });
+                    $(_ID_BTN_LOGIN_TOTP_CANCEL).click(function() {
+                        _onAuthModeSelect(_authModeDefault);
+                        return false;
+                    });
+                    $(_ID_BTN_LOGIN_TOTP_SEND_CODE).click(function() {
+                        _view.showApiMsg(_api.call({
+                            request : 'user-totp-send-recovery-code'
+                        }));
                         return false;
                     });
                 }
@@ -2281,7 +2376,6 @@
                 // Pick up URL parameters
                 $('#sp-login-user-name').val(_util.getUrlParam(_ns.URL_PARM.USER));
                 $('#sp-login-user-password').val('');
-
             });
             /*
              * IMPORTANT
@@ -2298,8 +2392,7 @@
                 _onDisconnected = null;
 
             /*
-             * AUTH Modes used for login. These names are reserved and are
-             * hardcoded in SavaPage server.
+             * AUTH Modes used for login. See UserAuthModeEnum in Java code.
              */
             this.AUTH_MODE_NAME = 'name';
             this.AUTH_MODE_ID = 'id';
@@ -2308,8 +2401,11 @@
             this.AUTH_MODE_YUBIKEY = 'yubikey';
             this.AUTH_MODE_OAUTH = 'oauth';
 
-            // Dummy AUTH Modes to associate Card with user.
+            // Dummy AUTH Mode to associate Card with user.
             this.AUTH_MODE_CARD_ASSOC = '_CA';
+
+            // Dummy AUTH Mode to enter TOTP.
+            this.AUTH_MODE_TOTP = '_TOTP';
 
             // HTML color: to be set from 'constants' API.
             this.userChartColors = ['printIn', 'printOut', 'pdfOut'];
@@ -2457,6 +2553,21 @@
              */
             this.initI18n = function(language) {
                 this.language = language;
+            };
+
+            /**
+             * Create temp <div> to determine overflow scrollbar width.
+             * */
+            this.getOverflowScrollBarWidth = function() {
+                var w1,
+                    w2,
+                    div = $('<div style="width:50px;height:50px;overflow:hidden;position:absolute;top:-200px;left:-200px;"><div style="height:100px;"></div></div>');
+                $('body').append(div);
+                w1 = $('div', div).innerWidth();
+                div.css('overflow-y', 'auto');
+                w2 = $('div', div).innerWidth();
+                $(div).remove();
+                return (w1 - w2);
             };
 
             /**

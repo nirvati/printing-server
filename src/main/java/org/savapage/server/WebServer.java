@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -64,7 +67,8 @@ import org.savapage.core.SpException;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.SslCertInfo;
-import org.savapage.core.ipp.operation.IppMessageMixin;
+import org.savapage.core.ipp.operation.IppOperationContext;
+import org.savapage.core.util.DeadlockedThreadsDetector;
 import org.savapage.core.util.InetUtils;
 import org.savapage.server.ext.papercut.ExtPaperCutSyncServlet;
 import org.savapage.server.feed.AtomFeedServlet;
@@ -84,7 +88,10 @@ import org.slf4j.LoggerFactory;
 public final class WebServer {
 
     /**
-     * Redirect all traffic except IPP to SSL.
+     * Redirect all traffic to SSL, except
+     * {@link IppOperationContext.CONTENT_TYPE_IPP},
+     * {@link SpXmlRpcServlet.URL_PATTERN_BASE} and
+     * {@link WebApp.PATH_IPP_PRINTER_ICONS}.
      */
     private static class MySecuredRedirectHandler
             extends SecuredRedirectHandler {
@@ -108,10 +115,18 @@ public final class WebServer {
             }
 
             /*
+             * SavaPage Printer Icons used by IPP Clients.
+             */
+            if (request.getPathInfo()
+                    .startsWith(WebApp.PATH_IPP_PRINTER_ICONS)) {
+                return;
+            }
+
+            /*
              * Take IPP traffic as it is, do not redirect.
              */
             if (contentTypeReq != null && contentTypeReq
-                    .equalsIgnoreCase(IppMessageMixin.CONTENT_TYPE_IPP)) {
+                    .equalsIgnoreCase(IppOperationContext.CONTENT_TYPE_IPP)) {
                 return;
             }
 
@@ -184,6 +199,9 @@ public final class WebServer {
     /** */
     private static final String SERVER_SESSION_SCAVENGE_INTERVAL_SEC_DEFAULT =
             "600";
+
+    /** */
+    private static boolean developerEnv;
 
     /** */
     private static int serverPort;
@@ -359,18 +377,24 @@ public final class WebServer {
     }
 
     /**
-     *
-     * @return {@code true} when server access is SSL only.
+     * @return {@code true} if server access is SSL only.
      */
     public static boolean isSSLOnly() {
         return serverPortSsl > 0 && serverPort == 0;
     }
 
     /**
-     * @return {@code true} when non-SSL port is redirected to SSL port.
+     * @return {@code true} if non-SSL port is redirected to SSL port.
      */
     public static boolean isSSLRedirect() {
         return serverSslRedirect;
+    }
+
+    /**
+     * @return {@code true} if server runs in development environment.
+     */
+    public static boolean isDeveloperEnv() {
+        return developerEnv;
     }
 
     /**
@@ -532,9 +556,14 @@ public final class WebServer {
      * Initializing action when started in development environment.
      */
     private static void initDevelopmenEnv() {
+
         RestSystemService.test();
         RestTestService.test();
-        // DeadlockedThreadsDetector.createDeadlockTest();
+
+        boolean createDeadlockTest = false;
+        if (createDeadlockTest) {
+            DeadlockedThreadsDetector.createDeadlockTest();
+        }
     }
 
     /**
@@ -728,7 +757,8 @@ public final class WebServer {
          * be used.
          */
 
-        final SslContextFactory sslContextFactory = new SslContextFactory();
+        final SslContextFactory sslContextFactory =
+                new SslContextFactory.Server();
 
         // Mantis #562
         sslContextFactory.addExcludeCipherSuites(
@@ -854,12 +884,11 @@ public final class WebServer {
         webAppContext.setServer(server);
         webAppContext.setContextPath("/");
 
-        boolean fDevelopment =
-                (System.getProperty("savapage.war.file") == null);
+        developerEnv = (System.getProperty("savapage.war.file") == null);
 
         String pathToWarFile = null;
 
-        if (fDevelopment) {
+        if (developerEnv) {
             pathToWarFile = "src/main/webapp";
         } else {
             pathToWarFile = serverHome + "/lib/"
@@ -951,7 +980,7 @@ public final class WebServer {
                 return;
             }
 
-            if (!fDevelopment) {
+            if (!developerEnv) {
                 server.join();
             }
 
@@ -966,7 +995,7 @@ public final class WebServer {
                 LOGGER.info("server [" + server.getState() + "]");
             }
 
-            if (fDevelopment) {
+            if (developerEnv) {
 
                 initDevelopmenEnv();
 

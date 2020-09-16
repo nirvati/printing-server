@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -22,8 +25,10 @@
 package org.savapage.server.dropzone;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletResponse;
@@ -42,7 +47,6 @@ import org.savapage.core.UnavailableException.State;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
-import org.savapage.core.jpa.User;
 import org.savapage.core.print.server.DocContentPrintException;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.util.DateUtil;
@@ -108,16 +112,16 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
         final ServletWebRequest webRequest =
                 (ServletWebRequest) attributes.getRequest();
 
-        SpSession session = SpSession.get();
-        final User user;
+        final SpSession session = SpSession.get();
+        final String userId;
 
-        if (session != null) {
-            user = session.getUser();
+        if (session == null) {
+            userId = null;
         } else {
-            user = null;
+            userId = session.getUserId();
         }
 
-        if (user == null) {
+        if (userId == null) {
             final String msg = "No authenticated user.";
             LOGGER.warn(msg);
             throw new AbortWithHttpErrorCodeException(
@@ -127,7 +131,8 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
         final InternalFontFamilyEnum defaultFont = ConfigManager
                 .getConfigFontFamily(Key.REPORTS_PDF_INTERNAL_FONT_FAMILY);
 
-        final String originatorIp = WebAppHelper.getRequestRemoteAddr();
+        final String originatorIp =
+                WebAppHelper.getClientIP(attributes.getRequest());
 
         ApiResultCodeEnum resultCode = ApiResultCodeEnum.OK;
         String resultText = "";
@@ -163,16 +168,29 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
             final Map<String, List<FileItem>> files =
                     multiPartRequest.getFiles();
 
-            final List<FileItem> fileItems = files.get(UPLOAD_PARAM_NAME_FILE);
+            final List<FileItem> fileItemsAll = new ArrayList<>();
 
-            for (final FileItem fileItem : fileItems) {
-                fileItemsToHandle.put(fileItem.getName(), fileItem);
+            for (final List<FileItem> list : files.values()) {
+                for (final FileItem fileItem : list) {
+                    fileItemsToHandle.put(fileItem.getName(), fileItem);
+                    fileItemsAll.add(fileItem);
+                }
             }
 
-            final int totFiles = fileItems.size();
+            if (files.get(UPLOAD_PARAM_NAME_FILE) == null) {
+                LOGGER.debug("WebPrint [{}]: no files for key [{}]", userId,
+                        UPLOAD_PARAM_NAME_FILE);
+            }
+
+            final int totFiles = fileItemsAll.size();
+
+            if (totFiles == 0) {
+                throw new DocContentPrintException("No files uploaded.");
+            }
+
             int nFileWlk = 0;
 
-            for (final FileItem fileItem : fileItems) {
+            for (final FileItem fileItem : fileItemsAll) {
 
                 final String fileKey = fileItem.getName();
                 filesStatus.put(fileKey, Boolean.FALSE);
@@ -181,19 +199,21 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
 
                 final long start = System.currentTimeMillis();
 
-                LOGGER.debug("WebPrint [{}] {}/{} [{}] uploading... [{}]",
-                        user.getUserId(), nFileWlk, totFiles,
-                        fileItem.getName(), NumberUtil.humanReadableByteCount(
-                                fileItem.getSize(), true));
-
-                WebPrintHelper.handleFileUpload(originatorIp, user,
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("WebPrint [{}] {}/{} [{}] uploading... [{}]",
+                            userId, nFileWlk, totFiles, fileItem.getName(),
+                            NumberUtil.humanReadableByteCountSI(
+                                    Locale.getDefault(), fileItem.getSize()));
+                }
+                WebPrintHelper.handleFileUpload(originatorIp, userId,
                         new FileUpload(fileItem), selectedFont);
 
-                LOGGER.debug("WebPrint [{}] {}/{} [{}] ....uploaded [{}].",
-                        user.getUserId(), nFileWlk, totFiles,
-                        fileItem.getName(), DateUtil.formatDuration(
-                                System.currentTimeMillis() - start));
-
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("WebPrint [{}] {}/{} [{}] ....uploaded [{}].",
+                            userId, nFileWlk, totFiles, fileItem.getName(),
+                            DateUtil.formatDuration(
+                                    System.currentTimeMillis() - start));
+                }
                 filesStatus.put(fileKey, Boolean.TRUE);
                 fileItemsToHandle.remove(fileKey);
             }
@@ -204,7 +224,7 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
             resultText = e.getMessage();
 
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("WebPrint [{}] [{}]: {}", user.getUserId(),
+                LOGGER.debug("WebPrint [{}] [{}]: {}", userId,
                         e.getClass().getSimpleName(), e.getMessage());
             }
 
@@ -214,9 +234,10 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
             resultText = e.getMessage();
 
             if (LOGGER.isInfoEnabled()) {
-                LOGGER.info(String.format("WebPrint [%s] [%s]: %s",
-                        user.getUserId(), e.getClass().getSimpleName(),
-                        e.getMessage()), e);
+                LOGGER.info(
+                        String.format("WebPrint [%s] [%s]: %s", userId,
+                                e.getClass().getSimpleName(), e.getMessage()),
+                        e);
             }
 
         } catch (IOException e) {
@@ -224,20 +245,16 @@ public final class WebPrintDropZoneFileResource extends AbstractResource {
             resultCode = ApiResultCodeEnum.WARN;
             resultText = e.getMessage();
 
-            LOGGER.warn(
-                    String.format("WebPrint [%s] [%s]: %s", user.getUserId(),
-                            e.getClass().getSimpleName(), e.getMessage()),
-                    e);
+            LOGGER.warn(String.format("WebPrint [%s] [%s]: %s", userId,
+                    e.getClass().getSimpleName(), e.getMessage()), e);
 
         } catch (Exception e) {
 
             resultCode = ApiResultCodeEnum.ERROR;
             resultText = e.getMessage();
 
-            LOGGER.error(
-                    String.format("WebPrint [%s] [%s]: %s", user.getUserId(),
-                            e.getClass().getSimpleName(), e.getMessage()),
-                    e);
+            LOGGER.error(String.format("WebPrint [%s] [%s]: %s", userId,
+                    e.getClass().getSimpleName(), e.getMessage()), e);
 
         } finally {
 

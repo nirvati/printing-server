@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile Job Tickets Page | (c) 2011-2018 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Job Tickets Page | (c) 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -133,8 +136,8 @@
                 _ticketKey,
                 _ticketGroup,
                 _expiryAsc = true,
-                _quickUserSearch = new _ns.QuickUserSearch(_view, _api),
-                _quickUserSearchDocLog = new _ns.QuickUserSearch(_view, _api),
+                _quickUserSearch = new _ns.QuickObjectSearch(_view, _api),
+                _quickUserSearchDocLog = new _ns.QuickObjectSearch(_view, _api),
                 _quickTicketSearch = new _ns.QuickJobTicketSearch(_view, _api),
             //
                 _maxItems = function() {
@@ -222,6 +225,9 @@
             },
                 _getRedirectPrinterJogOffset = function(redirectPrinterItem) {
                 return redirectPrinterItem.find('.sp-redirect-printer-jog-offset');
+            },
+                _onQuickSearchUserItemDisplay = function(item) {
+                return item.text + " &bull; " + (item.email || "&nbsp;");
             },
                 _onSelectUser = function(quickUserSelected) {
                 $("#sp-jobticket-userid").val(quickUserSelected.text);
@@ -332,6 +338,7 @@
                     jobticket : true
                 }) || 'error';
                 _showPopUp(html, positionTo);
+                _disableJobCopiesButtons();
             },
                 _onDocLogAccountTrxPopup = function(docLogId, positionTo) {
                 var html = _view.getPageHtml('DocLogAccountTrxAddin', {
@@ -394,6 +401,7 @@
                     })
                 });
             },
+            //
                 _onSaveJob = function(jobFileName) {
                 var res,
                     ippOptions = {},
@@ -420,6 +428,55 @@
                 //_view.showApiMsg(res);
                 _view.message(res.result.txt);
             },
+            //
+                _onSaveJobCopies = function(jobFileName) {
+                var res,
+                    accounts = {};
+                $('.sp-doclog-accounttrx-info-table').find('._sp-edit-copies').each(function() {
+                    var name = $(this).closest('tr').find('._sp-edit-copies-account').attr('data-savapage');
+                    accounts[$(this).attr('data-savapage-key')] = {
+                        copies : $(this).val(),
+                        accountName : name
+                    };
+                });
+
+                res = _api.call({
+                    request : 'jobticket-save-copies',
+                    dto : JSON.stringify({
+                        jobFileName : jobFileName,
+                        accounts : accounts
+                    })
+                });
+                if (res.result.code === "0") {
+                    $('#sp-jobticket-popup').popup('close');
+                    _refresh();
+                }
+                _view.message(res.result.txt);
+            },
+            //
+                _enableJobCopiesButtons = function(selTable, enable) {
+                _view.enableUI(selTable.find('._sp-edit-apply'), enable);
+                _view.enableUI(selTable.find('._sp-edit-reset'), enable);
+            },
+            //
+                _disableJobCopiesButtons = function() {
+                var selTable = $('.sp-doclog-accounttrx-info-table');
+                if (selTable.length > 0) {
+                    _enableJobCopiesButtons(selTable, false);
+                }
+            },
+            //
+                _setJobCopiesButtons = function() {
+                var selTable = $('.sp-doclog-accounttrx-info-table'),
+                    enable;
+                selTable.find('._sp-edit-copies').each(function() {
+                    if ($(this).val() !== $(this).attr('data-savapage')) {
+                        enable = true;
+                    }
+                });
+                _enableJobCopiesButtons(selTable, enable);
+            },
+            //
                 _onExecJob = function(jobFileName, print, retry) {
                 _loadingIconFoo(function(jobFileName, print, retry) {
                     var res,
@@ -440,14 +497,20 @@
 
                     res = _execJob(jobFileName, print, retry, selPrinter.val(), mediaSource, mediaSourceJobSheet, outputBin, jogOffset);
 
+                    $.mobile.loading("hide");
+
                     if (res.result.code === "0") {
                         $('#sp-jobticket-popup').popup('close');
                         _refresh();
+                    } else if (res.result.code === "5") {
+                        $('#sp-jobticket-popup').popup('close');
+                        _ns.Utils.asyncFoo(function() {
+                            _view.apiResMsg(res.result);
+                        });
+                    } else {
+                        _view.message(res.result.txt);
                     }
 
-                    $.mobile.loading("hide");
-                    //_view.showApiMsg(res);
-                    _view.message(res.result.txt);
                 }, jobFileName, print, retry);
             },
 
@@ -603,6 +666,16 @@
                 }).on('click', '.sp-outbox-account-trx-info-jobticket', null, function() {
                     _onJobTicketAccountTrxPopup($(this).attr('data-savapage'), $(this));
 
+                }).on('click', '.sp-doclog-accounttrx-info-table ._sp-edit-apply', null, function() {
+                    _onSaveJobCopies($(this).attr('data-savapage'));
+                    return false;
+                }).on('click', '.sp-doclog-accounttrx-info-table ._sp-edit-reset', null, function() {
+                    _view.visible($('.sp-doclog-accounttrx-info-table').find('._sp-edit-cost'), true);
+                    _disableJobCopiesButtons();
+                    return true;
+                }).on('change', ".sp-doclog-accounttrx-info-table input[class='_sp-edit-copies']", null, function() {
+                    _view.visible($(this).closest('tr').find('._sp-edit-cost'), $(this).val() === $(this).attr('data-savapage'));
+                    _setJobCopiesButtons();
                 }).on('change', "input[name='sp-jobticket-sort-dir']", null, function() {
                     _expiryAsc = $(this).attr('id') === 'sp-jobticket-sort-dir-asc';
                     _refresh();
@@ -719,8 +792,9 @@
                     }
                 });
 
-                _quickUserSearch.onCreate($(this), 'sp-jobticket-userid-filter', _onSelectUser, _onClearUser);
-                _quickUserSearchDocLog.onCreate($(this), 'sp-doclog-select-userid-filter', _onSelectUserDocLog, _onClearUserDocLog);
+                _quickUserSearch.onCreate($(this), 'sp-jobticket-userid-filter', 'user-quick-search', null, _onQuickSearchUserItemDisplay, _onSelectUser, _onClearUser);
+
+                _quickUserSearchDocLog.onCreate($(this), 'sp-doclog-select-userid-filter', 'user-quick-search', null, _onQuickSearchUserItemDisplay, _onSelectUserDocLog, _onClearUserDocLog);
 
                 _quickTicketSearch.onCreate($(this), 'sp-jobticket-search-ticket-filter', _onSelectTicket, _onClearTicket);
 

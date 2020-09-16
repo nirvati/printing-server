@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -33,6 +36,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.PerformanceLogger;
 import org.savapage.core.SpException;
@@ -130,20 +134,6 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
      * LF (NL line feed, new line) byte.
      */
     private static final int BYTE_LF = 10;
-
-    /**
-     * The Universal Exit Language (UEL) Command causes the printer to exit the
-     * active printer language. The printer then returns control to PJL. The UEL
-     * command is used at the beginning and end of every PJL job. The syntax is
-     * : {@code <ESC>%-12345X}
-     * <p>
-     * NOTE: This constant is the part <b>after</b> the first {@code <ESC>}
-     * character.
-     * </p>
-     * See <a href="https://en.wikipedia.org/wiki/Printer_Job_Language">
-     * Printer_Job_Language</a> in Wikipedia.
-     */
-    private static final String UEL_SIGNATURE_MINUS_FIRST_ESC = "%-12345X";
 
     /**
      * The PJL command prefix (@PJL)
@@ -321,7 +311,8 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
             throws IOException {
 
         String line = readLine(istr, ostr);
-        while (line != null && line.startsWith(PJL_COMMAND_PFX)) {
+        while (line != null
+                && (line.isEmpty() || line.startsWith(PJL_COMMAND_PFX))) {
             headerLines.add(line);
             line = readLine(istr, ostr);
         }
@@ -422,70 +413,6 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
 
         final Date perfStartTime = PerformanceLogger.startTime();
 
-        // --------------------------------------------------------------------
-        // Print from Windows Vista / 7
-        // --------------------------------------------------------------------
-        //
-        // %!PS-Adobe-3.0
-        // %%Title: Test Page
-        // %%Creator: PScript5.dll Version 5.2.2
-        // %%CreationDate: 11/17/2014 19:3:48
-        // %%For: Rijk Ravestein
-        // %%BoundingBox: (atend)
-        // %%Pages: (atend)
-        // %%Orientation: Portrait
-        // %%PageOrder: Special
-        // %%DocumentNeededResources: (atend)
-        // %%DocumentSuppliedResources: (atend)
-        // %%DocumentData: Clean7Bit
-        // %%TargetDevice: (SavaPage) (3010.000) 0
-        // %%LanguageLevel: 3
-        // %%EndComments
-        //
-        // %%BeginDefaults
-        // %%PageBoundingBox: 0 0 595 842
-        // %%ViewingOrientation: 1 0 0 1
-        // %%EndDefaults
-        //
-        // %%BeginProlog
-        //
-
-        // --------------------------------------------------------------------
-        // Print from OS X Mavericks
-        // --------------------------------------------------------------------
-        //
-        // %!PS-Adobe-3.0
-        // %APL_DSC_Encoding: UTF8
-        // %APLProducer: (Version 10.9.1 (Build 13B42) Quartz PS Context)
-        // %%Title: (testprint)
-        // %%Creator: (cgpdftops CUPS filter)
-        // %%CreationDate: (Monday, January 06 2014 13:49:07 CET)
-        // %%For: (rijk)
-        //
-
-        // --------------------------------------------------------------------
-        // Possible extra header with PJL commands. First line is Universal Exit
-        // Language (UEL) Command: the first '?' character represents 0x1B (ESC)
-        // --------------------------------------------------------------------
-        // ?%-12345X@PJL
-        // @PJL JOB NAME = "Document 1" DISPLAY = "9729 john Document 1"
-        // @PJL SET USERNAME = "john"
-        // @PJL SET JOBATTR="@BANR=OFF"
-        // @PJL ENTER LANGUAGE = POSTSCRIPT
-        // %!PS-Adobe-3.0
-        // %%HiResBoundingBox: 0 0 596.00 842.00
-        // %%Creator: GPL Ghostscript 918 (ps2write)
-        // %%LanguageLevel: 2
-        // %%CreationDate: D:20170125182339+01'00'
-        // %%For: (john)
-        // %%Title: (Document 1)
-        // %RBINumCopies: 1
-        // %%Pages: (atend)
-        // %%BoundingBox: (atend)
-        // %%EndComments
-        // %%BeginProlog
-        //
-
         final InputStream istr = socket.getInputStream();
 
         if (LOGGER.isDebugEnabled()) {
@@ -500,9 +427,6 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
         final String PFX_BEGIN_PROLOG = "%%BeginProlog";
 
         final String originatorIp = socket.getInetAddress().getHostAddress();
-
-        final String authenticatedWebAppUser =
-                WebApp.getAuthUserByIpAddr(originatorIp);
 
         /*
          * First line
@@ -536,7 +460,7 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
         /*
          * Mantis #779: Accept JetDirect PostScript stream with UEL header.
          */
-        if (strline.startsWith(UEL_SIGNATURE_MINUS_FIRST_ESC, 1)) {
+        if (strline.startsWith(DocContent.HEADER_PJL)) {
             strline = skipPJLCommandLines(istr, bos, headerLines);
         }
 
@@ -650,37 +574,73 @@ public final class RawPrintServer extends Thread implements ServiceEntryPoint {
              */
             final String uri = String.format("RAW: %d", this.port);
 
-            final boolean clientIpAllowed = QUEUE_SERVICE
-                    .hasClientIpAccessToQueue(queue, uri, originatorIp);
-
             String warn = null;
 
-            if (clientIpAllowed) {
+            if (BooleanUtils.isTrue(queue.getDisabled())) {
 
-                processor = new DocContentPrintProcessor(queue, originatorIp,
-                        title, authenticatedWebAppUser);
-
-                processor.setReadAheadInputBytes(bos.toByteArray());
-
-                processor.processRequestingUser(userid);
-
-                isAuthorized = processor.isAuthorized();
-
-                if (isAuthorized) {
-                    processor.process(istr, DocLogProtocolEnum.RAW, null,
-                            DocContentTypeEnum.PS, null);
-                } else {
-                    warn = String.format(
-                            "IP Print on queue /%s denied for "
-                                    + "user \"%s\" from %s",
-                            ReservedIppQueueEnum.RAW_PRINT.getUrlPath(), userid,
-                            originatorIp);
-                }
-
-            } else {
-                warn = String.format("IP Print on queue /%s denied for host %s",
+                warn = String.format(
+                        "IP Print on queue /%s is disabled (client %s).",
                         ReservedIppQueueEnum.RAW_PRINT.getUrlPath(),
                         originatorIp);
+
+            } else {
+
+                final String assignedUser;
+
+                if (BooleanUtils.isTrue(queue.getTrusted())) {
+                    assignedUser = userid;
+                } else {
+                    final String authWebAppUser =
+                            WebApp.getAuthUserByIpAddr(originatorIp);
+                    if (authWebAppUser == null) {
+                        assignedUser =
+                                ConfigManager.getTrustedUserByIP(originatorIp);
+                    } else {
+                        assignedUser = authWebAppUser;
+                    }
+                }
+
+                if (assignedUser == null) {
+                    warn = String.format(
+                            "IP Print on untrusted queue /%s denied "
+                                    + "for user [%s] on %s",
+                            ReservedIppQueueEnum.RAW_PRINT.getUrlPath(), userid,
+                            originatorIp);
+                } else {
+
+                    final boolean clientIpAllowed = QUEUE_SERVICE
+                            .hasClientIpAccessToQueue(queue, uri, originatorIp);
+
+                    if (clientIpAllowed) {
+
+                        processor = new DocContentPrintProcessor(queue,
+                                originatorIp, title, assignedUser);
+
+                        processor.setReadAheadInputBytes(bos.toByteArray());
+
+                        processor.processAssignedUser(assignedUser);
+
+                        isAuthorized = processor.isAuthorized();
+
+                        if (isAuthorized) {
+                            processor.process(istr, null,
+                                    DocLogProtocolEnum.RAW, null,
+                                    DocContentTypeEnum.PS, null);
+                        } else {
+                            warn = String.format(
+                                    "IP Print on queue /%s denied for "
+                                            + "user \"%s\" from %s",
+                                    ReservedIppQueueEnum.RAW_PRINT.getUrlPath(),
+                                    userid, originatorIp);
+                        }
+
+                    } else {
+                        warn = String.format(
+                                "IP Print on queue /%s denied for host %s",
+                                ReservedIppQueueEnum.RAW_PRINT.getUrlPath(),
+                                originatorIp);
+                    }
+                }
             }
 
             if (warn != null) {

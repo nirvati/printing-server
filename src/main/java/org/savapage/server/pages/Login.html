@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <html xmlns:wicket="http://wicket.apache.org">
-
 <wicket:remove>
-	<!-- 
-    +=========================================================================+ 
-    | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2017 Datraverse B.V. | Author: Rijk Ravestein........| 
-    |.........................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify .......|
-    | it under the terms of the GNU Affero General Public License as .........|
-    | published by the Free Software Foundation, either version 3 of .........|
-    | the License, or (at your option) any later version. ....................|
-    +=========================================================================+ 
-    -->
+	<!--
+This file is part of the SavaPage project <https://savapage.org>
+Copyright (c) 2020 Datraverse B.V. | Author: Rijk Ravestein 
+
+SPDX-FileCopyrightText: © 2020 Datraverse BV <info@datraverse.com>
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+SavaPage is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+-->
 </wicket:remove>
 
 <wicket:remove>
@@ -95,6 +95,62 @@ autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
 							key="button-cancel" />
 					</a>
 				</div>
+			</div>
+
+			<div id="sp-div-login-totp" style="display: none;">
+
+				<h3 wicket:id="header-2-step" />
+
+				<div class="sp-txt-wrap sp-txt-info">
+					<wicket:message key="header-totp" />
+					<span style="margin-top: -15px;"> <wicket:panel
+							wicket:id="tooltip-totp" />
+					</span>
+				</div>
+				<input type="password" id="sp-login-user-totp-code" value=""
+					data-clear-btn="true" />
+
+				<div>
+					<button id="sp-btn-login-totp-verify"
+						class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check">
+						<wicket:message key="button-ok" />
+					</button>
+					<a href="#" id="sp-btn-login-totp-cancel"
+						class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-back"> <wicket:message
+							key="button-cancel" />
+					</a>
+				</div>
+
+				<wicket:enclosure child="btn-login-totp-send">
+					<div data-role="collapsible" data-mini="true" data-inset="true"
+						data-collapsed-icon="info" data-expanded-icon="info">
+						<h2>
+							&nbsp;
+							<wicket:message key="header-totp-recovery" />
+						</h2>
+
+						<div class="ui-mini sp-txt-wrap">
+							<wicket:message key="prompt-totp-recovery-send" />
+						</div>
+						<button id="sp-btn-login-totp-send-code"
+							wicket:id="btn-login-totp-send"
+							class="ui-btn ui-mini ui-btn-inline ui-btn-icon-left ui-icon-mail" />
+
+						<div class="ui-mini sp-txt-wrap">
+							<wicket:message key="prompt-totp-recovery-enter-code" />
+						</div>
+						<input class="ui-mini" type="password"
+							id="sp-login-user-totp-code-sent" value="" data-clear-btn="true" />
+
+						<div class="ui-mini sp-txt-wrap">
+							<wicket:message key="prompt-totp-recovery-verify" />
+						</div>
+						<button id="sp-btn-login-totp-verify-code-sent"
+							class="ui-btn ui-mini ui-btn-inline ui-btn-icon-left ui-icon-check">
+							<wicket:message key="button-ok" />
+						</button>
+					</div>
+				</wicket:enclosure>
 			</div>
 
 			<div id="sp-div-login-name" style="display: none;">

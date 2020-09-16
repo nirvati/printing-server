@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -36,6 +39,7 @@ import org.apache.wicket.markup.head.StringHeaderItem;
 import org.apache.wicket.markup.html.IHeaderContributor;
 import org.apache.wicket.request.mapper.parameter.INamedParameters.NamedPair;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.VersionInfo;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
@@ -47,6 +51,7 @@ import org.savapage.core.util.InetUtils;
 import org.savapage.server.CustomWebServlet;
 import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
+import org.savapage.server.WebServer;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.pages.AbstractPage;
 import org.savapage.server.pages.MessageContent;
@@ -68,6 +73,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
     /** */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(AbstractWebAppPage.class);
+
+    /** */
+    private static final String[] CSS_REQ_FILENAMES_DEFAULT = new String[] {};
 
     /**
      * .
@@ -131,12 +139,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
      */
     private static final String CSS_FILE_JQUERY_SAVAPAGE =
             "jquery.savapage.css";
-
-    /**
-     * .
-     */
-    static final String JS_FILE_JQUERY_SAVAPAGE_PAGE_PRINT_DELEGATION =
-            "jquery.savapage-page-print-delegation.js";
 
     /**
      * .
@@ -267,9 +269,19 @@ public abstract class AbstractWebAppPage extends AbstractPage
     protected abstract WebAppTypeEnum getWebAppType();
 
     /**
+     * Gets the specialized CSS base filenames that are required by
+     * {@link #getSpecializedCssFileName()}.
+     *
+     * @return Empty array if no CSS files are applicable.
+     */
+    protected String[] getSpecializedCssReqFileNames() {
+        return CSS_REQ_FILENAMES_DEFAULT;
+    }
+
+    /**
      * Gets the specialized CSS base filename.
      *
-     * @return {@code null} when no specialized CSS files are applicable.
+     * @return {@code null} if no specialized CSS files are applicable.
      */
     protected abstract String getSpecializedCssFileName();
 
@@ -298,12 +310,14 @@ public abstract class AbstractWebAppPage extends AbstractPage
                     + "/" + "%s" + "\");}})();";
 
     /**
-     * {@link StringHeaderItem} pattern to render initially. The %s is the
-     * initial JavaScript as defined in {@link #INITIAL_JAVASCRIPT_PATTERN}.
+     * {@link StringHeaderItem} pattern to render initially. The first %s is the
+     * SavaPage version. The second %s is the initial JavaScript as defined in
+     * {@link #INITIAL_JAVASCRIPT_PATTERN}.
      */
     private static final String INITIAL_HEADERITEM_FORMAT =
-            "\n<script type=\"text/javascript\">\n" + "/*<![CDATA[*/" + "\n"
-                    + "%s" + "\n" + "/*]]>*/" + "\n</script>\n";
+            "\n<script type=\"text/javascript\">\n" + "/* %s */\n"
+                    + "/*<![CDATA[*/" + "\n" + "%s" + "\n" + "/*]]>*/"
+                    + "\n</script>\n";
 
     /**
      * Renders tiny JavaScript snippet at the very start of the page to
@@ -394,9 +408,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
         final String javascript =
                 String.format(INITIAL_JAVASCRIPT_FORMAT, mountPath.toString());
 
-        final HeaderItem firstItem =
-                new PriorityHeaderItem(new StringHeaderItem(
-                        String.format(INITIAL_HEADERITEM_FORMAT, javascript)));
+        final HeaderItem firstItem = new PriorityHeaderItem(
+                new StringHeaderItem(String.format(INITIAL_HEADERITEM_FORMAT,
+                        ConfigManager.getAppNameVersionBuild(), javascript)));
 
         response.render(firstItem);
     }
@@ -437,8 +451,13 @@ public abstract class AbstractWebAppPage extends AbstractPage
      * @return the URL parameter.
      */
     protected final String getNoCacheUrlParm() {
-        return new StringBuilder().append("?")
-                .append(System.currentTimeMillis()).toString();
+        final long nocache;
+        if (WebServer.isDeveloperEnv()) {
+            nocache = System.currentTimeMillis();
+        } else {
+            nocache = VersionInfo.BUILD_EPOCH_SECS;
+        }
+        return new StringBuilder().append("?").append(nocache).toString();
     }
 
     /**
@@ -593,9 +612,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
 
         renderInitialJavaScript(response);
 
-        final String nocache = getNoCacheUrlParm();
+        final String nocache = this.getNoCacheUrlParm();
 
-        final Set<JavaScriptLibrary> jsToRender = getJavaScriptToRender();
+        final Set<JavaScriptLibrary> jsToRender = this.getJavaScriptToRender();
 
         WebAppTypeEnum webAppType = this.getWebAppType();
 
@@ -608,7 +627,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
         /*
          * jQuery Mobile CSS files.
          */
-        final String customThemeCssFileName = getCssThemeFileName(webAppType);
+        final String customThemeCssFileName =
+                this.getCssThemeFileName(webAppType);
 
         if (customThemeCssFileName != null) {
 
@@ -632,7 +652,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
         /*
          * Other CSS files.
          */
-
         if (jsToRender.contains(JavaScriptLibrary.JQPLOT)) {
             response.render(
                     WebApp.getWebjarsCssRef(WEBJARS_PATH_JQUERY_JQPLOT_CSS));
@@ -644,7 +663,12 @@ public abstract class AbstractWebAppPage extends AbstractPage
         response.render(CssHeaderItem.forUrl(
                 String.format("%s%s", CSS_FILE_JQUERY_SAVAPAGE, nocache)));
 
-        final String specializedCssFile = getSpecializedCssFileName();
+        for (final String cssFile : this.getSpecializedCssReqFileNames()) {
+            response.render(CssHeaderItem
+                    .forUrl(String.format("%s%s", cssFile, nocache)));
+        }
+
+        final String specializedCssFile = this.getSpecializedCssFileName();
 
         if (specializedCssFile != null) {
             response.render(CssHeaderItem.forUrl(
@@ -657,7 +681,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
         }
 
         // Custom CSS as last.
-        final String customCssFileName = getCssCustomFileName(webAppType);
+        final String customCssFileName = this.getCssCustomFileName(webAppType);
 
         if (customCssFileName != null) {
             response.render(CssHeaderItem.forUrl(String.format("/%s/%s%s",
@@ -692,22 +716,22 @@ public abstract class AbstractWebAppPage extends AbstractPage
             }
         }
 
-        renderJs(response, "jquery/json2.js");
+        this.renderJs(response, "jquery/json2.js");
 
         if (jsToRender.contains(JavaScriptLibrary.COMETD)) {
             // Use nocache, to prevent loading of old browser cached .js files,
             // when cometd is upgraded .
-            renderJs(response,
+            this.renderJs(response,
                     String.format("%s%s", "org/cometd/cometd.js", nocache));
-            renderJs(response,
+            this.renderJs(response,
                     String.format("%s%s", "jquery/jquery.cometd.js", nocache));
         }
 
-        renderJs(response, String.format("%s%s", "savapage.js", nocache));
-        renderJs(response,
+        this.renderJs(response, String.format("%s%s", "savapage.js", nocache));
+        this.renderJs(response,
                 String.format("%s%s", "jquery.savapage.js", nocache));
 
-        renderWebAppTypeJsFiles(response, nocache);
+        this.renderWebAppTypeJsFiles(response, nocache);
 
         /*
          * Note: render jQuery Mobile AFTER jquery.savapage.js, because the
@@ -719,11 +743,11 @@ public abstract class AbstractWebAppPage extends AbstractPage
          * Render after JQM.
          */
         if (jsToRender.contains(JavaScriptLibrary.MOBIPICK)) {
-            renderJs(response, String.format("%s%s",
+            this.renderJs(response, String.format("%s%s",
                     WebApp.getJqMobiPickLocation(), "xdate.js"));
-            renderJs(response, String.format("%s%s",
+            this.renderJs(response, String.format("%s%s",
                     WebApp.getJqMobiPickLocation(), "xdate.i18n.js"));
-            renderJs(response, String.format("%s%s",
+            this.renderJs(response, String.format("%s%s",
                     WebApp.getJqMobiPickLocation(), "mobipick.js"));
         }
     }

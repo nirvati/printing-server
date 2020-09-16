@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -39,12 +42,12 @@ import org.apache.wicket.markup.head.CssReferenceHeaderItem;
 import org.apache.wicket.markup.head.JavaScriptHeaderItem;
 import org.apache.wicket.markup.head.JavaScriptReferenceHeaderItem;
 import org.apache.wicket.protocol.http.WebApplication;
-import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.Request;
 import org.apache.wicket.request.Response;
 import org.apache.wicket.request.mapper.parameter.UrlPathPageParametersEncoder;
 import org.apache.wicket.request.resource.JavaScriptResourceReference;
 import org.apache.wicket.resource.loader.IStringResourceLoader;
+import org.eclipse.jetty.server.Server;
 import org.savapage.common.ConfigDefaults;
 import org.savapage.core.SpException;
 import org.savapage.core.SpInfo;
@@ -88,6 +91,7 @@ import org.savapage.server.session.SpSession;
 import org.savapage.server.webapp.CustomStringResourceLoader;
 import org.savapage.server.webapp.OAuthRedirectPage;
 import org.savapage.server.webapp.WebAppAdmin;
+import org.savapage.server.webapp.WebAppHelper;
 import org.savapage.server.webapp.WebAppJobTickets;
 import org.savapage.server.webapp.WebAppPdfPgp;
 import org.savapage.server.webapp.WebAppPos;
@@ -196,6 +200,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static final String WEBJARS_PATH_JQUERY_CORE_JS =
             "jquery/current/jquery.js";
 
+    /** SavaPage Printer Icons used by IPP Clients. */
+    public static final String PATH_IPP_PRINTER_ICONS = "/ipp-printer-icons";
+
     /** */
     public static final String PATH_IMAGES = "/images";
 
@@ -204,6 +211,9 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
     /** */
     public static final String PATH_IMAGES_PAYMENT = PATH_IMAGES + "/payment";
+
+    /** */
+    public static final String PATH_IMAGES_FILETYPE = PATH_IMAGES + "/filetype";
 
     /** */
     public static final String PATH_IMAGES_EXT_SUPPLIER =
@@ -541,7 +551,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     public static void setServerProps(final Properties props) {
         theServerProps = props;
         ConfigManager.setServerProps(props);
-        ConfigManager.setWebAppAdminPath(MOUNT_PATH_WEBAPP_ADMIN);
+        ConfigManager.setWebAppPaths(MOUNT_PATH_WEBAPP_ADMIN,
+                MOUNT_PATH_WEBAPP_USER, PATH_IPP_PRINTER_ICONS);
     }
 
     /**
@@ -700,6 +711,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             mountPage(MOUNT_PATH_WEBAPP_USER_OAUTH, OAuthRedirectPage.class);
 
             mountPage(MOUNT_PATH_API, JsonApiServer.class);
+
             mountPage(MOUNT_PATH_PRINTERS, IppPrintServer.class);
 
             /*
@@ -745,6 +757,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             /*
              * Web server.
              */
+            SpInfo.instance().log("Jetty ".concat(Server.getVersion()));
+
             final StringBuilder logMsg = new StringBuilder();
             logMsg.append("Web Server started on port ");
 
@@ -1003,9 +1017,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     @Override
     public Session newSession(final Request request, final Response response) {
 
-        final String remoteAddr = ((ServletWebRequest) request)
-                .getContainerRequest().getRemoteAddr();
-
+        final String remoteAddr = WebAppHelper.getClientIP(request);
         final String urlPath = request.getUrl().getPath();
 
         final String debugMsg;

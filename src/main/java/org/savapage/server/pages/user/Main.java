@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -28,6 +31,7 @@ import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.Component;
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
@@ -41,6 +45,7 @@ import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.SharedAccountDto;
+import org.savapage.core.dto.UserIdDto;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.ipp.IppSyntaxException;
@@ -216,9 +221,9 @@ public class Main extends AbstractUserPage {
         final boolean hasHelpURL = StringUtils.isNotBlank(urlHelp)
                 && cm.isConfigValue(Key.WEBAPP_USER_HELP_URL_ENABLE);
 
-        final org.savapage.core.jpa.User user = SpSession.get().getUser();
+        final UserIdDto userIdDto = SpSession.get().getUserIdDto();
 
-        final Set<NavButtonEnum> buttonPrivileged = getNavButtonPriv(user);
+        final Set<NavButtonEnum> buttonPrivileged = getNavButtonPriv(userIdDto);
 
         final Set<NavButtonEnum> buttonSubstCandidates = new HashSet<>();
 
@@ -295,29 +300,30 @@ public class Main extends AbstractUserPage {
         final String userId;
         final String userName;
 
-        if (user == null) {
+        if (userIdDto == null) {
             userId = "";
             userName = "";
         } else {
-            userName = StringUtils.defaultString(user.getFullName());
-            userId = user.getUserId();
+            userName = StringUtils.defaultString(userIdDto.getFullName());
+            userId = userIdDto.getUserId();
         }
 
         final boolean showUserBalance = ACCESS_CONTROL_SERVICE.hasPermission(
-                user, ACLOidEnum.U_FINANCIAL, ACLPermissionEnum.READER);
+                userIdDto, ACLOidEnum.U_FINANCIAL, ACLPermissionEnum.READER);
 
         helper.encloseLabel("mini-user-balance", "", showUserBalance);
 
         //
-        final Label name = MarkupHelper.createEncloseLabel("mini-user-name",
-                userName, true);
+        final Label name = helper.addLabel("mini-user-name", userName);
+        final Component nameButton =
+                helper.addTransparant("btn-mini-user-name");
 
         final boolean showUserDetails =
-                ACCESS_CONTROL_SERVICE.hasAccess(user, ACLOidEnum.U_USER);
+                ACCESS_CONTROL_SERVICE.hasAccess(userIdDto, ACLOidEnum.U_USER);
 
         if (showUserDetails) {
-            MarkupHelper.appendLabelAttr(name, MarkupHelper.ATTR_CLASS,
-                    "sp-button-user-details");
+            MarkupHelper.appendComponentAttr(nameButton,
+                    MarkupHelper.ATTR_CLASS, "sp-button-user-details");
         }
 
         //
@@ -363,8 +369,7 @@ public class Main extends AbstractUserPage {
      *            The user.
      * @return The privileged navigation buttons.
      */
-    private Set<NavButtonEnum>
-            getNavButtonPriv(final org.savapage.core.jpa.User user) {
+    private Set<NavButtonEnum> getNavButtonPriv(final UserIdDto user) {
 
         final Set<NavButtonEnum> set = new HashSet<>();
 
@@ -397,7 +402,7 @@ public class Main extends AbstractUserPage {
                 final UserGroupAccountDao.ListFilter filter =
                         new UserGroupAccountDao.ListFilter();
 
-                filter.setUserId(user.getId());
+                filter.setUserId(user.getDbKey());
                 filter.setDisabled(Boolean.FALSE);
 
                 final List<SharedAccountDto> sharedAccounts =

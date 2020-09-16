@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -31,6 +34,7 @@ import java.util.Enumeration;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.request.Url;
@@ -52,8 +56,8 @@ import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.ipp.IppProcessingException;
+import org.savapage.core.ipp.IppProcessingException.StateEnum;
 import org.savapage.core.ipp.operation.AbstractIppOperation;
-import org.savapage.core.ipp.operation.IppMessageMixin;
 import org.savapage.core.ipp.operation.IppOperationContext;
 import org.savapage.core.ipp.operation.IppOperationId;
 import org.savapage.core.jpa.IppQueue;
@@ -64,6 +68,7 @@ import org.savapage.core.services.ServiceEntryPoint;
 import org.savapage.core.services.UserService;
 import org.savapage.core.util.InetUtils;
 import org.savapage.server.WebApp;
+import org.savapage.server.webapp.WebAppHelper;
 import org.savapage.server.webapp.WebAppUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -195,7 +200,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
          * Redirect to /user page for content types other than IPP_CONTENT_TYPE.
          */
         if (contentTypeReq == null || !contentTypeReq
-                .equalsIgnoreCase(IppMessageMixin.CONTENT_TYPE_IPP)) {
+                .equalsIgnoreCase(IppOperationContext.CONTENT_TYPE_IPP)) {
             setResponsePage(WebAppUser.class);
             return;
         }
@@ -203,7 +208,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
         /*
          * OK, we can handle the IPP request.
          */
-        response.setContentType(IppMessageMixin.CONTENT_TYPE_IPP);
+        response.setContentType(IppOperationContext.CONTENT_TYPE_IPP);
         response.setStatus(HttpServletResponse.SC_OK);
 
         /*
@@ -213,8 +218,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
         ServiceContext.open();
 
         try {
-
-            final String remoteAddr = request.getRemoteAddr();
+            final String remoteAddr = WebAppHelper.getClientIP(request);
 
             /*
              * Get the Queue from the URL.
@@ -238,58 +242,74 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
                     .getIppQueueDao().findByUrlPath(requestedQueueUrlPath);
 
             /*
-             * Does user have access to queue?
+             * Access allowed?
              */
-            final boolean hasPrintAccessToQueue;
-
             if (reservedQueueEnum != null
                     && !reservedQueueEnum.isDriverPrint()) {
 
-                hasPrintAccessToQueue = false;
+                throw new IppProcessingException(StateEnum.UNAVAILABLE,
+                        String.format("Queue [%s] is not for driver print.",
+                                reservedQueueEnum.getUiText()));
 
             } else if (queue == null || queue.getDeleted()) {
 
-                hasPrintAccessToQueue = false;
-
-            } else if (queue.getDisabled()) {
-
-                hasPrintAccessToQueue = false;
+                throw new IppProcessingException(StateEnum.UNAVAILABLE,
+                        "Queue does not exist.");
 
             } else if (reservedQueueEnum != ReservedIppQueueEnum.IPP_PRINT_INTERNET
+                    && StringUtils.isBlank(queue.getIpAllowed())
                     && InetUtils.isPublicAddress(remoteAddr)) {
 
-                hasPrintAccessToQueue = false;
-
+                throw new IppProcessingException(StateEnum.UNAVAILABLE,
+                        String.format(
+                                "Queue [%s] is not accessible"
+                                        + " from the Internet.",
+                                queue.getUrlPath()));
             } else {
 
-                hasPrintAccessToQueue = QUEUE_SERVICE.hasClientIpAccessToQueue(
-                        queue, serverPageParms.getPrinter(), remoteAddr);
+                if (!QUEUE_SERVICE.hasClientIpAccessToQueue(queue,
+                        serverPageParms.getPrinter(), remoteAddr)) {
+                    throw new IppProcessingException(StateEnum.UNAVAILABLE,
+                            String.format(
+                                    "Queue [%s] is not allowed for IP address.",
+                                    queue.getUrlPath()));
+                }
             }
 
-            //
-            final boolean trustedUserAsRequester =
-                    reservedQueueEnum == ReservedIppQueueEnum.IPP_PRINT_INTERNET;
+            /*
+             * Authenticated User ID associated with Internet Print or remote IP
+             * address.
+             */
+            final String authUser;
+            final boolean isAuthUserIppRequester;
 
-            final String trustedIppClientUserId;
-
-            if (!hasPrintAccessToQueue) {
-
-                trustedIppClientUserId = null;
-
-            } else if (reservedQueueEnum == ReservedIppQueueEnum.IPP_PRINT_INTERNET) {
+            if (reservedQueueEnum == ReservedIppQueueEnum.IPP_PRINT_INTERNET) {
 
                 final User remoteInternetUser = USER_SERVICE
                         .findUserByNumberUuid(serverPageParms.getUserNumber(),
                                 serverPageParms.getUserUuid());
 
                 if (remoteInternetUser == null) {
-                    trustedIppClientUserId = null;
-                } else {
-                    trustedIppClientUserId = remoteInternetUser.getUserId();
+                    throw new IppProcessingException(StateEnum.UNAVAILABLE,
+                            "Print service not available for user/uuid.");
                 }
 
+                authUser = remoteInternetUser.getUserId();
+                isAuthUserIppRequester = true;
+
             } else {
-                trustedIppClientUserId = WebApp.getAuthUserByIpAddr(remoteAddr);
+
+                final String authUserByIP =
+                        WebApp.getAuthUserByIpAddr(remoteAddr);
+
+                if (authUserByIP == null) {
+                    authUser = ConfigManager.getTrustedUserByIP(remoteAddr);
+                } else {
+                    authUser = authUserByIP;
+                }
+
+                isAuthUserIppRequester =
+                        BooleanUtils.isNotTrue(queue.getTrusted());
             }
 
             /*
@@ -305,12 +325,10 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
             ippOperationContext
                     .setIppRoutingListener(WebApp.get().getPluginManager());
 
-            final IppOperationId ippOperationId =
-                    AbstractIppOperation.handle(queue, request.getInputStream(),
-                            bos, hasPrintAccessToQueue, trustedIppClientUserId,
-                            trustedUserAsRequester, ippOperationContext);
+            final IppOperationId ippOperationId = AbstractIppOperation.handle(
+                    queue, request.getInputStream(), bos, authUser,
+                    isAuthUserIppRequester, ippOperationContext);
 
-            //
             if (ippOperationId != null
                     && ippOperationId == IppOperationId.VALIDATE_JOB) {
 
@@ -474,7 +492,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
         final StringBuilder log = new StringBuilder();
 
         log.append("\nRequest [").append(request.getRequestURL().toString())
-                .append("] From [").append(request.getRemoteAddr())
+                .append("] From [").append(WebAppHelper.getClientIP(request))
                 .append("] Bytes [").append(request.getContentLength())
                 .append("]\n");
 

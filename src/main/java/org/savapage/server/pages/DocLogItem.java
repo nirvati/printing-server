@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -26,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.persistence.EntityManager;
@@ -39,6 +43,7 @@ import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.PrintOutDao;
 import org.savapage.core.dao.enums.DaoEnumHelper;
+import org.savapage.core.dao.enums.DocLogProtocolEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.ExternalSupplierStatusEnum;
 import org.savapage.core.dao.enums.PrintInDeniedReasonEnum;
@@ -129,6 +134,8 @@ public final class DocLogItem {
     private IppJobStateEnum jobState;
     private Boolean encrypted;
     private String paperSize;
+
+    private String docInOriginatorIp;
 
     private Boolean printInPrinted;
     private PrintInDeniedReasonEnum printInDeniedReason;
@@ -355,11 +362,13 @@ public final class DocLogItem {
          * @param em
          * @param userId
          * @param req
+         * @param locale
          * @return
          */
         @SuppressWarnings("unchecked")
         public List<DocLogItem> getListChunk(final EntityManager em,
-                final Long userId, final DocLogPagerReq req) {
+                final Long userId, final DocLogPagerReq req,
+                final Locale locale) {
 
             final PrintOutDao printOutDAO =
                     ServiceContext.getDaoContext().getPrintOutDao();
@@ -478,8 +487,8 @@ public final class DocLogItem {
                 if (docLog.getNumberOfBytes() != null
                         && docLog.getNumberOfBytes().longValue() > 0) {
                     log.setHumanReadableByteCount(
-                            NumberUtil.humanReadableByteCount(
-                                    docLog.getNumberOfBytes(), true));
+                            NumberUtil.humanReadableByteCountSI(locale,
+                                    docLog.getNumberOfBytes()));
                 }
 
                 final DocIn docIn = docLog.getDocIn();
@@ -489,6 +498,8 @@ public final class DocLogItem {
                 log.setCopies(1);
 
                 if (docIn != null) {
+
+                    log.setDocInOriginatorIp(docIn.getOriginatorIp());
 
                     final PrintIn printIn = docIn.getPrintIn();
                     log.setDocType(DocLogDao.Type.IN);
@@ -504,12 +515,15 @@ public final class DocLogItem {
                         }
 
                         if (reservedQueue == ReservedIppQueueEnum.IPP_PRINT) {
-
-                            log.setHeader(
-                                    // reservedQueue.getUiText() + " " +
-                                    WebApp.MOUNT_PATH_PRINTERS + "/"
-                                            + printIn.getQueue().getUrlPath());
-
+                            final StringBuilder header = new StringBuilder();
+                            header.append(WebApp.MOUNT_PATH_PRINTERS);
+                            if (!printIn.getQueue().getUrlPath()
+                                    .equals(ReservedIppQueueEnum.IPP_PRINT
+                                            .getUrlPath())) {
+                                header.append("/");
+                            }
+                            header.append(printIn.getQueue().getUrlPath());
+                            log.setHeader(header.toString());
                         } else {
                             log.setHeader(reservedQueue.getUiText());
                         }
@@ -615,6 +629,12 @@ public final class DocLogItem {
                                 .isNotBlank(pdfOut.getPasswordOwner()));
                         log.setUserPw(StringUtils
                                 .isNotBlank(pdfOut.getPasswordUser()));
+                    }
+                } else {
+                    if (docLog.getDeliveryProtocol() != null
+                            && docLog.getDeliveryProtocol().equals(
+                                    DocLogProtocolEnum.IPP.getDbName())) {
+                        log.setDocType(DocLogDao.Type.IN);
                     }
                 }
 
@@ -1213,11 +1233,8 @@ public final class DocLogItem {
         }
     }
 
-    /**
-     *
-     */
+    /** */
     private DocLogItem() {
-
     }
 
     /**
@@ -1494,6 +1511,14 @@ public final class DocLogItem {
 
     public void setPrintInPrinted(Boolean printInPrinted) {
         this.printInPrinted = printInPrinted;
+    }
+
+    public String getDocInOriginatorIp() {
+        return docInOriginatorIp;
+    }
+
+    public void setDocInOriginatorIp(String docInOriginatorIp) {
+        this.docInOriginatorIp = docInOriginatorIp;
     }
 
     public PrintInDeniedReasonEnum getPrintInDeniedReason() {

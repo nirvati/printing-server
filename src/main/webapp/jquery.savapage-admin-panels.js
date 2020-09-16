@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2019 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -837,12 +840,54 @@
         /**
          *
          */
+        _ns.PanelReports = {
+            refresh : function(my, skipBeforeLoad) {
+                my.scrollTop = $(window).scrollTop();
+                _ns.PanelCommon.refreshPanelAdmin('Reports', skipBeforeLoad);
+            },
+
+            v2m : function(my) {
+                var _view = _ns.PanelCommon.view,
+                    groups = $('.sp-reports-user-printout-tot ._sp-groups').val(),
+                    sel;
+
+                sel = $('.sp-reports-user-printout-tot ._sp-date-from');
+                my.input.timeFrom = sel.val().length > 0 ? _view.mobipickGetDate(sel).getTime() : null;
+
+                sel = $('.sp-reports-user-printout-tot ._sp-date-to');
+                my.input.timeTo = sel.val().length > 0 ? _view.mobipickGetDate(sel).getTime() : null;
+
+                if (groups.length > 0) {
+                    my.input.userGroups = groups.split(" ");
+                } else {
+                    my.input.userGroups = null;
+                }
+            },
+
+            // JSON input: UserPrintOutTotalsReq
+            input : {
+                timeFrom : null,
+                timeTo : null,
+                userGroups : null
+            },
+
+            onOutput : function(my, output) {
+                var _view = _ns.PanelCommon.view;
+                _view.mobipick($('.sp-reports-user-printout-tot ._sp-date-from'));
+                _view.mobipick($('.sp-reports-user-printout-tot ._sp-date-to'));
+            }
+        };
+
+        /**
+         *
+         */
         _ns.PanelOptions = {
 
             onAuthMethodSelect : function(method) {
-                var _view = _ns.PanelCommon.view;
+                var _view = _ns.PanelCommon.view,
+                    isLdapMethod = method === 'ldap';
 
-                _view.visible($('.ldap-parms'), method === 'ldap');
+                _view.visible($('.ldap-parms'), isLdapMethod);
 
                 if (method === 'none') {
                     $('.user-source-group-s').hide();
@@ -850,7 +895,17 @@
                     $('.user-source-group-s').show();
                     $('.user-source-group-display').show();
                     $('.user-source-group-edit').hide();
+                    if (isLdapMethod) {
+                        this.onLdapSchemaTypeSelect($('#sp-ldap-schema-type').val());
+                    }
                 }
+            },
+
+            onLdapSchemaTypeSelect : function(schemaType) {
+                var _view = _ns.PanelCommon.view;
+                _view.visible($('.ldap-parms-extra-fields'), schemaType !== 'GOOGLE_CLOUD');
+                _view.visible($('.ldap-parms-standard'), schemaType !== 'GOOGLE_CLOUD');
+                _view.visible($('.ldap-parms-google-cloud'), schemaType === 'GOOGLE_CLOUD');
             },
 
             onInternalUsersEnabled : function(enabled) {
@@ -999,6 +1054,7 @@
                 var _view = _ns.PanelCommon.view;
 
                 my.onAuthMethodSelect($("input:radio[name='auth.method']:checked").val());
+
                 my.onAuthModeLocalEnabled();
                 my.onPrintImapEnabled(_view.isCbChecked($('#print\\.imap\\.enable')));
                 my.onProxyPrintEnabled(_view.isCbChecked($('#proxy-print\\.non-secure')));

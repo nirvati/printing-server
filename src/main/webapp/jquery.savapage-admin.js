@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile Admin Web App | (c) 2011-2019 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Admin Web App | © 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -49,8 +52,21 @@
                 _fillConfigPropsYN,
                 _fillConfigPropsText,
                 _fillConfigPropsRadio,
+                _onIppQueueEnable,
                 _userSync,
                 _updateGcpState;
+
+            _onIppQueueEnable = function(urlPath, enabled) {
+                var res = _api.call({
+                    request : 'queue-enable',
+                    dto : JSON.stringify({
+                        urlPath : urlPath,
+                        enabled : enabled
+                    })
+                });
+                _view.showApiMsg(res);
+                return (res.result.code === '0');
+            };
 
             /**
              *
@@ -141,6 +157,9 @@
                     if (_model.maxIdleSeconds) {
                         _ns.monitorUserIdle(_model.maxIdleSeconds, _view.pages.admin.onLogout);
                     }
+
+                } else if (data.authTOTPRequired) {
+                    _view.pages.login.notifyTOTPRequired();
 
                 } else {
 
@@ -390,7 +409,7 @@
                     "auth.method" : method
                 };
                 if (method === 'ldap') {
-                    props['ldap.schema.type'] = _view.getRadioValue('ldap.schema.type');
+                    props['ldap.schema.type'] = $('#sp-ldap-schema-type').val();
                     _fillConfigPropsText(props, ['auth.ldap.host', 'auth.ldap.port', 'auth.ldap.basedn', 'auth.ldap.admin-dn', 'auth.ldap.admin-password', 'ldap.schema.user-id-number-field', 'ldap.schema.user-card-number-field']);
                     _fillConfigPropsYN(props, ['auth.ldap.use-ssl', 'auth.ldap.use-ssl.trust-self-signed']);
                     _fillConfigPropsRadio(props, ['ldap.user-card-number.first-byte', 'ldap.user-card-number.format']);
@@ -531,15 +550,11 @@
             };
 
             _view.pages.admin.onFlipswitchInternetPrint = function(enabled) {
-                var res = _api.call({
-                    request : 'queue-enable',
-                    dto : JSON.stringify({
-                        urlPath : 'internet',
-                        enabled : enabled
-                    })
-                });
-                _view.showApiMsg(res);
-                return (res.result.code === '0');
+                return _onIppQueueEnable('internet', enabled);
+            };
+
+            _view.pages.admin.onFlipswitchRESTfulPrint = function(enabled) {
+                return _onIppQueueEnable('webservice', enabled);
             };
 
             _view.pages.admin.onApplyWebPrint = function(enabled, dropzone) {
@@ -669,6 +684,19 @@
                 }
                 this.refreshDashboard();
 
+                return false;
+            };
+
+            _view.pages.admin.onUserHomeClean = function() {
+                var res = _api.call({
+                    request : 'userhome-clean'
+                });
+
+                if (res.result.code === '0') {
+                    _view.showApiMsg(res);
+                } else {
+                    _view.message(res.result.txt || res.result.msg);
+                }
                 return false;
             };
 
@@ -817,7 +845,7 @@
                 //
                 'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association',
                 //
-                'auth-mode.yubikey', 'auth-mode.yubikey.show',
+                'auth-mode.yubikey', 'auth-mode.yubikey.show', 'user.totp.enable',
                 //
                 'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
 
@@ -891,8 +919,14 @@
 
             _view.pages.admin.onApplyPrintIn = function() {
                 var props = {};
-                _fillConfigPropsYN(props, ['print-in.allow-encrypted-pdf', 'webapp.user.logout.clear-inbox']);
+                _fillConfigPropsYN(props, ['print-in.pdf.encrypted.allow', 'webapp.user.logout.clear-inbox']);
                 _fillConfigPropsText(props, ['print-in.job-expiry.mins', 'webapp.user.print-in.job-expiry.signal-mins']);
+                _saveConfigProps(props);
+            };
+
+            _view.pages.admin.onApplyTelegram = function() {
+                var props = {};
+                _fillConfigPropsYN(props, ['ext.telegram.enable']);
                 _saveConfigProps(props);
             };
 
@@ -971,6 +1005,18 @@
                 if (res.result.code === '0') {
                     _model.editUser.uuid = res.dto.uuid;
                     $('#user-uuid').val(_model.editUser.uuid);
+                } else {
+                    _view.showApiMsg(res);
+                }
+            };
+
+            _view.pages.user.onGenerateUserIDNumber = function() {
+                var res = _api.call({
+                    request : 'generate-user-id-number'
+                });
+                if (res.result.code === '0') {
+                    _model.editUser.id = res.dto.number;
+                    $('#user-id-number').val(_model.editUser.id);
                 } else {
                     _view.showApiMsg(res);
                 }
@@ -1857,7 +1903,7 @@
                 configProp : new _ns.PageConfigProp(_i18n, _view, _model),
                 queue : new _ns.PageQueue(_i18n, _view, _model),
                 printer : new _ns.PagePrinter(_i18n, _view, _model),
-                device : new _ns.PageDevice(_i18n, _view, _model),
+                device : new _ns.PageDevice(_i18n, _view, _model, _api),
                 voucherCreate : new _ns.PageAccountVoucherCreate(_i18n, _view, _model)
             };
 
@@ -1893,10 +1939,7 @@
                 // By NOT returning anything the unload dialog will not show.
                 $.noop();
             }).on('unload', function() {
-                _api.removeCallbacks();
-                _api.call({
-                    request : 'webapp-unload'
-                });
+                _api.unloadWebApp();
             });
         };
 

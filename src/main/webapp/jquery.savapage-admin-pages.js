@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile Admin Pages | (c) 2011-2019 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile Admin Pages | (c) 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -389,6 +392,11 @@
                     return false;
                 });
 
+                $(this).on('click', '#button-user-generate-id-number', null, function() {
+                    _self.onGenerateUserIDNumber();
+                    return false;
+                });
+
                 $(this).on('click', '#button-save-user', null, function() {
                     if (_v2m()) {
                         _self.onSaveUser();
@@ -752,7 +760,7 @@
         /**
          * Constructor
          */
-        _ns.PageDevice = function(_i18n, _view, _model) {
+        _ns.PageDevice = function(_i18n, _view, _model, _api) {
 
             var _m2v,
                 _v2m,
@@ -776,7 +784,16 @@
                 _AUTH_ATTR_BOOLS = ['.name', '.yubikey', '.id', '.id.pin-required', '.id.is-masked', '.card-local', '.card-ip', '.card.pin-required', '.card.self-association'],
             // string authentication attributes
                 _AUTH_ATTR_STRINGS = [],
-                _CARD_FORMAT_ATTR = ['.format', '.first-byte'];
+                _CARD_FORMAT_ATTR = ['.format', '.first-byte'],
+
+                _quickPrinterSearch = new _ns.QuickObjectSearch(_view, _api),
+                _onQuickSearchPrinterFilterProps,
+                _onQuickSearchPrinterItemDisplay,
+                _onSelectPrinter,
+
+                _quickPrinterGroupSearch = new _ns.QuickObjectSearch(_view, _api),
+                _onQuickSearchPrinterGroupItemDisplay,
+                _onSelectPrinterGroup;
 
             _onAuthModeEnabled = function() {
                 var authUser = _view.isCbChecked($("#auth-mode\\.name")),
@@ -824,7 +841,7 @@
                 }
 
                 _view.visible($('#sp-group-device-auth-mode-default'), nMode > 1);
-                _enableCardFormat(authCardLocal);
+                _enableCardFormat(_model.editDevice.deviceType === 'CARD_READER' || authCardLocal);
 
             };
 
@@ -841,7 +858,7 @@
                 if (customAuth) {
                     _onAuthModeEnabled();
                 }
-                _enableCardFormat(customAuth && authCardLocal);
+                _enableCardFormat(_model.editDevice.deviceType === 'CARD_READER' || (customAuth && authCardLocal));
             };
 
             _enableCardFormat = function(enable) {
@@ -1058,6 +1075,35 @@
                 device.attr = attr;
             };
 
+            /** */
+            _onQuickSearchPrinterFilterProps = function(props) {
+                props.searchCupsName = true;
+            };
+            /** */
+            _onQuickSearchPrinterItemDisplay = function(item) {
+                var html = item.printer.name;
+                if (item.text !== item.printer.name) {
+                    html += " &bull; " + item.text;
+                }
+                if (item.printer.location) {
+                    html += " &bull; " + item.printer.location;
+                }
+                return html;
+            };
+            /** */
+            _onSelectPrinter = function(item) {
+                $("#sp-device-proxy-print-printer").val(item.printer.name);
+            };
+
+            /** */
+            _onQuickSearchPrinterGroupItemDisplay = function(item) {
+                return item.text;
+            };
+            /** */
+            _onSelectPrinterGroup = function(item) {
+                $("#sp-device-proxy-print-printer-group").val(item.text);
+            };
+
             /**
              *
              */
@@ -1085,6 +1131,10 @@
                 $(this).on('change', "#auth-mode-is-custom", null, function(e) {
                     _onCustomAuthEnabled($(e.target));
                 });
+
+                _quickPrinterSearch.onCreate($(this), 'sp-device-proxy-print-printer-filter', 'printer-quick-search-cups', _onQuickSearchPrinterFilterProps, _onQuickSearchPrinterItemDisplay, _onSelectPrinter);
+
+                _quickPrinterGroupSearch.onCreate($(this), 'sp-device-proxy-print-printer-group-filter', 'printergroup-quick-search', null, _onQuickSearchPrinterGroupItemDisplay, _onSelectPrinterGroup);
 
             }).on("pagebeforeshow", function(event, ui) {
                 _m2v();
@@ -1164,6 +1214,7 @@
                 _self = _ns.derive(_page),
                 _onChangeJobTicket,
                 _onChangeChargeType,
+                _onBrowsePPDE,
                 _showAllMediaRows;
 
             _onChangeChargeType = function(chargeType) {
@@ -1178,6 +1229,15 @@
             _onChangeJobTicket = function(isTicket) {
                 _view.visible($('#printer-jobticket-group-div'), isTicket);
                 _view.visibleCheckboxRadio($('#printer-jobticket-labels'), !isTicket);
+            };
+
+            /** */
+            _onBrowsePPDE = function(ppdeFileName) {
+                $('#ppde-file-browser-addin').html(_view.getAdminPageHtml('PPDExtFileBrowserAddin', {
+                    'ppdeFileName' : ppdeFileName
+                }) || 'error').enhanceWithin();
+                $('#ppde-file-browser-title').html(ppdeFileName);
+                _view.changePage($('#page-ppde-file-browser'));
             };
 
             /** */
@@ -1209,6 +1269,14 @@
 
                 $(this).on('change', '#printer-jobticket', null, function() {
                     _onChangeJobTicket(_view.isCbChecked($(this)));
+                });
+
+                $(this).on('click', '#printer-ppd-ext-file-btn', null, function() {
+                    var val = $('#printer-ppd-ext-file').val();
+                    if (val && val.length > 0) {
+                        _onBrowsePPDE(val);
+                    }
+                    return false;
                 });
 
                 $(this).on('click', '#button-save-printer', null, function() {
@@ -1260,15 +1328,23 @@
                 });
 
             }).on("pagebeforeshow", function(event, ui) {
+                var accounting,
+                    mediaSource,
+                    ppdExtFile,
+                    data;
 
-                var accounting = $('#sp-printer-accounting-addin'),
-                    mediaSource = $('#sp-printer-media-source-addin'),
-                    data = {};
+                if (ui.prevPage.attr('id') === 'page-ppde-file-browser') {
+                    return;
+                }
+
+                accounting = $('#sp-printer-accounting-addin');
+                mediaSource = $('#sp-printer-media-source-addin');
+                ppdExtFile = $('#printer-ppd-ext-file');
+                data = {};
 
                 $('#printer-displayname').val(_model.editPrinter.displayName);
                 $('#printer-location').val(_model.editPrinter.location);
                 $('#printer-printergroups').val(_model.editPrinter.printerGroups);
-                $('#printer-ppd-ext-file').val(_model.editPrinter.ppdExtFile);
 
                 _view.checkCb('#printer-disabled', _model.editPrinter.disabled);
                 _view.checkCb('#printer-archive-disabled', _model.editPrinter.archiveDisabled);
@@ -1286,10 +1362,13 @@
 
                 _view.visible($('.printer-not-present'), !_model.editPrinter.present);
 
+                // PPD ext file
+                ppdExtFile.html(_view.getAdminPageHtml('PPDExtFileOptionsAddin', data)).enhanceWithin();
+                _view.setSelectedValue(ppdExtFile, _model.editPrinter.ppdExtFile);
+
                 /*
                  * Accounting.
                  */
-
                 data.id = _model.editPrinter.id;
 
                 accounting.html(_view.getAdminPageHtml('PrinterAccountingAddin', data)).enhanceWithin();
@@ -1471,7 +1550,7 @@
                  */
                 QueuesBase : _ns.PanelQueuesBase,
                 //
-                Reports : {},
+                Reports : _ns.PanelReports,
                 //
                 UsersBase : _ns.PanelUsersBase,
                 //
@@ -1987,6 +2066,7 @@
                 $(this).on('click', '#button-doclog-default', null, function() {
                     var pnl = _panel.DocLogBase;
                     pnl.clearHiddenUserid();
+                    pnl.doc_type_default = 'ALL';
                     pnl.applyDefaults(pnl);
                     pnl.m2v(pnl);
                     return false;
@@ -2132,6 +2212,7 @@
 
                 $(this).on('click', '.sp-queue-log', null, function() {
                     var pnl = _panel.DocLogBase;
+                    pnl.doc_type_default = 'IN';
                     pnl.applyDefaults(pnl);
                     pnl.input.select.queue_id = $(this).attr('data-savapage');
                     // skipBeforeLoad
@@ -2180,8 +2261,14 @@
                     return false;
                 });
 
+                $(this).on('dblclick', '.sp-printer-ppde-download', null, function() {
+                    _self.onDownload("printer-ppde-download", null, $(this).attr('data-savapage'));
+                    return false;
+                });
+
                 $(this).on('click', '.sp-printer-log', null, function() {
                     var pnl = _panel.DocLogBase;
+                    pnl.doc_type_default = 'PRINT';
                     pnl.applyDefaults(pnl);
                     pnl.input.select.printer_id = $(this).attr('data-savapage');
                     // skipBeforeLoad
@@ -2210,6 +2297,16 @@
                 $(this).on('click', '#sp-btn-printer-snmp-all', null, function() {
                     _self.onPrinterSnmp();
                     return false;
+                });
+
+                /*
+                 * Reports Panel
+                 */
+                $(this).on('click', '.sp-btn-reports-user-printout-tot', null, function() {
+                    var pnl = _panel.Reports;
+                    pnl.v2m(pnl);
+                    _self.onDownload("report", pnl.input, "UserPrintOutTotals", $(this).attr('data-savapage'));
+                    return true;
                 });
 
                 /*
@@ -2336,6 +2433,10 @@
                     _self.onFlipswitchInternetPrint($(this).is(':checked'));
                 });
 
+                $(this).on('change', "input:checkbox[id='flipswitch-restful-online']", null, function(e) {
+                    _self.onFlipswitchRESTfulPrint($(this).is(':checked'));
+                });
+
                 $(this).on('change', "input:checkbox[id='flipswitch-webprint-online']", null, function(e) {
                     _self.onFlipswitchWebPrint($(this).is(':checked'));
                 });
@@ -2442,6 +2543,11 @@
                     sel.enhanceWithin().popup('open', {
                         positionTo : $(this)
                     });
+                    return false;
+                });
+
+                $(this).on('click', '#sp-btn-userhome-clean', null, function() {
+                    _self.onUserHomeClean();
                     return false;
                 });
 
@@ -2560,6 +2666,11 @@
                     return false;
                 });
 
+                $(this).on('click', '#apply-telegram', null, function() {
+                    _self.onApplyTelegram();
+                    return false;
+                });
+
                 $(this).on('click', '#apply-cliapp-auth', null, function() {
                     _self.onApplyCliAppAuth();
                     return false;
@@ -2600,6 +2711,11 @@
 
                 $(this).on('change', "input:radio[name='auth.method']", null, function(e) {
                     _panel.Options.onAuthMethodSelect($(this).val());
+                });
+
+                $(this).on('change', "select[id='sp-ldap-schema-type']", null, function(e) {
+                    _panel.Options.onLdapSchemaTypeSelect($(this).val());
+                    return false;
                 });
 
                 $(this).on('click', '#user-source-change-group', null, function() {

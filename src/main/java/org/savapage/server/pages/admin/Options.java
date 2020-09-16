@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -31,6 +34,7 @@ import javax.print.attribute.standard.MediaSizeName;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.Component;
 import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
@@ -45,7 +49,10 @@ import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.doc.XpsToPdf;
 import org.savapage.core.doc.soffice.SOfficeHelper;
+import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.LabelEnum;
 import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PhraseEnum;
 import org.savapage.core.ipp.IppSyntaxException;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jmx.JmxRemoteProperties;
@@ -59,7 +66,10 @@ import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.InboxSelectScopeEnum;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.InetUtils;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.MediaUtils;
+import org.savapage.ext.google.GoogleLdapClient;
+import org.savapage.ext.google.GoogleLdapUserSource;
 import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.EnumRadioPanel;
@@ -96,6 +106,14 @@ public final class Options extends AbstractAdminPage {
     private static final ProxyPrintService PROXYPRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
 
+    /** */
+    private static final String WID_GOOGLE_CLOUD_EXPIRY =
+            "ldap-google-cloud-expiry";
+
+    /** */
+    private static final String WID_GOOGLE_CLOUD_HOST =
+            "ldap-google-cloud-host";
+
     @Override
     protected boolean needMembership() {
         return false;
@@ -124,6 +142,8 @@ public final class Options extends AbstractAdminPage {
 
         //
         final MarkupHelper helper = new MarkupHelper(this);
+        final LocaleHelper localeHelper = new LocaleHelper(this.getLocale());
+
         final ConfigManager cm = ConfigManager.instance();
 
         //
@@ -135,21 +155,46 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.AUTH_METHOD_V_LDAP);
 
         //
-        labelledRadio("ldap-schema-type", "-open",
-                IConfigProp.Key.LDAP_SCHEMA_TYPE,
+        final String configLdapTypeName = ConfigManager.instance()
+                .getConfigKey(IConfigProp.Key.LDAP_SCHEMA_TYPE);
+
+        final String configLdapTypeValue = ConfigManager.instance()
+                .getConfigValue(IConfigProp.Key.LDAP_SCHEMA_TYPE);
+
+        tagLdapTypeOption(helper, "ldap-schema-type", "-open",
+                configLdapTypeName, configLdapTypeValue,
                 IConfigProp.LDAP_TYPE_V_OPEN_LDAP);
 
-        labelledRadio("ldap-schema-type", "-apple",
-                IConfigProp.Key.LDAP_SCHEMA_TYPE,
+        tagLdapTypeOption(helper, "ldap-schema-type", "-free",
+                configLdapTypeName, configLdapTypeValue,
+                IConfigProp.LDAP_TYPE_V_FREE_IPA);
+
+        tagLdapTypeOption(helper, "ldap-schema-type", "-apple",
+                configLdapTypeName, configLdapTypeValue,
                 IConfigProp.LDAP_TYPE_V_APPLE);
 
-        labelledRadio("ldap-schema-type", "-activ",
-                IConfigProp.Key.LDAP_SCHEMA_TYPE,
+        tagLdapTypeOption(helper, "ldap-schema-type", "-activ",
+                configLdapTypeName, configLdapTypeValue,
                 IConfigProp.LDAP_TYPE_V_ACTIV);
 
-        labelledRadio("ldap-schema-type", "-edir",
-                IConfigProp.Key.LDAP_SCHEMA_TYPE,
+        tagLdapTypeOption(helper, "ldap-schema-type", "-edir",
+                configLdapTypeName, configLdapTypeValue,
                 IConfigProp.LDAP_TYPE_V_E_DIR);
+
+        if (GoogleLdapClient.isConfigured()) {
+
+            tagLdapTypeOption(helper, "ldap-schema-type", "-google",
+                    configLdapTypeName, configLdapTypeValue,
+                    IConfigProp.LDAP_TYPE_V_GOOGLE_CLOUD);
+
+            this.addGoogleCloudExpiry(helper, localeHelper);
+            this.addGoogleCloudReadOnlyParms(helper);
+
+        } else {
+            helper.discloseLabel("ldap-schema-type-google");
+            helper.discloseLabel(WID_GOOGLE_CLOUD_EXPIRY);
+            helper.discloseLabel(WID_GOOGLE_CLOUD_HOST);
+        }
 
         labelledInput("ldap-host", Key.AUTH_LDAP_HOST);
         labelledInput("ldap-port", Key.AUTH_LDAP_PORT);
@@ -299,6 +344,15 @@ public final class Options extends AbstractAdminPage {
         labelledRadio("user-auth-mode-default", "-yubikey",
                 IConfigProp.Key.AUTH_MODE_DEFAULT,
                 IConfigProp.AUTH_MODE_V_YUBIKEY);
+
+        //
+        helper.addLabel("user-auth-mode-2-step-header",
+                LabelEnum.TWO_STEP_VERIFICATION);
+
+        tagCheckbox("user-auth-mode-2-step", IConfigProp.Key.USER_TOTP_ENABLE);
+        helper.addModifyLabelAttr("user-auth-mode-2-step-label",
+                AdverbEnum.ENABLED.uiText(getLocale()), MarkupHelper.ATTR_FOR,
+                cm.getConfigKey(Key.USER_TOTP_ENABLE));
 
         /*
          *
@@ -845,10 +899,6 @@ public final class Options extends AbstractAdminPage {
         labelledInput("proxyprint-max-pages",
                 IConfigProp.Key.PROXY_PRINT_MAX_PAGES);
 
-        //
-        labelledCheckbox("proxyprint-check-repair",
-                IConfigProp.Key.PROXY_PRINT_REPAIR_ENABLE);
-
         labelledCheckbox("proxyprint-clear-inbox",
                 IConfigProp.Key.WEBAPP_USER_PROXY_PRINT_CLEAR_INBOX_ENABLE);
 
@@ -970,7 +1020,7 @@ public final class Options extends AbstractAdminPage {
          *
          */
         labelledCheckbox("print-in-allow-encrypted-pdf",
-                IConfigProp.Key.PRINT_IN_ALLOW_ENCRYPTED_PDF);
+                IConfigProp.Key.PRINT_IN_PDF_ENCRYPTED_ALLOW);
 
         labelledCheckbox("print-in-clear-at-logout",
                 IConfigProp.Key.WEBAPP_USER_LOGOUT_CLEAR_INBOX);
@@ -1045,11 +1095,18 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.PAPERSIZE_V_A4);
 
         //
+        tagCheckbox("telegram-messaging", IConfigProp.Key.EXT_TELEGRAM_ENABLE);
+        helper.addModifyLabelAttr("telegram-messaging-label",
+                AdverbEnum.ENABLED.uiText(getLocale()), MarkupHelper.ATTR_FOR,
+                cm.getConfigKey(Key.EXT_TELEGRAM_ENABLE));
+
+        //
         this.setReadOnlyAccess(helper, isReadOnlyAccess);
 
         if (!isReadOnlyAccess) {
-            if (ACCESS_CONTROL_SERVICE.hasPermission(SpSession.get().getUser(),
-                    ACLOidEnum.A_CONFIG_EDITOR, ACLPermissionEnum.READER)) {
+            if (ACCESS_CONTROL_SERVICE.hasPermission(
+                    SpSession.get().getUserIdDto(), ACLOidEnum.A_CONFIG_EDITOR,
+                    ACLPermissionEnum.READER)) {
                 helper.encloseLabel("btn-config-editor",
                         localized("button-config-editor"), true);
             } else {
@@ -1242,10 +1299,10 @@ public final class Options extends AbstractAdminPage {
      *
      */
     private void tagSelect(final String id, final IConfigProp.Key key) {
-        Label labelWrk = new Label(id);
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_ID,
+        final Label label = new Label(id);
+        label.add(new AttributeModifier(MarkupHelper.ATTR_ID,
                 ConfigManager.instance().getConfigKey(key)));
-        add(labelWrk);
+        add(label);
     }
 
     /**
@@ -1288,6 +1345,40 @@ public final class Options extends AbstractAdminPage {
     }
 
     /**
+     *
+     * @param wicketIdBase
+     *            The base {@code wicket:id} for the select options.
+     * @param wicketIdSuffix
+     *            The {@code wicket:id} suffix for this option.
+     * @param configKeyName
+     *            Name of config key.
+     * @param configKeyValue
+     *            Configured vale of this option.
+     * @param attrValue
+     *            The value of the HTML 'value' attribute of this radio button.
+     */
+    private void tagLdapTypeOption(final MarkupHelper helper,
+            final String wicketIdBase, final String wicketIdSuffix,
+            final String configKeyName, final String configKeyValue,
+            final String attrValue) {
+
+        final boolean selected = configKeyValue.equals(attrValue);
+
+        final Component comp =
+                helper.addTransparant(wicketIdBase.concat(wicketIdSuffix));
+
+        MarkupHelper.modifyComponentAttr(comp, MarkupHelper.ATTR_VALUE,
+                attrValue);
+        MarkupHelper.modifyComponentAttr(comp, MarkupHelper.ATTR_ID,
+                configKeyName.concat(wicketIdSuffix));
+
+        if (selected) {
+            MarkupHelper.modifyComponentAttr(comp, MarkupHelper.ATTR_SELECTED,
+                    MarkupHelper.ATTR_SELECTED);
+        }
+    }
+
+    /**
      * Sets the on/off texts for a Flipswitch.
      *
      * @param label
@@ -1311,7 +1402,7 @@ public final class Options extends AbstractAdminPage {
                 "sect-papercut", "sect-gcp", "sect-mail-print",
                 "sect-web-print", "sect-internet-print", "sect-proxy-print",
                 "sect-eco-print", "sect-financial", "sect-backups",
-                "sect-advanced" }) {
+                "sect-telegram", "sect-advanced" }) {
             helper.addTransparantDisabled(wicketId, readonly);
         }
 
@@ -1331,7 +1422,7 @@ public final class Options extends AbstractAdminPage {
                 "btn-admin-pw-reset", "btn-jmx-pw-reset", "btn-apply-locale",
                 "btn-apply-papersize", "btn-apply-report-fontfamily",
                 "btn-apply-converters", "btn-apply-print-in",
-                "btn-pagometer-reset" }) {
+                "btn-apply-telegram", "btn-pagometer-reset" }) {
             if (readonly) {
                 helper.discloseLabel(wicketId);
             } else {
@@ -1360,6 +1451,59 @@ public final class Options extends AbstractAdminPage {
         // Misc ...
         helper.encloseLabel("btn-backup-now", localized("button-backup-now"),
                 !readonly);
+    }
 
+    /**
+     * Adds Google Cloud Directory expiration message.
+     *
+     * @param helper
+     *            Markup helper
+     * @param localeHelper
+     *            Locale helper.
+     */
+    private void addGoogleCloudExpiry(final MarkupHelper helper,
+            final LocaleHelper localeHelper) {
+
+        final Date now = ServiceContext.getTransactionDate();
+
+        final String clazz;
+        final PhraseEnum phrase;
+
+        if (GoogleLdapClient.isCertExpireNearing(now)) {
+            phrase = PhraseEnum.CERT_EXPIRES_ON;
+            clazz = MarkupHelper.CSS_TXT_WARN;
+        } else if (GoogleLdapClient.isCertExpired(now)) {
+            phrase = PhraseEnum.CERT_EXPIRED_ON;
+            clazz = MarkupHelper.CSS_TXT_ERROR;
+        } else {
+            phrase = PhraseEnum.CERT_VALID_UNTIL;
+            clazz = MarkupHelper.CSS_TXT_VALID;
+        }
+
+        helper.addAppendLabelAttr(WID_GOOGLE_CLOUD_EXPIRY,
+                phrase.uiText(getLocale(),
+                        localeHelper.getLongDate(
+                                GoogleLdapClient.getCertExpireDate())),
+                MarkupHelper.ATTR_CLASS, clazz);
+    }
+
+    /**
+     *
+     * @param helper
+     *            Markup helper.
+     */
+    private void addGoogleCloudReadOnlyParms(final MarkupHelper helper) {
+
+        helper.addLabel("ldap-google-cloud-host-label",
+                this.getString("ldap-host"));
+        helper.addModifyLabelAttr(WID_GOOGLE_CLOUD_HOST,
+                MarkupHelper.ATTR_VALUE, GoogleLdapUserSource.LDAP_HOST);
+
+        helper.addLabel("ldap-google-cloud-port-label",
+                this.getString("ldap-port"));
+
+        helper.addModifyLabelAttr("ldap-google-cloud-port",
+                MarkupHelper.ATTR_VALUE,
+                GoogleLdapUserSource.getLdapPortValue());
     }
 }

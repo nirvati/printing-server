@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Authors: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -33,11 +36,13 @@ import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.PrinterGroupDao;
 import org.savapage.core.dao.enums.DeviceAttrEnum;
 import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.Printer;
 import org.savapage.core.jpa.PrinterGroup;
 import org.savapage.core.jpa.User;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.util.InetUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +72,29 @@ public final class ReqDeviceSet extends ApiRequestMixin {
         final boolean isNew = dtoReq.getId() == null;
         final Date now = new Date();
         final String deviceName = dtoReq.getDeviceName();
+
+        // Force displayName == devicenName (Mantis #1105)
+        dtoReq.setDisplayName(deviceName);
+
+        // INVARIANT: Mantis #1105
+        if (StringUtils.isBlank(deviceName)) {
+            setApiResult(ApiResultCodeEnum.WARN, "msg-value-cannot-be-empty",
+                    NounEnum.NAME.uiText(getLocale()));
+            return;
+        }
+
+        // INVARIANT: Mantis #1105
+        if (StringUtils.isBlank(dtoReq.getHostname())) {
+            setApiResult(ApiResultCodeEnum.WARN, "msg-value-cannot-be-empty",
+                    "IP");
+            return;
+        }
+
+        if (!InetUtils.isInetAddressValid(dtoReq.getHostname())) {
+            setApiResult(ApiResultCodeEnum.WARN, "msg-value-invalid", "IP",
+                    dtoReq.getHostname());
+            return;
+        }
 
         final PrinterDao printerDao =
                 ServiceContext.getDaoContext().getPrinterDao();
@@ -108,12 +136,33 @@ public final class ReqDeviceSet extends ApiRequestMixin {
             }
         }
 
+        // INVARIANT
         if (isDuplicate) {
             setApiResult(ApiResultCodeEnum.ERROR, "msg-device-duplicate-name",
                     deviceName);
             return;
         }
 
+        final Device jpaDeviceDuplicateHost = deviceDao.findByHostDeviceType(
+                dtoReq.getHostname(), dtoReq.getDeviceType());
+        isDuplicate = true;
+        if (isNew) {
+            if (jpaDeviceDuplicateHost == null) {
+                isDuplicate = false;
+            }
+        } else {
+            if (jpaDeviceDuplicateHost == null || jpaDeviceDuplicateHost.getId()
+                    .equals(jpaDevice.getId())) {
+                isDuplicate = false;
+            }
+        }
+
+        //
+        if (!this.checkDuplicateHostIP(deviceDao, isNew, dtoReq)) {
+            return;
+        }
+
+        //
         jpaDevice.setDeviceType(dtoReq.getDeviceType().toString());
         jpaDevice.setDeviceName(deviceName);
         jpaDevice.setDisplayName(dtoReq.getDisplayName());
@@ -452,6 +501,44 @@ public final class ReqDeviceSet extends ApiRequestMixin {
         }
 
         setApiResult(ApiResultCodeEnum.OK, resultMsgKey);
+    }
+
+    /**
+     * Checks presence of a duplicate Host/IP device for a device type.
+     *
+     * @param deviceDao
+     *            DAO.
+     * @param isNew
+     *            {@code true} if Add request.
+     * @param dtoReq
+     *            Add/Update request.
+     * @return {@code true} if OK (no duplicate present).
+     */
+    private boolean checkDuplicateHostIP(final DeviceDao deviceDao,
+            final boolean isNew, final ReqDeviceGet.DtoRsp dtoReq) {
+
+        final Device jpaDeviceDuplicateHost = deviceDao.findByHostDeviceType(
+                dtoReq.getHostname(), dtoReq.getDeviceType());
+
+        boolean isDuplicate = true;
+
+        if (isNew) {
+            if (jpaDeviceDuplicateHost == null) {
+                isDuplicate = false;
+            }
+        } else {
+            if (jpaDeviceDuplicateHost == null
+                    || jpaDeviceDuplicateHost.getId().equals(dtoReq.getId())) {
+                isDuplicate = false;
+            }
+        }
+
+        if (isDuplicate) {
+            setApiResult(ApiResultCodeEnum.ERROR, "msg-device-duplicate-name",
+                    dtoReq.getHostname());
+            return false;
+        }
+        return true;
     }
 
     /**

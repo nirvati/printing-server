@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -77,6 +80,9 @@ public final class PageUser extends AbstractAdminPage {
         add(labelWrk);
 
         //
+        helper.addModifyLabelAttr("img-header-roles", "", MarkupHelper.ATTR_SRC,
+                MarkupHelper.IMG_PATH_USER_ROLES);
+
         final ACLRoleEnumPanel aclRolePanel =
                 new ACLRoleEnumPanel("ACLRoleEnumCheckboxes");
         aclRolePanel.populate(EnumSet.noneOf(ACLRoleEnum.class));
@@ -84,11 +90,12 @@ public final class PageUser extends AbstractAdminPage {
         add(aclRolePanel);
 
         //
-        helper.addModifyLabelAttr("credit-limit-none", "value",
+        helper.addModifyLabelAttr("credit-limit-none", MarkupHelper.ATTR_VALUE,
                 CreditLimitDtoEnum.NONE.toString());
-        helper.addModifyLabelAttr("credit-limit-default", "value",
-                CreditLimitDtoEnum.DEFAULT.toString());
-        helper.addModifyLabelAttr("credit-limit-individual", "value",
+        helper.addModifyLabelAttr("credit-limit-default",
+                MarkupHelper.ATTR_VALUE, CreditLimitDtoEnum.DEFAULT.toString());
+        helper.addModifyLabelAttr("credit-limit-individual",
+                MarkupHelper.ATTR_VALUE,
                 CreditLimitDtoEnum.INDIVIDUAL.toString());
 
         helper.addLabel("label-credit-limit-none",
@@ -105,7 +112,8 @@ public final class PageUser extends AbstractAdminPage {
         helper.addButton("button-cancel-1", HtmlButtonEnum.CANCEL);
         helper.addButton("button-cancel-2", HtmlButtonEnum.CANCEL);
         helper.addButton("button-delete", HtmlButtonEnum.DELETE);
-        helper.addButton("button-generate", HtmlButtonEnum.GENERATE);
+        helper.addButton("button-generate-1", HtmlButtonEnum.GENERATE);
+        helper.addButton("button-generate-2", HtmlButtonEnum.GENERATE);
 
         helper.addLabel("button-password", NounEnum.PASSWORD);
 

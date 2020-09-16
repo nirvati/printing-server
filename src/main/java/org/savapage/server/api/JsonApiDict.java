@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Authors: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -41,15 +44,17 @@ import org.savapage.server.api.request.ReqDeviceGet;
 import org.savapage.server.api.request.ReqDeviceSet;
 import org.savapage.server.api.request.ReqDocLogRefund;
 import org.savapage.server.api.request.ReqDocLogTicketReopen;
+import org.savapage.server.api.request.ReqGenerateUserIDNumber;
 import org.savapage.server.api.request.ReqGenerateUuid;
 import org.savapage.server.api.request.ReqI18nCacheClear;
 import org.savapage.server.api.request.ReqInboxClear;
 import org.savapage.server.api.request.ReqJobTicketCancel;
+import org.savapage.server.api.request.ReqJobTicketSaveCopies;
 import org.savapage.server.api.request.ReqJobTicketExec;
 import org.savapage.server.api.request.ReqJobTicketPrintCancel;
 import org.savapage.server.api.request.ReqJobTicketPrintClose;
 import org.savapage.server.api.request.ReqJobTicketQuickSearch;
-import org.savapage.server.api.request.ReqJobTicketSave;
+import org.savapage.server.api.request.ReqJobTicketSaveOptions;
 import org.savapage.server.api.request.ReqLogin;
 import org.savapage.server.api.request.ReqLogout;
 import org.savapage.server.api.request.ReqMailTest;
@@ -58,13 +63,17 @@ import org.savapage.server.api.request.ReqOutboxCancelAll;
 import org.savapage.server.api.request.ReqOutboxCancelJob;
 import org.savapage.server.api.request.ReqOutboxExtend;
 import org.savapage.server.api.request.ReqOutboxReleaseJob;
+import org.savapage.server.api.request.ReqPageOverlayGet;
+import org.savapage.server.api.request.ReqPageOverlaySet;
 import org.savapage.server.api.request.ReqPdfPropsSetValidate;
 import org.savapage.server.api.request.ReqPosDepositQuickSearch;
 import org.savapage.server.api.request.ReqPrintSiteUserSet;
 import org.savapage.server.api.request.ReqPrinterGet;
+import org.savapage.server.api.request.ReqPrinterGroupQuickSearch;
 import org.savapage.server.api.request.ReqPrinterOptValidate;
 import org.savapage.server.api.request.ReqPrinterPrint;
-import org.savapage.server.api.request.ReqPrinterQuickSearch;
+import org.savapage.server.api.request.ReqPrinterQuickSearchCups;
+import org.savapage.server.api.request.ReqPrinterQuickSearchUser;
 import org.savapage.server.api.request.ReqPrinterSet;
 import org.savapage.server.api.request.ReqPrinterSetMediaSources;
 import org.savapage.server.api.request.ReqPrinterSnmp;
@@ -88,6 +97,7 @@ import org.savapage.server.api.request.ReqUserGroupMemberQuickSearch;
 import org.savapage.server.api.request.ReqUserGroupQuickSearch;
 import org.savapage.server.api.request.ReqUserGroupSet;
 import org.savapage.server.api.request.ReqUserGroupsAddRemove;
+import org.savapage.server.api.request.ReqUserHomeClean;
 import org.savapage.server.api.request.ReqUserInitInternal;
 import org.savapage.server.api.request.ReqUserNotifyAccountChange;
 import org.savapage.server.api.request.ReqUserPasswordErase;
@@ -95,6 +105,13 @@ import org.savapage.server.api.request.ReqUserQuickSearch;
 import org.savapage.server.api.request.ReqUserSet;
 import org.savapage.server.api.request.ReqUserSetDelegateAccountsPreferredSelect;
 import org.savapage.server.api.request.ReqUserSetDelegateGroupsPreferredSelect;
+import org.savapage.server.api.request.ReqUserSetTelegramID;
+import org.savapage.server.api.request.ReqUserTOTPEnable;
+import org.savapage.server.api.request.ReqUserTOTPReplace;
+import org.savapage.server.api.request.ReqUserTOTPSendRecoveryCode;
+import org.savapage.server.api.request.ReqUserTOTPTelegramEnable;
+import org.savapage.server.api.request.ReqUserTestTelegramID;
+import org.savapage.server.api.request.ReqUserUuidReplace;
 
 /**
  * A dedicated class for initializing the JSON API dictionary at the right time.
@@ -169,6 +186,8 @@ public final class JsonApiDict {
     public static final String REQ_JOBTICKET_DELETE = "jobticket-delete";
     public static final String REQ_JOBTICKET_EXECUTE = "jobticket-execute";
     public static final String REQ_JOBTICKET_SAVE = "jobticket-save";
+    public static final String REQ_JOBTICKET_SAVE_COPIES =
+            "jobticket-save-copies";
 
     public static final String REQ_JOBTICKET_PRINT_CANCEL =
             "jobticket-print-cancel";
@@ -225,6 +244,9 @@ public final class JsonApiDict {
     public static final String REQ_PAGE_DELETE = "page-delete";
     public static final String REQ_PAGE_MOVE = "page-move";
 
+    public static final String REQ_PAGE_SET_OVERLAY = "page-set-overlay";
+    public static final String REQ_PAGE_GET_OVERLAY = "page-get-overlay";
+
     public static final String REQ_PAYMENT_GATEWAY_ONLINE =
             "payment-gateway-online";
 
@@ -273,6 +295,9 @@ public final class JsonApiDict {
     public static final String REQ_PRINTER_PPD_DOWNLOAD =
             "printer-ppd-download";
 
+    public static final String REQ_PRINTER_PPDE_DOWNLOAD =
+            "printer-ppde-download";
+
     public static final String REQ_PRINTER_OPT_DOWNLOAD =
             "printer-opt-download";
 
@@ -283,8 +308,15 @@ public final class JsonApiDict {
     public static final String REQ_PRINTER_GET = "printer-get";
     public static final String REQ_PRINTER_PRINT = "printer-print";
     public static final String REQ_PRINTER_RENAME = "printer-rename";
-    public static final String REQ_PRINTER_QUICK_SEARCH =
-            "printer-quick-search";
+
+    public static final String REQ_PRINTER_QUICK_SEARCH_USER =
+            "printer-quick-search-user";
+
+    public static final String REQ_PRINTER_QUICK_SEARCH_CUPS =
+            "printer-quick-search-cups";
+
+    public static final String REQ_PRINTER_GROUP_QUICK_SEARCH =
+            "printergroup-quick-search";
 
     public static final String REQ_PRINTER_SET = "printer-set";
     public static final String REQ_PRINTER_SET_MEDIA_COST =
@@ -322,7 +354,13 @@ public final class JsonApiDict {
             "user-notify-account-change";
     public static final String REQ_USER_QUICK_SEARCH = "user-quick-search";
     public static final String REQ_USER_SET = "user-set";
+    public static final String REQ_USER_SET_TELEGRAM_ID =
+            "user-set-telegram-id";
+    public static final String REQ_USER_TEST_TELEGRAM_ID =
+            "user-test-telegram-id";
     public static final String REQ_USER_SOURCE_GROUPS = "user-source-groups";
+
+    public static final String REQ_USERHOME_CLEAN = "userhome-clean";
 
     public static final String REQ_USERCARD_QUICK_SEARCH =
             "usercard-quick-search";
@@ -343,6 +381,15 @@ public final class JsonApiDict {
     public static final String REQ_USER_GET_DELEGATE_ACCOUNTS_PREFERRED_SELECT =
             "user-get-delegate-accounts-preferred-select";
 
+    public static final String REQ_USER_TOTP_ENABLE = "user-totp-enable";
+    public static final String REQ_USER_TOTP_TELEGRAM_ENABLE =
+            "user-totp-telegram-enable";
+    public static final String REQ_USER_TOTP_REPLACE = "user-totp-replace";
+    public static final String REQ_USER_TOTP_SEND_RECOVERY_CODE =
+            "user-totp-send-recovery-code";
+
+    public static final String REQ_USER_UUID_REPLACE = "user-uuid-replace";
+
     public static final String REQ_USERGROUPS_ADD_REMOVE =
             "usergroups-add-remove";
 
@@ -357,6 +404,9 @@ public final class JsonApiDict {
             "usergroup-member-quick-search";
 
     public static final String REQ_GENERATE_UUID = "generate-uuid";
+
+    public static final String REQ_GENERATE_USER_ID_NUMBER =
+            "generate-user-id-number";
 
     public static final String REQ_PRINTSITE_USER_SET = "printsite-user-set";
 
@@ -704,8 +754,8 @@ public final class JsonApiDict {
     /**
      * Checks which Public Letterhead lock is needed for a request.
      * <p>
-     * For convenience, we are conservative and assume that request that use
-     * letterheads use <b>public</b> letterheads.
+     * For convenience, we are optimistic and assume that request that use
+     * <b>public</b> letterheads won't cause concurrency issues.
      * </p>
      * <p>
      * If a user is an administrator this rules out some possibilities too.
@@ -724,7 +774,7 @@ public final class JsonApiDict {
          * @param isPublicContext {@code true} if the request involves a public
          * letterhead.
          */
-        boolean isPublicContext = true;
+        boolean isPublicContext = false;
 
         switch (request) {
 
@@ -780,6 +830,7 @@ public final class JsonApiDict {
         case REQ_POS_RECEIPT_DOWNLOAD:
         case REQ_POS_RECEIPT_DOWNLOAD_USER:
         case REQ_PRINTER_PPD_DOWNLOAD:
+        case REQ_PRINTER_PPDE_DOWNLOAD:
         case REQ_PRINTER_OPT_DOWNLOAD:
         case REQ_SMARTSCHOOL_PAPERCUT_STUDENT_COST_CSV:
         case REQ_USER_EXPORT_DATA_HISTORY:
@@ -977,11 +1028,15 @@ public final class JsonApiDict {
         acl(REQ_JOBTICKET_DELETE, ReqJobTicketCancel.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
-        acl(REQ_JOBTICKET_SAVE, ReqJobTicketSave.class, DbClaim.READ,
+        acl(REQ_JOBTICKET_SAVE, ReqJobTicketSaveOptions.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         acl(REQ_JOBTICKET_EXECUTE, ReqJobTicketExec.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
+
+        acl(REQ_JOBTICKET_SAVE_COPIES, ReqJobTicketSaveCopies.class,
+                DbClaim.READ, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         acl(REQ_JOBTICKET_PRINT_CANCEL, ReqJobTicketPrintCancel.class,
                 DbClaim.READ, DbAccess.YES,
@@ -1046,8 +1101,27 @@ public final class JsonApiDict {
         usr(REQ_PDF_SET_PROPERTIES, ReqPdfPropsSetValidate.class, DbClaim.READ,
                 DbAccess.YES);
 
+        usr(REQ_PAGE_SET_OVERLAY, ReqPageOverlaySet.class, DbClaim.NONE,
+                DbAccess.NO);
+
+        usr(REQ_PAGE_GET_OVERLAY, ReqPageOverlayGet.class, DbClaim.NONE,
+                DbAccess.NO);
+
+        usr(REQ_USER_TOTP_ENABLE, ReqUserTOTPEnable.class, DbClaim.READ,
+                DbAccess.YES);
+        usr(REQ_USER_TOTP_TELEGRAM_ENABLE, ReqUserTOTPTelegramEnable.class,
+                DbClaim.READ, DbAccess.YES);
+        usr(REQ_USER_TOTP_REPLACE, ReqUserTOTPReplace.class, DbClaim.READ,
+                DbAccess.YES);
+        put(REQ_USER_TOTP_SEND_RECOVERY_CODE, ReqUserTOTPSendRecoveryCode.class,
+                AuthReq.NONE, DbClaim.READ, DbAccess.YES);
+
+        usr(REQ_USER_UUID_REPLACE, ReqUserUuidReplace.class, DbClaim.READ,
+                DbAccess.YES);
+
         non(REQ_PING);
         non(REQ_GENERATE_UUID, ReqGenerateUuid.class);
+        non(REQ_GENERATE_USER_ID_NUMBER, ReqGenerateUserIDNumber.class);
 
         usr(REQ_USER_CREDIT_TRANSFER, DbClaim.READ, DbAccess.YES);
         usr(REQ_USER_MONEY_TRANSFER_REQUEST, DbClaim.READ, DbAccess.YES);
@@ -1081,13 +1155,20 @@ public final class JsonApiDict {
         adm(REQ_PRINTER_GET, ReqPrinterGet.class, DbClaim.NONE, DbAccess.YES);
 
         adm(REQ_PRINTER_PPD_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
+        adm(REQ_PRINTER_PPDE_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
         adm(REQ_PRINTER_OPT_DOWNLOAD, DbClaim.NONE, DbAccess.YES);
 
         usr(REQ_PRINTER_PRINT, ReqPrinterPrint.class, DbClaim.READ,
                 DbAccess.USER_LOCK);
 
-        usr(REQ_PRINTER_QUICK_SEARCH, ReqPrinterQuickSearch.class, DbClaim.READ,
-                DbAccess.YES);
+        usr(REQ_PRINTER_QUICK_SEARCH_USER, ReqPrinterQuickSearchUser.class,
+                DbClaim.READ, DbAccess.YES);
+
+        adm(REQ_PRINTER_QUICK_SEARCH_CUPS, ReqPrinterQuickSearchCups.class,
+                DbClaim.READ, DbAccess.YES);
+
+        usr(REQ_PRINTER_GROUP_QUICK_SEARCH, ReqPrinterGroupQuickSearch.class,
+                DbClaim.READ, DbAccess.YES);
 
         usr(REQ_URL_PRINT, ReqUrlPrint.class, DbClaim.NONE, DbAccess.NO);
 
@@ -1157,6 +1238,8 @@ public final class JsonApiDict {
                         ACLRoleEnum.JOB_TICKET_OPERATOR));
 
         adm(REQ_USER_SET, ReqUserSet.class, DbClaim.READ, DbAccess.YES);
+        adm(REQ_USERHOME_CLEAN, ReqUserHomeClean.class, DbClaim.NONE,
+                DbAccess.NO);
 
         adm(REQ_USER_SOURCE_GROUPS, DbClaim.NONE, DbAccess.NO);
         adm(REQ_USER_SYNC, DbClaim.NONE, DbAccess.NO);
@@ -1170,6 +1253,12 @@ public final class JsonApiDict {
         usr(REQ_USER_SET_DELEGATE_GROUPS_PREFERRED_SELECT,
                 ReqUserSetDelegateGroupsPreferredSelect.class, DbClaim.READ,
                 DbAccess.YES);
+
+        usr(REQ_USER_SET_TELEGRAM_ID, ReqUserSetTelegramID.class, DbClaim.READ,
+                DbAccess.YES);
+
+        usr(REQ_USER_TEST_TELEGRAM_ID, ReqUserTestTelegramID.class,
+                DbClaim.READ, DbAccess.YES);
 
         usr(REQ_USER_DELEGATE_ACCOUNTS_PREFERRED,
                 ReqUserDelegateAccountsPreferred.class, DbClaim.READ,

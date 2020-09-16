@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -73,6 +76,7 @@ import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.papercut.PaperCutHelper;
 import org.savapage.server.WebApp;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.helpers.HtmlPrinterImgEnum;
 import org.savapage.server.helpers.SparklineHtml;
 import org.savapage.server.pages.MarkupHelper;
@@ -133,6 +137,12 @@ public final class PrintersPage extends AbstractAdminListPage {
     /** */
     private static final String CSS_CLASS_PRINTER_PPD_DOWNLOAD =
             "sp-printer-ppd-download";
+
+    /** */
+    private static final String CSS_CLASS_PRINTER_PPDE_DOWNLOAD =
+            "sp-printer-ppde-download";
+
+    private static final String DOWNLOAD_INDCICATOR = " ⇩ ";
 
     /**
      * Bean for mapping JSON page request.
@@ -275,7 +285,7 @@ public final class PrintersPage extends AbstractAdminListPage {
 
             this.isEditor = isEditor;
             this.hasAccessDoc = ACCESS_CONTROL_SERVICE.hasAccess(
-                    SpSession.get().getUser(), ACLOidEnum.A_DOCUMENTS);
+                    SpSession.get().getUserIdDto(), ACLOidEnum.A_DOCUMENTS);
 
             this.showSnmp = ConfigManager.instance()
                     .isConfigValue(Key.PRINTER_SNMP_ENABLE);
@@ -595,12 +605,52 @@ public final class PrintersPage extends AbstractAdminListPage {
             labelWrk = createVisibleLabel(deviceUriImgUrl != null,
                     "deviceUriImg", "");
             if (deviceUriImgUrl != null) {
-                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_SRC, deviceUriImgUrl));
+                labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_SRC,
+                        deviceUriImgUrl));
             }
             item.add(labelWrk);
 
             //
             final PrinterAttrLookup attrLookup = new PrinterAttrLookup(printer);
+
+            //
+            final String filePPDExt =
+                    attrLookup.get(PrinterAttrEnum.CUSTOM_PPD_EXT_FILE);
+            final boolean hasPPDExt = StringUtils.isNotBlank(filePPDExt);
+            final boolean doesPPDExtExist = hasPPDExt
+                    && PROXY_PRINT_SERVICE.getPPDExtFile(filePPDExt).exists();
+
+            String namePPDExt = filePPDExt;
+            if (doesPPDExtExist) {
+                namePPDExt = namePPDExt.concat(DOWNLOAD_INDCICATOR);
+            }
+
+            labelWrk =
+                    createVisibleLabel(hasPPDExt, "ppd-ext-file", namePPDExt);
+
+            if (hasPPDExt) {
+                if (doesPPDExtExist) {
+                    color = MarkupHelper.CSS_TXT_VALID;
+
+                    MarkupHelper.modifyLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_DATA_SAVAPAGE,
+                            printer.getId().toString());
+
+                    MarkupHelper.appendLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_CLASS,
+                            CSS_CLASS_PRINTER_PPDE_DOWNLOAD);
+
+                    MarkupHelper.appendLabelAttr(labelWrk,
+                            MarkupHelper.ATTR_TITLE,
+                            localized("title-download-ppde"));
+
+                } else {
+                    color = MarkupHelper.CSS_TXT_WARN;
+                }
+                MarkupHelper.appendLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
+                        color);
+            }
+            item.add(labelWrk);
 
             /*
              * SNMP
@@ -703,7 +753,7 @@ public final class PrintersPage extends AbstractAdminListPage {
                     nameWlk = null;
                 } else {
                     if (cupsPrinter.isPpdPresent()) {
-                        nameWlk = nameWlk.concat(" ⇩ ");
+                        nameWlk = nameWlk.concat(DOWNLOAD_INDCICATOR);
                     }
                 }
 
@@ -775,23 +825,27 @@ public final class PrintersPage extends AbstractAdminListPage {
 
                 //
                 total = printer.getTotalPages();
-                totals.append(", " + helper.localizedNumber(total));
+                totals.append(" &bull; " + helper.localizedNumber(total));
                 key = (total == 1) ? "page" : "pages";
                 totals.append(" ").append(localized(key));
 
                 //
                 total = printer.getTotalSheets();
-                totals.append(", " + helper.localizedNumber(total));
+                totals.append(" &bull; " + helper.localizedNumber(total));
                 key = (total == 1) ? "sheet" : "sheets";
                 totals.append(" ").append(localized(key));
 
                 //
-                totals.append(", ").append(NumberUtil
-                        .humanReadableByteCount(printer.getTotalBytes(), true));
+                totals.append(" &bull; ")
+                        .append(NumberUtil.humanReadableByteCountSI(getLocale(),
+                                printer.getTotalBytes()));
             }
 
             item.add(new Label("period", period.toString()));
-            item.add(new Label("totals", totals.toString()));
+
+            labelWrk = new Label("totals", totals.toString());
+            labelWrk.setEscapeModelStrings(false);
+            item.add(labelWrk);
 
             /*
              * Set the uid in 'data-savapage' attribute, so it can be picked up
@@ -800,8 +854,11 @@ public final class PrintersPage extends AbstractAdminListPage {
             if (this.isEditor) {
                 labelWrk = new Label(WID_BUTTON_EDIT,
                         getLocalizer().getString("button-edit", this));
-                labelWrk.add(new AttributeModifier(
-                        MarkupHelper.ATTR_DATA_SAVAPAGE, printer.getId()));
+                MarkupHelper.modifyLabelAttr(labelWrk,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        printer.getId().toString());
+                MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_TITLE,
+                        HtmlButtonEnum.EDIT.uiText(getLocale()));
                 item.add(labelWrk);
             } else {
                 helper.discloseLabel(WID_BUTTON_EDIT);
@@ -810,8 +867,11 @@ public final class PrintersPage extends AbstractAdminListPage {
             if (this.hasAccessDoc) {
                 labelWrk = new Label(WID_BUTTON_LOG,
                         getLocalizer().getString("button-log", this));
-                labelWrk.add(new AttributeModifier(
-                        MarkupHelper.ATTR_DATA_SAVAPAGE, printer.getId()));
+                MarkupHelper.modifyLabelAttr(labelWrk,
+                        MarkupHelper.ATTR_DATA_SAVAPAGE,
+                        printer.getId().toString());
+                MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_TITLE,
+                        NounEnum.DOCUMENT.uiText(getLocale(), true));
                 item.add(labelWrk);
             } else {
                 helper.discloseLabel(WID_BUTTON_LOG);

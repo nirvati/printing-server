@@ -24,8 +24,7 @@
 	</h3>
 	<wicket:enclosure child="user-name">
 		<div class="sp-txt-wrap">
-			<wicket:message key="prompt-user" />
-			: <strong wicket:id="user-name" />
+			<span wicket:id="prompt-user" /> : <strong wicket:id="user-name" />
 		</div>
 	</wicket:enclosure>
 	<div class="sp-txt-wrap">
@@ -134,10 +133,13 @@
 		<wicket:enclosure child="jobticket-custom-ext"> &bull; <span
 				class="sp-txt-job-ticket-attr" wicket:id="jobticket-custom-ext" />
 		</wicket:enclosure>
-		<wicket:enclosure child="drm"> &bull; <span
-				class="sp-txt-warn" wicket:id="drm" />
-			<span wicket:id="print-in-denied-reason-hyphen" />
-			<span class="sp-txt-error" wicket:id="print-in-denied-reason" />
+		<wicket:enclosure child="print-in-label">
+			<span class="sp-txt-warn">&bull;</span>
+			<span class="sp-txt-warn" wicket:id="print-in-label" />
+			<wicket:enclosure child="print-in-denied-reason">
+				<span class="sp-txt-error">&bull;</span>
+				<span class="sp-txt-error" wicket:id="print-in-denied-reason" />
+			</wicket:enclosure>
 		</wicket:enclosure>
 		<wicket:enclosure child="pdfpgp"> &bull; <span
 				class="sp-txt-warn" wicket:id="pdfpgp" />
@@ -179,14 +181,18 @@
 	</div>
 	<wicket:enclosure child="signature">
 		<p class="sp-txt-wrap">
-			<wicket:message key="prompt-signature" />
-			: <span wicket:id="signature" />
+			<span wicket:id="prompt-signature" /> : <span wicket:id="signature" />
 		</p>
 	</wicket:enclosure>
 	<wicket:enclosure child="destination">
 		<p class="sp-txt-wrap">
-			<wicket:message key="prompt-destination" />
-			: <span wicket:id="destination" />
+			<span wicket:id="prompt-destination" /> : <span
+				wicket:id="destination" />
+		</p>
+	</wicket:enclosure>
+	<wicket:enclosure child="origin">
+		<p class="sp-txt-wrap">
+			<span wicket:id="prompt-origin" /> : <span wicket:id="origin" />
 		</p>
 	</wicket:enclosure>
 

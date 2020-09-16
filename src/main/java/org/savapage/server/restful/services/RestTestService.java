@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -27,8 +30,10 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.UUID;
 
 import javax.annotation.security.RolesAllowed;
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -39,12 +44,14 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 import org.glassfish.jersey.media.multipart.FormDataMultiPart;
 import org.glassfish.jersey.media.multipart.FormDataParam;
@@ -56,8 +63,11 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.doc.DocContent;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.ext.print.IppRoutingDto;
+import org.savapage.ext.print.QrCodeAnchorEnum;
 import org.savapage.server.restful.RestApplication;
 import org.savapage.server.restful.RestAuthFilter;
+import org.savapage.server.restful.dto.RestHttpRequestDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,6 +98,12 @@ public final class RestTestService implements IRestService {
     private static final String PATH_SUB_ECHO = "echo";
 
     /** */
+    private static final String PATH_SUB_IPP_ROUTING_DATA = "ipp-routing-data";
+
+    /** */
+    private static final String PATH_SUB_HTTP_REQUEST = "http/request";
+
+    /** */
     private static final String PATH_SUB_UPLOAD = "upload";
 
     /** */
@@ -104,6 +120,10 @@ public final class RestTestService implements IRestService {
 
     /** */
     private static final String MEDIA_TYPE_PDF = DocContent.MIMETYPE_PDF;
+
+    /** */
+    @Context
+    private HttpServletRequest servletRequest;
 
     /**
      *
@@ -128,7 +148,7 @@ public final class RestTestService implements IRestService {
      *            File ID.
      * @return {@link Response}.
      */
-    @RolesAllowed(RestAuthFilter.ROLE_ALLOWED)
+    @RolesAllowed(RestAuthFilter.ROLE_ADMIN)
     @GET
     @Path(PATH_SUB_ARCHIVES_PDF + "/{" + PATH_SUB_ID + "}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -153,7 +173,7 @@ public final class RestTestService implements IRestService {
      *            Text to echo.
      * @return Application version.
      */
-    @RolesAllowed(RestAuthFilter.ROLE_ALLOWED)
+    @RolesAllowed(RestAuthFilter.ROLE_ADMIN)
     @POST
     @Path(PATH_SUB_ECHO)
     @Consumes(MediaType.TEXT_PLAIN)
@@ -163,11 +183,110 @@ public final class RestTestService implements IRestService {
     }
 
     /**
+     * @param dummy
+     *            Dummy text.
+     * @return {@link IppRoutingDto}.
+     */
+    @RolesAllowed(RestAuthFilter.ROLE_ADMIN)
+    @POST
+    @Path(PATH_SUB_IPP_ROUTING_DATA)
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response testIppRoutingData(final String dummy) {
+
+        final String[] tokens = StringUtils.splitPreserveAllTokens(dummy, ';');
+
+        int width = 0;
+        int height = 0;
+
+        for (final String token : tokens) {
+
+            final String[] keyValue =
+                    StringUtils.splitPreserveAllTokens(token, "=");
+            if (keyValue.length != 2) {
+                continue;
+            }
+            final String key = keyValue[0];
+            final String value = keyValue[1];
+
+            switch (key) {
+            case "page-width":
+                if (NumberUtils.isDigits(value)) {
+                    width = Integer.parseInt(value);
+                }
+                break;
+
+            case "page-height":
+                if (NumberUtils.isDigits(value)) {
+                    height = Integer.parseInt(value);
+                }
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        final IppRoutingDto data = new IppRoutingDto();
+
+        data.setId(UUID.randomUUID().toString());
+
+        final IppRoutingDto.PdfData pdf = new IppRoutingDto.PdfData();
+        data.setPdf(pdf);
+
+        final IppRoutingDto.QrCode qrcode = new IppRoutingDto.QrCode();
+        pdf.setQrcode(qrcode);
+
+        final int qz = 4;
+        final int qrSize = 40;
+
+        qrcode.setQz(qz);
+        qrcode.setSize(qrSize);
+
+        final IppRoutingDto.QrCodePosition pos =
+                new IppRoutingDto.QrCodePosition();
+        qrcode.setPos(pos);
+        pos.setAnchor(QrCodeAnchorEnum.BR);
+
+        final IppRoutingDto.Margin margin = new IppRoutingDto.Margin();
+        pos.setMargin(margin);
+
+        if (width == 0 || height == 0) {
+            margin.setX(100);
+            margin.setY(150);
+        } else {
+            final boolean center = false;
+            if (center) {
+                // center
+                final int offset = (qz + qrSize) / 2;
+                margin.setX(width / 2 - offset);
+                margin.setY(height / 2 - offset);
+            } else {
+                margin.setX(10);
+                margin.setY(10);
+            }
+        }
+
+        return Response.status(Status.CREATED).entity(data).build();
+    }
+
+    /**
+     * @return HTTP request data.
+     */
+    @GET
+    @Path(PATH_SUB_HTTP_REQUEST)
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response testHeaders() {
+        return Response.ok(RestHttpRequestDto.createJSON(servletRequest))
+                .build();
+    }
+
+    /**
      * @param id
      *            File ID.
      * @return {@link Response}.
      */
-    @RolesAllowed(RestAuthFilter.ROLE_ALLOWED)
+    @RolesAllowed(RestAuthFilter.ROLE_ADMIN)
     @GET
     @Path(PATH_SUB_DOWNLOAD_PDF + "/{" + PATH_SUB_ID + "}")
     @Produces(MEDIA_TYPE_PDF)
@@ -221,7 +340,7 @@ public final class RestTestService implements IRestService {
      * @throws Exception
      *             If error.
      */
-    @RolesAllowed(RestAuthFilter.ROLE_ALLOWED)
+    @RolesAllowed(RestAuthFilter.ROLE_ADMIN)
     @POST
     @Path(PATH_SUB_UPLOAD)
     @Consumes(MediaType.MULTIPART_FORM_DATA)

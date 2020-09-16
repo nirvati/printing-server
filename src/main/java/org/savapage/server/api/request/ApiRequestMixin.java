@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Authors: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -30,13 +33,13 @@ import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.AccountDao;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dto.AbstractDto;
+import org.savapage.core.dto.UserIdDto;
 import org.savapage.core.jpa.User;
 import org.savapage.core.json.rpc.AbstractJsonRpcMethodResponse;
 import org.savapage.core.json.rpc.ErrorDataBasic;
@@ -65,6 +68,7 @@ import org.savapage.ext.papercut.services.PaperCutService;
 import org.savapage.server.WebApp;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.session.SpSession;
+import org.savapage.server.webapp.WebAppHelper;
 
 /**
  *
@@ -233,17 +237,11 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
     }
 
     /**
-     * Returns the Internet Protocol (IP) address of the client or last proxy
-     * that sent the request. For HTTP servlets, same as the value of the CGI
-     * variable <code>REMOTE_ADDR</code>.
-     *
-     * @return a <code>String</code> containing the IP address of the client
-     *         that sent the request
-     *
+     * @return <code>String</code> containing the IP address of the client that
+     *         sent the request.
      */
-    protected final String getRemoteAddr() {
-        return ((ServletWebRequest) RequestCycle.get().getRequest())
-                .getContainerRequest().getRemoteAddr();
+    protected final String getClientIP() {
+        return WebAppHelper.getClientIP(RequestCycle.get().getRequest());
     }
 
     /**
@@ -264,12 +262,20 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
     }
 
     /**
-     * Gets the {@link User} from {@link SpSession}.
+     * Gets the {@link getUserIdDto} from {@link SpSession}.
      *
-     * @return The {@link User}.
+     * @return The {@link getUserIdDto}.
      */
-    protected final User getSessionUser() {
-        return SpSession.get().getUser();
+    protected final UserIdDto getSessionUserIdDto() {
+        return SpSession.get().getUserIdDto();
+    }
+
+    /**
+     * @return The primary database key of authenticated {@link SpSession} User,
+     *         or {@code null} if no authenticated {@link User}.
+     */
+    protected final Long getSessionUserDbKey() {
+        return SpSession.get().getUserDbKey();
     }
 
     /**
@@ -317,8 +323,20 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
      * @return The message text.
      */
     protected final String localize(final String key) {
-        return Messages.getMessage(getClass(), ServiceContext.getLocale(), key,
-                (String[]) null);
+        return this.localize(ServiceContext.getLocale(), key);
+    }
+
+    /**
+     * Return a localized message string.
+     *
+     * @param locale
+     *            Locale.
+     * @param key
+     *            The key of the message.
+     * @return The message text.
+     */
+    protected final String localize(final Locale locale, final String key) {
+        return Messages.getMessage(getClass(), locale, key, (String[]) null);
     }
 
     /**
@@ -327,11 +345,28 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
      *
      * @param key
      *            The key of the message.
+     * @param args
+     *            Message placeholder arguments.
      * @return The message text.
      */
     protected final String localize(final String key, final String... args) {
-        return Messages.getMessage(getClass(), ServiceContext.getLocale(), key,
-                args);
+        return localize(ServiceContext.getLocale(), key, args);
+    }
+
+    /**
+     * Return a localized message string.
+     *
+     * @param locale
+     *            Locale.
+     * @param key
+     *            The key of the message.
+     * @param args
+     *            Message placeholder arguments.
+     * @return The message text.
+     */
+    protected final String localize(final Locale locale, final String key,
+            final String... args) {
+        return Messages.getMessage(getClass(), locale, key, args);
     }
 
     /**
@@ -659,6 +694,5 @@ public abstract class ApiRequestMixin implements ApiRequestHandler {
         fillEventCommon(event, requestingUser, user, dto);
         return event;
     }
-
 
 }

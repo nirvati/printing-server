@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
-	<!-- 
-    +=========================================================================+ 
-    | This file is part of the SavaPage project <https://www.savapage.org> ...|
-    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein........| 
-    |.........................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify .......|
-    | it under the terms of the GNU Affero General Public License as .........|
-    | published by the Free Software Foundation, either version 3 of .........|
-    | the License, or (at your option) any later version. ....................|
-    +=========================================================================+ 
-    -->
+	<!--
+This file is part of the SavaPage project <https://savapage.org>
+Copyright (c) 2020 Datraverse B.V. | Author: Rijk Ravestein 
+
+SPDX-FileCopyrightText: © 2020 Datraverse BV <info@datraverse.com>
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+SavaPage is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+-->
 </wicket:remove>
 
 <ul data-role="listview" data-inset="true">
@@ -38,44 +39,78 @@
 						</div>
 					</li>
 					<li class="ldap-parms">
-						<div class="ui-field-contain">
-							<fieldset data-role="controlgroup" data-type="horizontal"
-								class="ui-mini">
-								<label for="" wicket:id="ldap-schema-type-open-label" />
-								<input type="radio" name="" id=""
-									wicket:id="ldap-schema-type-open" />
-								<label for="" wicket:id="ldap-schema-type-edir-label" />
-								<input type="radio" name="" id=""
-									wicket:id="ldap-schema-type-edir" />
-								<label for="" wicket:id="ldap-schema-type-apple-label" />
-								<input type="radio" name="" id=""
-									wicket:id="ldap-schema-type-apple" />
-								<label for="" wicket:id="ldap-schema-type-activ-label" />
-								<input type="radio" name="" id=""
-									wicket:id="ldap-schema-type-activ" />
-							</fieldset>
-						</div>
-						<div class="ui-field-contain">
-							<label for="" wicket:id="ldap-host-label" />
-							<input type="text" id="" wicket:id="ldap-host" value=""
-								autocomplete="off" autocorrect="off" autocapitalize="off"
-								spellcheck="false" />
-						</div>
-						<div class="ui-field-contain">
-							<label for="" wicket:id="ldap-port-label" />
-							<input type="text" id="" wicket:id="ldap-port" value=""
-								pattern="[0-9]*" autocomplete="off" autocorrect="off"
-								autocapitalize="off" spellcheck="false" />
+
+						<select tabindex="-1" id="sp-ldap-schema-type"
+							data-native-menu="false">
+							<option id="" wicket:id="ldap-schema-type-open">
+								<wicket:message key="ldap-schema-type-open" />
+							</option>
+							<option id="" wicket:id="ldap-schema-type-free">
+								<wicket:message key="ldap-schema-type-free" />
+							</option>
+							<option id="" wicket:id="ldap-schema-type-edir">
+								<wicket:message key="ldap-schema-type-edir" />
+							</option>
+							<option id="" wicket:id="ldap-schema-type-apple">
+								<wicket:message key="ldap-schema-type-apple" />
+							</option>
+							<option id="" wicket:id="ldap-schema-type-activ">
+								<wicket:message key="ldap-schema-type-activ" />
+							</option>
+							<wicket:enclosure child="ldap-schema-type-google">
+								<option id="" wicket:id="ldap-schema-type-google">
+									<wicket:message key="ldap-schema-type-google" />
+								</option>
+							</wicket:enclosure>
+						</select>
+
+						<wicket:enclosure child="ldap-google-cloud-expiry">
+							<small class="ldap-parms-google-cloud"
+								wicket:id="ldap-google-cloud-expiry" />
+						</wicket:enclosure>
+
+						<div class="ldap-parms-google-cloud">
+							<wicket:enclosure child="ldap-google-cloud-host">
+
+								<div class="ui-field-contain">
+									<label for="ldap-google-cloud-host"
+										wicket:id="ldap-google-cloud-host-label" />
+									<input type="text" id="ldap-google-cloud-host"
+										wicket:id="ldap-google-cloud-host" disabled="disabled" />
+								</div>
+								<div class="ui-field-contain">
+									<label for="ldap-google-cloud-port"
+										wicket:id="ldap-google-cloud-port-label" />
+									<input type="text" id="ldap-google-cloud-port"
+										wicket:id="ldap-google-cloud-port" disabled="disabled" />
+								</div>
+
+							</wicket:enclosure>
 						</div>
 
-						<label for="" wicket:id="ldap-use-ssl-label" />
-						<input type="checkbox" id="" value="0" data-mini="true"
-							wicket:id="ldap-use-ssl" />
+						<div class="ldap-parms-standard">
+							<div class="ui-field-contain">
+								<label for="" wicket:id="ldap-host-label" />
+								<input type="text" id="" wicket:id="ldap-host" value=""
+									autocomplete="off" autocorrect="off" autocapitalize="off"
+									spellcheck="false" />
+							</div>
+							<div class="ui-field-contain">
+								<label for="" wicket:id="ldap-port-label" />
+								<input type="text" id="" wicket:id="ldap-port" value=""
+									pattern="[0-9]*" autocomplete="off" autocorrect="off"
+									autocapitalize="off" spellcheck="false" />
+							</div>
 
-						<div id="ldap-use-ssl-parms">
-							<label for="" wicket:id="ldap-use-ssl-trust-self-signed-label" />
+							<label for="" wicket:id="ldap-use-ssl-label" />
 							<input type="checkbox" id="" value="0" data-mini="true"
-								wicket:id="ldap-use-ssl-trust-self-signed" />
+								wicket:id="ldap-use-ssl" />
+
+							<div id="ldap-use-ssl-parms">
+								<label for="" wicket:id="ldap-use-ssl-trust-self-signed-label" />
+								<input type="checkbox" id="" value="0" data-mini="true"
+									wicket:id="ldap-use-ssl-trust-self-signed" />
+							</div>
 						</div>
 					</li>
 					<li class="ldap-parms">
@@ -92,7 +127,7 @@
 							autocomplete="off" autocorrect="off" autocapitalize="off"
 							spellcheck="false" />
 					</li>
-					<li class="ldap-parms">
+					<li class="ldap-parms ldap-parms-extra-fields">
 						<h3>
 							<span class="sp-txt-wrap"><wicket:message
 									key="ldap-user-fields" /></span>
@@ -445,6 +480,15 @@
 						</div>
 					</div>
 				</li>
+				<li>
+					<h3 wicket:id="user-auth-mode-2-step-header"></h3>
+					<fieldset data-role="controlgroup" data-type="vertical">
+						<label for="" wicket:id="user-auth-mode-2-step-label" />
+						<input type="checkbox" id="" value="0"
+							wicket:id="user-auth-mode-2-step" />
+					</fieldset>
+				</li>
+
 				<wicket:enclosure child="btn-apply-user-auth-mode-local">
 					<li>
 						<div>
@@ -896,6 +940,10 @@
 			<div wicket:id="sect-gcp">
 				<ul data-role="listview" data-inset="true">
 					<li>
+						<span class="sp-txt-warn sp-txt-wrap">Cloud Print is no
+							longer supported by Google after December 31st, 2020.</span>
+					</li>
+					<li>
 						<label for="gcp-enable" wicket:id="gcp-enable-label" />
 						<input type="checkbox" id="gcp-enable" value="0"
 							wicket:id="gcp-enable" />
@@ -1225,11 +1273,6 @@
 					<input style="" type="text" id="" value=""
 						wicket:id="proxyprint-max-pages" pattern="[0-9]*"
 						autocapitalize="off" />
-
-					<label for="proxyprint-check-repair"
-						wicket:id="proxyprint-check-repair-label" />
-					<input type="checkbox" id="proxyprint-check-repair" value="0"
-						wicket:id="proxyprint-check-repair" />
 
 					<label for="proxyprint-clear-inbox"
 						wicket:id="proxyprint-clear-inbox-label" />
@@ -1968,6 +2011,30 @@
 							documents. Refer to the User Manual for information on how to
 							configure this function.</div>
 					</li>
+				</ul>
+
+				<ul data-role="listview" data-inset="true">
+					<li>
+						<h3>Telegram Messaging</h3>
+						<div wicket:id="sect-telegram">
+							<fieldset data-role="controlgroup" data-type="vertical">
+								<label for="" wicket:id="telegram-messaging-label" />
+								<input type="checkbox" id="" value="0"
+									wicket:id="telegram-messaging" />
+							</fieldset>
+						</div>
+						<small class="sp-txt-wrap">Refer to the User Manual for
+							information on how to configure this function.</small>
+					</li>
+					<wicket:enclosure child="btn-apply-telegram">
+						<li>
+							<div>
+								<button id="apply-telegram"
+									class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-check"
+									wicket:id="btn-apply-telegram" />
+							</div>
+						</li>
+					</wicket:enclosure>
 				</ul>
 
 				<wicket:enclosure child="btn-pagometer-reset">

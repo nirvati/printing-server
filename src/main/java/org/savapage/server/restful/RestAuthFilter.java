@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -23,6 +26,7 @@ package org.savapage.server.restful;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -39,10 +43,15 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
 import org.apache.commons.lang3.StringUtils;
-import org.glassfish.jersey.internal.util.Base64;
+import org.savapage.core.cometd.AdminPublisher;
+import org.savapage.core.cometd.PubLevelEnum;
+import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.util.InetUtils;
+import org.savapage.server.webapp.WebAppHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -52,10 +61,19 @@ import org.savapage.core.util.InetUtils;
 public final class RestAuthFilter
         implements javax.ws.rs.container.ContainerRequestFilter {
 
+    /** */
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(RestAuthFilter.class);
+
     /**
-     * Role for Basic Authentication.
+     * Admin role for Basic Authentication.
      */
-    public static final String ROLE_ALLOWED = "ADMIN";
+    public static final String ROLE_ADMIN = "ADMIN";
+
+    /** */
+    public static final String HEADER_AUTHORIZATION_PROPERTY = "Authorization";
+    /** */
+    public static final String HEADER_AUTHENTICATION_SCHEME = "Basic";
 
     /** */
     @Context
@@ -64,11 +82,6 @@ public final class RestAuthFilter
     /** */
     @Context
     private HttpServletRequest servletRequest;
-
-    /** */
-    private static final String AUTHORIZATION_PROPERTY = "Authorization";
-    /** */
-    private static final String AUTHENTICATION_SCHEME = "Basic";
 
     /**
      *
@@ -102,10 +115,18 @@ public final class RestAuthFilter
             return;
         }
 
+        final boolean rolesAllowedPresent =
+                method.isAnnotationPresent(RolesAllowed.class);
+
+        if (!rolesAllowedPresent) {
+            return;
+        }
+
         // Fetch authorization header
         final MultivaluedMap<String, String> headers = context.getHeaders();
 
-        final List<String> authorization = headers.get(AUTHORIZATION_PROPERTY);
+        final List<String> authorization =
+                headers.get(HEADER_AUTHORIZATION_PROPERTY);
 
         if (authorization == null || authorization.isEmpty()) {
             abortWith(context, Response.Status.UNAUTHORIZED);
@@ -114,11 +135,11 @@ public final class RestAuthFilter
 
         // Get encoded username and password
         final String encodedUserPassword = authorization.get(0)
-                .replaceFirst(AUTHENTICATION_SCHEME + " ", "");
+                .replaceFirst(HEADER_AUTHENTICATION_SCHEME + " ", "");
 
         // Decode username and password
-        final String usernameAndPassword =
-                new String(Base64.decode(encodedUserPassword.getBytes()));
+        final String usernameAndPassword = new String(
+                Base64.getDecoder().decode(encodedUserPassword.getBytes()));
 
         // Split username and password tokens
         final StringTokenizer tokenizer =
@@ -127,7 +148,7 @@ public final class RestAuthFilter
         final String password = tokenizer.nextToken();
 
         // Verify user access
-        if (method.isAnnotationPresent(RolesAllowed.class)) {
+        if (rolesAllowedPresent) {
 
             final RolesAllowed rolesAnnotation =
                     method.getAnnotation(RolesAllowed.class);
@@ -147,13 +168,25 @@ public final class RestAuthFilter
      */
     private boolean isRemoteAddressAllowed() {
 
-        final String clientAddress = servletRequest.getRemoteAddr();
+        final String clientAddress = WebAppHelper.getClientIP(servletRequest);
 
         final String cidrRanges = ConfigManager.instance()
                 .getConfigValue(Key.API_RESTFUL_IP_ADDRESSES_ALLOWED);
 
-        return StringUtils.isBlank(cidrRanges)
-                || InetUtils.isIp4AddrInCidrRanges(cidrRanges, clientAddress);
+        final boolean allowed = StringUtils.isBlank(cidrRanges)
+                || InetUtils.isIpAddrInCidrRanges(cidrRanges, clientAddress);
+
+        if (!allowed) {
+            LOGGER.warn("Access denied for {}. Allowed CIDR ranges: {}",
+                    clientAddress, cidrRanges);
+
+            AdminPublisher.instance().publish(PubTopicEnum.WEB_SERVICE,
+                    PubLevelEnum.WARN,
+                    String.format(
+                            "RESTful service denied for remote address %s.",
+                            clientAddress));
+        }
+        return allowed;
     }
 
     /**
@@ -170,12 +203,12 @@ public final class RestAuthFilter
 
         final ConfigManager cm = ConfigManager.instance();
 
-        return rolesSet.contains(ROLE_ALLOWED)
-                && StringUtils.isNotBlank(username)
+        return rolesSet.contains(ROLE_ADMIN) && StringUtils.isNotBlank(username)
                 && StringUtils.isNotBlank(pw)
                 && cm.getConfigValue(Key.API_RESTFUL_AUTH_USERNAME)
                         .equals(username)
                 && cm.getConfigValue(Key.API_RESTFUL_AUTH_PASSWORD).equals(pw);
+
     }
 
 }

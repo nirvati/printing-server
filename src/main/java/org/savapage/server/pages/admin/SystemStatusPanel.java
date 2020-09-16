@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -30,7 +33,9 @@ import java.net.UnknownHostException;
 import java.text.MessageFormat;
 import java.util.Date;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
+import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -55,11 +60,14 @@ import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.SslCertInfo;
-import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.impl.DaoContextImpl;
+import org.savapage.core.dto.UserHomeStatsDto;
+import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.JobTicketNounEnum;
 import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.print.gcp.GcpPrinter;
 import org.savapage.core.print.imap.ImapPrinter;
@@ -83,10 +91,12 @@ import org.savapage.lib.pgp.PGPPublicKeyInfo;
 import org.savapage.server.WebApp;
 import org.savapage.server.cometd.UserEventService;
 import org.savapage.server.ext.ServerPluginManager;
+import org.savapage.server.pages.JobTicketQueueInfoPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.MessageContent;
 import org.savapage.server.pages.StatsEnvImpactPanel;
 import org.savapage.server.pages.StatsPageTotalPanel;
+import org.savapage.server.pages.StatsPrintInTotalPanel;
 import org.savapage.server.pages.TooltipPanel;
 
 /**
@@ -131,6 +141,18 @@ public final class SystemStatusPanel extends Panel {
 
     /** */
     private static final String WID_ENV_IMPACT = "environmental-impact";
+
+    /** */
+    private static final String WID_PANEL_JOB_TICKETS_QUEUE =
+            "job-tickets-queue-panel";
+
+    /** */
+    private static final String WID_PANEL_USERHOME_STATS =
+            "userhome-stats-panel";
+
+    /** */
+    private static final String WID_TOOLTIP_USERHOME_STATS =
+            "tooltip-userhome-stats";
 
     /**
      * @param panelId
@@ -209,11 +231,33 @@ public final class SystemStatusPanel extends Panel {
         add(new Label("sys-uptime",
                 DateUtil.formatDuration(SystemInfo.getUptime())));
 
-        //
-        final UserDao userDAO = ServiceContext.getDaoContext().getUserDao();
+        /*
+         * Users
+         */
+        helper.addLabel("users-prompt",
+                NounEnum.USER.uiText(getLocale(), true));
 
-        add(new Label("user-count",
-                helper.localizedNumber(userDAO.countActiveUsers())));
+        final UserHomeStatsPanel userHomePanel =
+                new UserHomeStatsPanel(WID_PANEL_USERHOME_STATS);
+        add(userHomePanel);
+
+        final String json =
+                ConfigManager.instance().getConfigValue(Key.STATS_USERHOME);
+
+        final UserHomeStatsDto dto = UserHomeStatsDto.create(json);
+        userHomePanel.populate(dto, hasEditorAccess);
+        this.addSafePagesTooltip(helper, localeHelper, dto);
+
+        /*
+         * Job Tickets
+         */
+        helper.addLabel("job-tickets-prompt",
+                JobTicketNounEnum.TICKET.uiText(getLocale(), true));
+
+        final JobTicketQueueInfoPanel jobticketPanel =
+                new JobTicketQueueInfoPanel(WID_PANEL_JOB_TICKETS_QUEUE);
+        add(jobticketPanel);
+        jobticketPanel.populate(TICKET_SERVICE.getJobTicketQueueSize() == 0);
 
         /*
          * Mail Print
@@ -522,6 +566,17 @@ public final class SystemStatusPanel extends Panel {
         add(labelWrk);
 
         /*
+         * RESTful Print
+         */
+        add(new Label("prompt-restful-print",
+                CommunityDictEnum.RESTFUL_PRINT.getWord(getLocale())));
+
+        labelWrk = helper.addCheckbox("flipswitch-restful-online",
+                QUEUE_SERVICE.isQueueEnabled(ReservedIppQueueEnum.WEBSERVICE));
+        setFlipswitchOnOffText(labelWrk);
+        add(labelWrk);
+
+        /*
          *
          */
         add(new Label("client-sessions", String.format("%s (%s) • web (client)",
@@ -723,12 +778,12 @@ public final class SystemStatusPanel extends Panel {
 
         if (showTechInfo) {
             memoryInfo = String.format("%s Max • %s Total • %s Free",
-                    NumberUtil.humanReadableByteCount(
-                            Runtime.getRuntime().maxMemory(), true),
-                    NumberUtil.humanReadableByteCount(
-                            Runtime.getRuntime().totalMemory(), true),
-                    NumberUtil.humanReadableByteCount(
-                            Runtime.getRuntime().freeMemory(), true));
+                    NumberUtil.humanReadableByteCountSI(getLocale(),
+                            Runtime.getRuntime().maxMemory()),
+                    NumberUtil.humanReadableByteCountSI(getLocale(),
+                            Runtime.getRuntime().totalMemory()),
+                    NumberUtil.humanReadableByteCountSI(getLocale(),
+                            Runtime.getRuntime().freeMemory()));
         } else {
             memoryInfo = "";
         }
@@ -769,10 +824,10 @@ public final class SystemStatusPanel extends Panel {
             final File file = new File(File.separator);
             helper.addLabel("disk-space",
                     String.format("%s Total • %s Free",
-                            NumberUtil.humanReadableByteCount(
-                                    file.getTotalSpace(), true),
-                            NumberUtil.humanReadableByteCount(
-                                    file.getUsableSpace(), true)));
+                            NumberUtil.humanReadableByteCountSI(getLocale(),
+                                    file.getTotalSpace()),
+                            NumberUtil.humanReadableByteCountSI(getLocale(),
+                                    file.getUsableSpace())));
 
             helper.addLabel("disk-space-prompt", NounEnum.DISK_SPACE);
 
@@ -834,26 +889,30 @@ public final class SystemStatusPanel extends Panel {
                 showTechInfo);
 
         /*
-         * Job Tickets
-         */
-        if (showTechInfo) {
-            size = TICKET_SERVICE.getJobTicketQueueSize();
-        }
-        helper.encloseLabel("job-tickets-queue-size", String.valueOf(size),
-                showTechInfo);
-
-        /*
          * Page Totals.
          */
-        StatsPageTotalPanel pageTotalPanel =
+        final StatsPageTotalPanel pageTotalPanel =
                 new StatsPageTotalPanel("stats-pages-total");
         add(pageTotalPanel);
         pageTotalPanel.populate();
 
         /*
+         * Page Totals.
+         */
+        boolean showPrintIn = true;
+        if (showPrintIn) {
+            final StatsPrintInTotalPanel printInTotalPanel =
+                    new StatsPrintInTotalPanel("stats-printin-total");
+            add(printInTotalPanel);
+            printInTotalPanel.populate();
+        } else {
+            helper.discloseLabel("stats-printin-total");
+        }
+
+        /*
          * Financial Totals.
          */
-        StatsFinancialPanel finTotalPanel =
+        final StatsFinancialPanel finTotalPanel =
                 new StatsFinancialPanel("stats-financial-totals");
         add(finTotalPanel);
         finTotalPanel.populate();
@@ -865,7 +924,7 @@ public final class SystemStatusPanel extends Panel {
             final Double esu =
                     (double) (cm.getConfigLong(Key.STATS_TOTAL_PRINT_OUT_ESU)
                             / 100);
-            StatsEnvImpactPanel envImpactPanel =
+            final StatsEnvImpactPanel envImpactPanel =
                     new StatsEnvImpactPanel(WID_ENV_IMPACT);
             add(envImpactPanel);
             envImpactPanel.populate(esu);
@@ -898,6 +957,88 @@ public final class SystemStatusPanel extends Panel {
         add(labelNews);
 
         helper.addTransparantDisabled("sect-services", !hasEditorAccess);
+    }
+
+    /**
+     * Adds SafePages tooltip (or not).
+     *
+     * @param helper
+     *            Markup Helper.
+     * @param localeHelper
+     *            Local helper.
+     * @param dto
+     *            SafePages info. If {@code null} tooltip is not displayed.
+     */
+    private void addSafePagesTooltip(final MarkupHelper helper,
+            final LocaleHelper localeHelper, final UserHomeStatsDto dto) {
+
+        if (dto == null) {
+            helper.discloseLabel(WID_TOOLTIP_USERHOME_STATS);
+            return;
+        }
+        final TooltipPanel tooltip =
+                new TooltipPanel(WID_TOOLTIP_USERHOME_STATS);
+
+        final StringBuilder html = new StringBuilder();
+        html.append("<p><b>");
+        if (dto.isCleaned()) {
+            html.append(AdverbEnum.CLEANED.uiText(getLocale()));
+        } else {
+            html.append(AdverbEnum.CLEANABLE.uiText(getLocale()));
+        }
+        html.append("</b>: ");
+
+        final UserHomeStatsDto.Stats stats = dto.getCleanup();
+
+        final long nUsers = stats.getUsers().getCount();
+        html.append(localeHelper.getNumber(nUsers));
+        html.append("&nbsp;")
+                .append(NounEnum.USER.uiText(getLocale(), nUsers != 1))
+                .append(".");
+
+        if (nUsers > 0) {
+
+            UserHomeStatsDto.Scope scope = stats.getInbox();
+            long nCount = scope.getCount();
+
+            if (nCount > 0) {
+                html.append(" ").append(localeHelper.getNumber(nCount));
+                html.append("&nbsp;").append(
+                        NounEnum.DOCUMENT.uiText(getLocale(), nCount != 1));
+                html.append(": ")
+                        .append(FileUtils
+                                .byteCountToDisplaySize(scope.getSize())
+                                .replace(" ", "&nbsp;"))
+                        .append(".");
+            }
+            scope = stats.getOutbox();
+            nCount = scope.getCount();
+            if (nCount > 0) {
+                html.append(" ").append(localeHelper.getNumber(nCount));
+                html.append("&nbsp;").append(
+                        PrintOutNounEnum.JOB.uiText(getLocale(), nCount != 1));
+                html.append(": ")
+                        .append(FileUtils
+                                .byteCountToDisplaySize(scope.getSize())
+                                .replace(" ", "&nbsp;"))
+                        .append(".");
+            }
+        }
+
+        html.append(" ");
+
+        if (dto.getDuration() < DateUtil.DURATION_MSEC_SECOND) {
+            html.append(dto.getDuration()).append("&nbsp;msec");
+        } else {
+            html.append(DurationFormatUtils
+                    .formatDurationWords(dto.getDuration(), true, true)
+                    .replace(" ", "&nbsp;"));
+        }
+        html.append(".");
+
+        html.append("</p>");
+        tooltip.populate(html.toString(), false);
+        add(tooltip);
     }
 
     /**

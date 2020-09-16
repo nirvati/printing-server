@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -23,9 +26,11 @@ package org.savapage.server.jsonrpc;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.nio.charset.Charset;
 import java.util.Currency;
 import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.servlet.ServletException;
@@ -88,6 +93,7 @@ import org.savapage.core.users.IExternalUserAuthenticator;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.InetUtils;
+import org.savapage.server.webapp.WebAppHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -353,11 +359,11 @@ public final class JsonRpcServlet extends HttpServlet
                     "Secure connection required.");
         }
 
-        final String clientAddress = httpRequest.getRemoteAddr();
-        final String serverAdress;
+        final String clientAddress = WebAppHelper.getClientIP(httpRequest);
+        final Set<String> serverAddresses;
 
         try {
-            serverAdress = InetUtils.getServerHostAddress();
+            serverAddresses = InetUtils.getServerHostAddresses();
         } catch (UnknownHostException e1) {
             return JsonRpcMethodError.createBasicError(
                     JsonRpcError.Code.INTERNAL_ERROR, "Access denied.",
@@ -374,7 +380,7 @@ public final class JsonRpcServlet extends HttpServlet
                     .getConfigValue(Key.API_JSONRPC_IP_ADDRESSES_ALLOWED);
 
             if (StringUtils.isBlank(cidrRanges)
-                    || !InetUtils.isIp4AddrInCidrRanges(cidrRanges,
+                    || !InetUtils.isIpAddrInCidrRanges(cidrRanges,
                             clientAddress)
                     || !secretKey.equals(ConfigManager.instance()
                             .getConfigValue(Key.API_JSONRPC_SECRET_KEY))) {
@@ -390,16 +396,14 @@ public final class JsonRpcServlet extends HttpServlet
         /*
          * INVARIANT (ACCESS): Private API, localhost access only.
          */
-        if (isPrivateApi && !clientAddress.equals(serverAdress)) {
+        if (isPrivateApi && !serverAddresses.contains(clientAddress)) {
 
             onAccessViolation(isPrivateApi);
 
             return JsonRpcMethodError.createBasicError(
                     JsonRpcError.Code.INVALID_REQUEST, "Access denied.",
-                    String.format(
-                            "Client [%s] must be on same platform "
-                                    + "as server [%s].",
-                            clientAddress, serverAdress));
+                    String.format("Client [%s] must be on same platform "
+                            + "as server.", clientAddress));
         }
 
         /*
@@ -484,7 +488,8 @@ public final class JsonRpcServlet extends HttpServlet
         final String jsonInput;
 
         try {
-            jsonInput = IOUtils.toString(httpRequest.getInputStream());
+            jsonInput = IOUtils.toString(httpRequest.getInputStream(),
+                    Charset.defaultCharset());
         } catch (IOException e) {
             return createMethodException(e, false);
         }
@@ -599,6 +604,12 @@ public final class JsonRpcServlet extends HttpServlet
                         .getParams(ParamsUniqueName.class).getUniqueName());
                 break;
 
+            case DELETE_USER_GROUP_ACCOUNT:
+                rpcResponse = ACCOUNTING_SERVICE.deleteUserGroupAccount(
+                        methodParser.getParams(ParamsUniqueName.class)
+                                .getUniqueName());
+                break;
+
             case ERASE_USER:
                 rpcResponse = USER_SERVICE.eraseUser(methodParser
                         .getParams(ParamsUniqueName.class).getUniqueName());
@@ -614,6 +625,7 @@ public final class JsonRpcServlet extends HttpServlet
                 rpcResponse = CONFIG_PROPERTY_SERVICE.setPropertyValue(
                         methodParser.getParams(ParamsNameValue.class));
                 break;
+
             case LIST_USERS:
 
                 final ParamsPaging parmsListUsers =
@@ -837,7 +849,7 @@ public final class JsonRpcServlet extends HttpServlet
                     .append("\"");
         }
 
-        msgTxt.append(" from ").append(httpRequest.getRemoteAddr());
+        msgTxt.append(" from ").append(WebAppHelper.getClientIP(httpRequest));
 
         if (StringUtils.isNotBlank(msg)) {
             msgTxt.append(" : ").append(msg);

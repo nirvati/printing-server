@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Authors: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -49,6 +52,7 @@ import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.server.WebApp;
 import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.helpers.HtmlTooltipEnum;
 
 /**
  * Helper methods for a {@link MarkupContainer}.
@@ -65,6 +69,7 @@ import org.savapage.server.helpers.HtmlButtonEnum;
 public final class MarkupHelper {
 
     public static final String ATTR_ACCEPT = "accept";
+    public static final String ATTR_ALIGN = "align";
     public static final String ATTR_CHECKED = "checked";
     public static final String ATTR_SELECTED = "selected";
     public static final String ATTR_DISABLED = "disabled";
@@ -89,6 +94,7 @@ public final class MarkupHelper {
     public static final String ATTR_DATA_INPUT = "data-input";
 
     public static final String ATTR_DATA_SAVAPAGE = "data-savapage";
+    public static final String ATTR_DATA_SAVAPAGE_KEY = "data-savapage-key";
     public static final String ATTR_DATA_SAVAPAGE_TYPE = "data-savapage-type";
 
     public static final String CSS_AMOUNT_MIN = "sp-amount-min";
@@ -141,6 +147,61 @@ public final class MarkupHelper {
      */
     private static final String IMG_PATH_ACCOUNT_SHARED =
             WebApp.PATH_IMAGES_FAMFAM + "/tag_green.png";
+
+    /**
+     * Image path for User Roles.
+     */
+    public static final String IMG_PATH_USER_ROLES =
+            WebApp.PATH_IMAGES_FAMFAM + "/script.png";
+
+    /**
+     * Image path for enabled User Roles.
+     */
+    public static final String IMG_PATH_USER_ROLES_ENABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/script_add.png";
+
+    /**
+     * Image path for disabled User Roles.
+     */
+    public static final String IMG_PATH_USER_ROLES_DISABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/script_delete.png";
+
+    /**
+     * Image path for User Privileges.
+     */
+    public static final String IMG_PATH_USER_PRIVILEGES =
+            WebApp.PATH_IMAGES_FAMFAM + "/shield.png";
+
+    /**
+     * Image path for enabled User Privileges.
+     */
+    public static final String IMG_PATH_USER_PRIVILEGES_ENABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/shield_add.png";
+
+    /**
+     * Image path for disabled User Privileges.
+     */
+    public static final String IMG_PATH_USER_PRIVILEGES_DISABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/shield_delete.png";
+
+    /**
+     * Image path for Admin Privileges.
+     */
+    public static final String IMG_PATH_ADMIN_PRIVILEGES =
+            WebApp.PATH_IMAGES_FAMFAM + "/cog.png";
+
+    /**
+     * Image path for enabled Admin Privileges.
+     */
+    public static final String IMG_PATH_ADMIN_PRIVILEGES_ENABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/cog_add.png";
+
+    /**
+     * Image path for disabled Admin Privileges.
+     */
+    public static final String IMG_PATH_ADMIN_PRIVILEGES_DISABLED =
+            WebApp.PATH_IMAGES_FAMFAM + "/cog_delete.png";
+
     /**
      * HTML img tag for Personal Account.
      */
@@ -252,10 +313,26 @@ public final class MarkupHelper {
      * is used.
      *
      * @param number
+     *            Number value.
      * @return The localized string.
      */
     public String localizedNumber(final long number) {
         return fmNumber.format(number);
+    }
+
+    /**
+     * Gets as localized string of a Number. The locale of the current session
+     * is used.
+     *
+     * @param number
+     *            Number value.
+     * @return The localized string or "&nbsp;" for zero number. .
+     */
+    public String localizedNumberOrSpace(final long number) {
+        if (number == 0) {
+            return "&nbsp;";
+        }
+        return this.localizedNumber(number);
     }
 
     /**
@@ -664,6 +741,25 @@ public final class MarkupHelper {
     }
 
     /**
+     * Adds an IMG label with a modified "src" attribute value containing a
+     * base64 encoded PNG image.
+     *
+     * @param wicketId
+     *            The {@code wicket:id} of the HTML entity.
+     * @param base64
+     *            The base64 encoded PNG image.
+     * @return The added {@link Label}.
+     */
+    public Label addModifyImagePngBase64Attr(final String wicketId,
+            final String base64) {
+        final Label labelWrk = new Label(wicketId, "");
+        modifyLabelAttr(labelWrk, ATTR_SRC,
+                "data:image/png;base64,".concat(base64));
+        add(labelWrk);
+        return labelWrk;
+    }
+
+    /**
      * Modifies an attribute value of a {@link Label}.
      *
      * @param label
@@ -765,6 +861,46 @@ public final class MarkupHelper {
         label.add(new AttributeAppender(attribute,
                 String.format(" %s", value.trim())));
         return label;
+    }
+
+    /**
+     * Adds a {@link #ATTR_TITLE} (tooltip) to a {@ Label}.
+     *
+     * @param label
+     *            The {@link Label}.
+     * @param id
+     *            Wicket ID of localized tooltip string.
+     * @return The {@link Label}.
+     */
+    public Label addTooltip(final Label label, final String id) {
+        return modifyLabelAttr(label, ATTR_TITLE, this.localized(id));
+    }
+
+    /**
+     * Adds a {@link #ATTR_TITLE} (tooltip) to a {@link Component}.
+     *
+     * @param component
+     *            The {@link Label}.
+     * @param id
+     *            Wicket ID of localized tooltip string.
+     * @return The {@link Component}.
+     */
+    public Component addTooltip(final Component component, final String id) {
+        return modifyComponentAttr(component, ATTR_TITLE, this.localized(id));
+    }
+
+    /**
+     * Adds a {@link #ATTR_TITLE} (tooltip) to a {@ Label}.
+     *
+     * @param label
+     *            The {@link Label}.
+     * @param tooltip
+     *            The {@link HtmlTooltipEnum}.
+     * @return The {@link Label}.
+     */
+    public Label addTooltip(final Label label, final HtmlTooltipEnum tooltip) {
+        return modifyLabelAttr(label, ATTR_TITLE,
+                tooltip.uiText(this.container.getLocale()));
     }
 
     /**

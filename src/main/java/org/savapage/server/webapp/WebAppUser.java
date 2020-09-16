@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.head.IHeaderResponse;
@@ -40,7 +44,6 @@ import org.apache.wicket.request.Request;
 import org.apache.wicket.request.Url;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.util.string.StringValue;
-import org.savapage.core.SpException;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
@@ -56,7 +59,6 @@ import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.UserService;
 import org.savapage.core.users.conf.UserAliasList;
 import org.savapage.ext.oauth.OAuthClientPlugin;
-import org.savapage.ext.oauth.OAuthPluginException;
 import org.savapage.ext.oauth.OAuthProviderEnum;
 import org.savapage.ext.oauth.OAuthUserInfo;
 import org.savapage.server.WebApp;
@@ -64,6 +66,7 @@ import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.dropzone.WebPrintHelper;
 import org.savapage.server.ext.ServerPluginManager;
 import org.savapage.server.helpers.HtmlButtonEnum;
+import org.savapage.server.helpers.HtmlTooltipEnum;
 import org.savapage.server.pages.FontOptionsPanel;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.session.SpSession;
@@ -84,6 +87,18 @@ public final class WebAppUser extends AbstractWebAppPage {
 
     private final static String WICKET_ID_FILE_UPLOAD_FONTFAMILY_OPT =
             "file-upload-fontfamily-options";
+
+    private static final String JS_FILE_JQUERY_SAVAPAGE_PAGE_PRINT_DELEGATION =
+            "jquery.savapage-page-print-delegation.js";
+
+    private static final String JS_FILE_FABRIC_JS = "fabricjs/fabric.js";
+
+    private static final String JS_FILE_JQUERY_SAVAPAGE_CANVAS_EDITOR =
+            "jquery.savapage-canvas-editor.js";
+
+    private static final String[] CSS_REQ_FILENAMES =
+            new String[] { "jquery.savapage-common-icons.css",
+                    "jquery.savapage-user-icons.css" };
 
     /**
      *
@@ -110,6 +125,13 @@ public final class WebAppUser extends AbstractWebAppPage {
     @Override
     protected void renderWebAppTypeJsFiles(final IHeaderResponse response,
             final String nocache) {
+
+        if (ConfigManager.isPdfOverlayEditorEnabled()) {
+            renderJs(response,
+                    String.format("%s%s", JS_FILE_FABRIC_JS, nocache));
+            renderJs(response, String.format("%s%s",
+                    JS_FILE_JQUERY_SAVAPAGE_CANVAS_EDITOR, nocache));
+        }
         renderJs(response, String.format("%s%s",
                 JS_FILE_JQUERY_SAVAPAGE_PAGE_PRINT_DELEGATION, nocache));
         renderJs(response,
@@ -154,21 +176,25 @@ public final class WebAppUser extends AbstractWebAppPage {
             final String htmlId;
             final String cssClass;
             final String uiText;
+            final HtmlTooltipEnum tooltipEnum;
 
             switch (button) {
             case PRINT:
+                tooltipEnum = null;
                 htmlId = "sp-btn-file-upload-print";
                 cssClass = "ui-icon-main-print";
                 uiText = HtmlButtonEnum.PRINT.uiText(getPage().getLocale());
                 break;
 
             case PDF:
+                tooltipEnum = null;
                 htmlId = "sp-btn-file-upload-pdf";
                 cssClass = "ui-icon-main-pdf-properties";
                 uiText = "PDF";
                 break;
 
             default:
+                tooltipEnum = HtmlTooltipEnum.BACK_TO_MAIN_PAGE;
                 htmlId = "sp-btn-file-upload-inbox";
                 cssClass = "ui-icon-main-home";
                 uiText = HtmlButtonEnum.BACK.uiText(getPage().getLocale());
@@ -181,8 +207,14 @@ public final class WebAppUser extends AbstractWebAppPage {
             MarkupHelper.modifyLabelAttr(label, MarkupHelper.ATTR_ID, htmlId);
             MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_CLASS,
                     cssClass);
-            MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_TITLE,
-                    localized(htmlId.concat("-tooltip")));
+
+            if (tooltipEnum != null) {
+                MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_TITLE,
+                        tooltipEnum.uiText(getPage().getLocale()));
+            } else {
+                MarkupHelper.appendLabelAttr(label, MarkupHelper.ATTR_TITLE,
+                        localized(htmlId.concat("-tooltip")));
+            }
 
             item.add(label);
         }
@@ -210,11 +242,16 @@ public final class WebAppUser extends AbstractWebAppPage {
      *
      * @param mutableProvider
      *            The AOuth provider, or {@code null} when not found.
+     * @param isOAuthException
+     *            {@code true} if OAuth exception.
      * @return {@code null} when OAuth is <i>not</i> applicable.
      *         {@link Boolean#FALSE} when authentication failed.
      */
     private Boolean checkOAuthToken(
-            final MutableObject<OAuthProviderEnum> mutableProvider) {
+            final MutableObject<OAuthProviderEnum> mutableProvider,
+            final MutableBoolean isOAuthException) {
+
+        isOAuthException.setFalse();
 
         final Request request = this.getRequestCycle().getRequest();
 
@@ -313,8 +350,11 @@ public final class WebAppUser extends AbstractWebAppPage {
         final OAuthUserInfo userInfo;
         try {
             userInfo = plugin.onCallBack(parms);
-        } catch (IOException | OAuthPluginException e) {
-            throw new SpException(e.getMessage());
+        } catch (Exception e) {
+            isOAuthException.setTrue();
+            LOGGER.error(String.format("%s - %s: %s",
+                    e.getClass().getSimpleName(), logPfx, e.getMessage()), e);
+            return Boolean.FALSE;
         }
 
         //
@@ -407,9 +447,9 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         final String userid = UserAliasList.instance().getUserName(useridRaw);
 
-        final User sessionUser = SpSession.get().getUser();
+        final String sessionUserId = SpSession.get().getUserId();
 
-        if (sessionUser != null && sessionUser.getUserId().equals(userid)) {
+        if (sessionUserId != null && sessionUserId.equals(userid)) {
             return;
         }
 
@@ -495,7 +535,9 @@ public final class WebAppUser extends AbstractWebAppPage {
         final MutableObject<OAuthProviderEnum> mutableProvider =
                 new MutableObject<>();
 
-        final Boolean oauth = checkOAuthToken(mutableProvider);
+        final MutableBoolean isOAuthException = new MutableBoolean(false);
+        final Boolean oauth =
+                checkOAuthToken(mutableProvider, isOAuthException);
 
         if (oauth == null) {
 
@@ -511,6 +553,13 @@ public final class WebAppUser extends AbstractWebAppPage {
             parms.set(WebAppParmEnum.SP_LOGIN_OAUTH.parm(),
                     mutableProvider.toString());
 
+            if (isOAuthException.isTrue()) {
+                parms.set(WebAppOAuthMsg.PARM_STATUS.parm(),
+                        WebAppOAuthMsg.PARM_STATUS_ERROR);
+            } else {
+                parms.set(WebAppOAuthMsg.PARM_STATUS.parm(),
+                        WebAppOAuthMsg.PARM_STATUS_WARNING);
+            }
             setResponsePage(WebAppOAuthMsg.class, parms);
             return;
         }
@@ -535,6 +584,11 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         add(new UploadNextButtonView("next-buttons", nextButtons));
 
+    }
+
+    @Override
+    protected String[] getSpecializedCssReqFileNames() {
+        return CSS_REQ_FILENAMES;
     }
 
     @Override

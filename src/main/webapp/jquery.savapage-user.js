@@ -1,10 +1,13 @@
-/*! SavaPage jQuery Mobile User Web App | (c) 2011-2019 Datraverse B.V. | GNU
+/*! SavaPage jQuery Mobile User Web App | (c) 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -55,11 +58,23 @@
         _ns.thumbnails2Load = 0;
 
         _ns.removeImgHeight = function(imgDomElement) {
-            $(imgDomElement).removeAttr("height");
+            $(imgDomElement).removeAttr('height').removeClass('sp-preload-spinner');
             _ns.thumbnails2Load--;
             if (_ns.thumbnails2Load === 0) {
                 // All thumbnails are loaded, so resume.
                 _ns.userEvent.resume();
+            }
+        };
+
+        // See Java Wicket: Browser.html
+        _ns.removeSpinnerL = function(imgDomElement) {
+            var sel = $(imgDomElement);
+            sel.removeClass('sp-preload-spinner-l');
+            // Restore heigh/width.
+            if (sel.hasClass('fit_width')) {
+                sel.css('height', '');
+            } else {
+                sel.css('width', '');
             }
         };
 
@@ -573,9 +588,278 @@
         /**
          *
          */
-        function PageBrowser(_i18n, _view, _model) {
+        function PageBrowser(_i18n, _view, _model, _api) {
+            const _DRAW_MODE_BRUSH = 'brush';
             var _this = this,
-                cssClassRotated = 'sp-img-rotated',
+                _cssClassRotated = 'sp-img-rotated',
+                _idCanvasImgDiv = 'sp-canvas-browser-img-div',
+                _idCanvasImg = 'sp-canvas-browser-img',
+                _imgCanvasEditor,
+                _imgCanvasObjCountLoaded,
+                _imgScrollBarWidth,
+                _isBrushMode,
+
+            /** */
+                _setHtmlCanvasDrawingMode = function() {
+                _isBrushMode = _view.getRadioValue('sp-canvas-drawing-mode') === _DRAW_MODE_BRUSH;
+                _imgCanvasEditor.enableDrawingMode(_isBrushMode);
+                _view.enableUI($('.sp-canvas-drawing-mode-select'), !_isBrushMode);
+                _view.visible($('.sp-canvas-drawing-mode-select-prop'), !_isBrushMode);
+                _view.visible($('.sp-canvas-drawing-mode-brush'), _isBrushMode);
+                _view.enable($('#sp-canvas-drawing-select-all'), !_isBrushMode);
+            },
+
+            /** */
+                _initHtmlCanvasEditor = function() {
+
+                _imgCanvasEditor = new _ns.HtmlCanvasEditor(_idCanvasImg, //
+                function(nObjects) {
+                    // onAfterRender
+                    _view.enable($('#sp-canvas-drawing-clear-all'), nObjects > 0);
+                    _view.enable($('#sp-canvas-drawing-select-all'), !_isBrushMode && nObjects > 0);
+                }, function(nObjectsSelected) {
+                    // onSelectionCreated
+                    _view.enable($('#sp-canvas-drawing-clear-selected'), true);
+                    _view.enable($('#sp-canvas-drawing-info-selected'), nObjectsSelected === 1);
+                }, function() {
+                    // onSelectionCleared
+                    _view.enable($('#sp-canvas-drawing-clear-selected'), false);
+                    _view.enable($('#sp-canvas-drawing-info-selected'), false);
+                });
+
+                _imgCanvasEditor.setFreeDrawingBrush('Pencil', $('#sp-canvas-drawing-brush-color').val(), 1);
+
+                _setHtmlCanvasDrawingMode();
+
+                $("#sp-canvas-drawing-add-rect").click(function() {
+                    _imgCanvasEditor.addRect();
+                });
+                $("#sp-canvas-drawing-add-circle").click(function() {
+                    _imgCanvasEditor.addCircle();
+                });
+                $("#sp-canvas-drawing-add-triangle").click(function() {
+                    _imgCanvasEditor.addTriangle();
+                });
+                $("#sp-canvas-drawing-add-line").click(function() {
+                    _imgCanvasEditor.addLine();
+                });
+                $("#sp-canvas-drawing-add-textbox").click(function() {
+                    _imgCanvasEditor.addTextbox();
+                });
+
+                $("#sp-canvas-drawing-select-all").click(function() {
+                    _imgCanvasEditor.selectAll();
+                });
+
+                $("#sp-canvas-drawing-clear-all").click(function() {
+                    _imgCanvasEditor.clear();
+                    _imgCanvasEditor.setBackgroundImage(_getActiveImageUrl());
+                });
+
+                $("#sp-canvas-drawing-clear-selected").click(function() {
+                    _imgCanvasEditor.clearSelected();
+                });
+
+                $("#sp-canvas-drawing-info-selected").click(function() {
+                    _imgCanvasEditor.debugSelected();
+                });
+
+                $("#sp-canvas-drawing-save").click(function() {
+                    var nObj = _imgCanvasEditor.countObjects(),
+                        res = _api.call({
+                        request : 'page-set-overlay',
+                        dto : JSON.stringify({
+                            imgUrl : $('#page-browser-images .active').attr('src'),
+                            svg64 : nObj > 0 ? window.btoa(_imgCanvasEditor.toSVG()) : null,
+                            json64 : nObj > 0 && _imgCanvasEditor.hasTextObjects() ? window.btoa(_imgCanvasEditor.toJSON()) : null
+                        })
+                    });
+                    _view.showApiMsg(res);
+                    if (res.result.code === "0") {
+                        if ((_imgCanvasObjCountLoaded > 0 && nObj === 0) || (_imgCanvasObjCountLoaded === 0 && nObj > 0)) {
+                            _this.onOverlayOnOff();
+                        }
+                    }
+                });
+
+                $("#sp-canvas-drawing-undo-all").click(function() {
+                    _setOverlayCanvas();
+                });
+
+                $('input[name=sp-canvas-drawing-mode]:radio').change(function(event) {
+                    _setHtmlCanvasDrawingMode();
+                });
+
+                $('#sp-canvas-drawing-brush-color').on('input', function() {
+                    _imgCanvasEditor.setBrushColor($(this).val());
+                });
+
+                $('#sp-canvas-drawing-brush-width').on('input', function() {
+                    _imgCanvasEditor.setBrushWidth(parseInt($(this).val(), 10));
+                });
+
+                $('#sp-canvas-drawing-select-stroke-color').on('input', function() {
+                    _imgCanvasEditor.setStroke($(this).val());
+                    _imgCanvasEditor.setStrokeSelected();
+                });
+                $('#sp-canvas-drawing-select-fill-color').on('input', function() {
+                    _imgCanvasEditor.setFill($(this).val());
+                    _imgCanvasEditor.setFillSelected();
+                });
+
+                $('#sp-canvas-drawing-selected-fill-transparent').click(function() {
+                    _imgCanvasEditor.setFillSelectedExt(null);
+                });
+
+                $('#sp-canvas-drawing-select-stroke-width').on('input', function() {
+                    _imgCanvasEditor.setStrokeWidth(parseInt($(this).val(), 10));
+                    _imgCanvasEditor.setStrokeWidthSelected();
+                });
+
+                $('#sp-canvas-drawing-opacity').on('input', function() {
+                    _imgCanvasEditor.setOpacityPerc(parseInt($(this).val(), 10));
+                    _imgCanvasEditor.setOpacitySelected();
+                });
+
+                $('#page-browser-images').addClass('sp-overflow-scroll');
+                _imgScrollBarWidth = _view.getOverflowScrollBarWidth();
+
+                // Hide images in favour of canvas editor.
+                $('#page-browser-images img').each(function() {
+                    _view.visible($(this), false);
+                });
+                // Show <div> container of <canvas>
+                _view.visible($('#' + _idCanvasImgDiv), true);
+            },
+
+            /** */
+                _getMaxImgHeight = function() {
+                var yContentPadding,
+                    yImagePadding,
+                    yHeader,
+                    yFooter,
+                    yImage,
+                    yImageScrollbar = 0,
+                    yViewPort;
+                //+------------------------------------------- Viewport
+                //| (yContentPadding)
+                //| +---------------------------------+ #header-browser
+                // (optional)
+                //| | xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | (yHeader)
+                //| +---------------------------------+
+                //| (yContentPadding)
+                //| +---------------------------------+ #content-browser
+                //| | (yImagePadding)                 |
+                //| | +-----------------------------+ #page-browser-images
+                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  | |
+                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  |
+                //| | |...........................  | (yImage)
+                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  |
+                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  | |
+                //| | +----------------------------+  |
+                //| | (yImageScrollbar)  (optional)   |
+                //| | (yImagePadding)                 |
+                //| +---------------------------------+
+                //| (yContentPadding)
+                //| +---------------------------------+ #footer-browser
+                //| | xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | (yFooter)
+                //| +---------------------------------+
+                //| (yContentPadding)
+                //+-------------------------------------------
+                yViewPort = _view.getViewportHeight();
+
+                if (_imgCanvasEditor) {
+                    yContentPadding = $('#header-browser').position().top;
+                    yHeader = $('#header-browser').outerHeight(true);
+                    yImageScrollbar = _imgScrollBarWidth;
+                } else {
+                    yHeader = 0;
+                    yContentPadding = $('#content-browser').position().top;
+                }
+                yImagePadding = $('#page-browser-images').position().top - $('#content-browser').position().top;
+                yFooter = $('#footer-browser').outerHeight(true);
+
+                yImage = yViewPort - 3 * yContentPadding - yFooter - 2 * yImagePadding - yImageScrollbar - yHeader;
+
+                return yImage;
+            },
+
+            /** */
+                _resizeOverlayCanvasExt = function(selImg, selDiv) {
+                var w = selImg.get(0).naturalWidth,
+                    h = selImg.get(0).naturalHeight,
+                    hMax = _getMaxImgHeight();
+
+                _imgCanvasEditor.setWidth(w);
+                _imgCanvasEditor.setHeight(h);
+
+                selDiv.width(w);
+                if (h < hMax) {
+                    selDiv.height(h);
+                } else {
+                    selDiv.height(hMax);
+                }
+            },
+
+            /** */
+                _resizeOverlayCanvas = function() {
+                if (_imgCanvasEditor) {
+                    _resizeOverlayCanvasExt($('#page-browser-images .active'), $('#' + _idCanvasImgDiv));
+                }
+            },
+
+            /** */
+                _getActiveImageUrl = function() {
+                return $('#page-browser-images .active').attr('src');
+            },
+
+            /** */
+                _setOverlayCanvas = function() {
+                var selImg,
+                    w,
+                    h,
+                    hMax,
+                    imgUrl,
+                    res;
+                if (!_imgCanvasEditor) {
+                    return;
+                }
+                selImg = $('#page-browser-images .active');
+                w = selImg.get(0).naturalWidth;
+                if (w === 0) {
+                    $.mobile.loading("show");
+                    // Image not loaded yet, try again: RECURSE !!
+                    window.setTimeout(_setOverlayCanvas, 500);
+                } else {
+                    $.mobile.loading("hide");
+
+                    imgUrl = selImg.attr('src');
+                    _resizeOverlayCanvasExt(selImg, $('#' + _idCanvasImgDiv));
+
+                    _imgCanvasEditor.clear();
+
+                    // Load overlay
+                    res = _api.call({
+                        request : 'page-get-overlay',
+                        dto : JSON.stringify({
+                            imgUrl : imgUrl
+                        })
+                    });
+
+                    if (res.result.code === '0') {
+                        if (res.dto.json64) {
+                            _imgCanvasEditor.loadJSON(window.atob(res.dto.json64));
+                        } else if (res.dto.svg64) {
+                            _imgCanvasEditor.loadSVG(window.atob(res.dto.svg64));
+                        }
+                        // Set background after load !
+                        _imgCanvasEditor.setBackgroundImage(imgUrl);
+                        _imgCanvasObjCountLoaded = _imgCanvasEditor.countObjects();
+                    } else {
+                        _view.showApiMsg(res);
+                    }
+                }
+            },
 
             /** */
                 _setSliderValue = function(value) {
@@ -648,51 +932,19 @@
              * as portrait and adjusted to the viewport height.
              */
             this.adjustImages = function() {
-                var yContentPadding,
-                    yImagePadding,
-                    yFooter,
-                    yImage,
-                    yViewPort;
+                var yImage;
 
                 if ($('#page-browser').children().length === 0) {
-                    // not loaded
                     return;
                 }
                 if ($('#content-browser img').hasClass('fit_width')) {
                     return;
                 }
 
-                //+------------------------------------------- Viewport
-                //| (yContentPadding)
-                //| +---------------------------------+ #content-browser
-                //| | (yImagePadding)                 |
-                //| | +-----------------------------+ #page-browser-images
-                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  | |
-                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  |
-                //| | |...........................  | (yImage)
-                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  |
-                //| | |xxxxxxxxxxxxxxxxxxxxxxxxxxx  | |
-                //| | +----------------------------+  |
-                //| | (yImagePadding)                 |
-                //| +---------------------------------+
-                //| (yContentPadding)
-                //| +---------------------------------+ #footer-browser
-                //| | xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | (yFooter)
-                //| +---------------------------------+
-                //| (yContentPadding)
-                //+-------------------------------------------
-
-                // vpWidth = _view.getViewportWidth();
-                yViewPort = _view.getViewportHeight();
-
-                yContentPadding = $('#content-browser').position().top;
-                yImagePadding = $('#page-browser-images').position().top - $('#content-browser').position().top;
-                yFooter = $('#footer-browser').outerHeight(true);
-
-                yImage = yViewPort - 3 * yContentPadding - yFooter - 2 * yImagePadding;
+                yImage = _getMaxImgHeight();
 
                 $('#content-browser img').each(function() {
-                    if ($(this).hasClass(cssClassRotated)) {
+                    if ($(this).hasClass(_cssClassRotated)) {
                         // $(this).css({'width' : widthImg + 'px'});
                         $(this).css({
                             'height' : yImage + 'px'
@@ -725,7 +977,9 @@
                     i,
                     j,
                     idImgBase = 'sp-browse-image-',
-                    prop = {};
+                    prop = {},
+                    tmp,
+                    sel;
 
                 /*
                  * Lazy init.
@@ -803,9 +1057,9 @@
                         imgWlk.attr('id', idImgBase + i);
 
                         if (_model.getPageRotate(iPageArray[i])) {
-                            imgWlk.addClass(cssClassRotated);
+                            imgWlk.addClass(_cssClassRotated);
                         } else {
-                            imgWlk.removeClass(cssClassRotated);
+                            imgWlk.removeClass(_cssClassRotated);
                         }
 
                         urlArray[i] = url;
@@ -815,12 +1069,29 @@
                     /*
                      * Active
                      */
-                    $('#' + idImgBase + 1).addClass('active');
+                    sel = $('#' + idImgBase + 1);
+                    tmp = sel.attr('src');
+
+                    // Force an image reload.
+                    sel.attr('src', '');
+
+                    // Set heigh/width so preload spinner is in view (orginal
+                    // values are restored after image load).
+                    if (sel.hasClass('fit_width')) {
+                        sel.css('height', _view.getViewportHeight() + 'px');
+                    } else {
+                        // Just a value to hold the spinner.
+                        sel.css('width', '100px');
+                    }
+
+                    // Set spinner and set image.
+                    sel.addClass('sp-preload-spinner-l');
+                    sel.attr('src', tmp).addClass('active');
 
                     /*
                      * Re-order
                      */
-                    $('#' + idImgBase + 1).insertAfter('#' + idImgBase + '0');
+                    sel.insertAfter('#' + idImgBase + '0');
                     $('#' + idImgBase + 2).insertAfter('#' + idImgBase + 1);
                 }
 
@@ -897,6 +1168,10 @@
 
             $('#page-browser').on('pagecreate', function(event) {
 
+                if ($('#' + _idCanvasImgDiv).length > 0) {
+                    _initHtmlCanvasEditor();
+                }
+
                 _this.setImages();
 
                 $('.image_reel img').mousedown(function(e) {
@@ -905,11 +1180,13 @@
 
                 $(window).resize(function() {
                     _view.pages.pagebrowser.adjustImages();
+                    _resizeOverlayCanvas();
                 });
+
                 // Show first image
                 $(".image_reel img:first").addClass("active");
 
-                $("#browser-slider").change(function() {
+                $('#browser-slider').change(function() {
                     var val,
                         image;
 
@@ -930,6 +1207,8 @@
                     // $(".image_reel img").removeClass('active');
                     image.addClass('active');
                     // detailedScanImageInBrowser();
+
+                    _setOverlayCanvas();
                 });
 
                 $("#browser-nav-right").click(function() {
@@ -942,40 +1221,38 @@
                     return false;
                 });
 
-                $('#page-browser-images').on('vmousedown', null, null, function(event) {
-                    event.preventDefault();
-                }).on('swipeleft', null, null, function(event) {
-                    _navRight();
-                }).on('swiperight', null, null, function(event) {
-                    _navLeft();
-                }).on('tap', null, null, function(event) {
-                    // ----------------------------------------------------------
-                    // IMPORTANT: make sure to handle this event last!
-                    // If tap is handled before swipes, the tap event is
-                    // also
-                    // triggered in case of swipe event
-                    // ----------------------------------------------------------
-                    // So, we don't need the tolerance check any more (left
-                    // here
-                    // for documentation though)
-                    // ----------------------------------------------------------
-                    // Since this event is also triggered with swipes, use a
-                    // tolerance: 10px
-                    //
-                    // if((Math.abs(xStart - event.pageX) < 10) &&
-                    // (Math.abs(yStart -
-                    // event.pageY) < 10)) {
-                    // ----------------------------------------------------------
-                    var images = $('#content-browser img');
-                    images.toggleClass('fit_width');
-                    if (images.hasClass('fit_width')) {
-                        images.css('height', '');
-                    } else {
-                        _view.pages.pagebrowser.adjustImages();
-                    }
-                    // }
-                    return false;
-                });
+                if (!_imgCanvasEditor) {
+                    $('#page-browser-images').on('vmousedown', null, null, function(event) {
+                        event.preventDefault();
+                    }).on('swipeleft', null, null, function(event) {
+                        _navRight();
+                    }).on('swiperight', null, null, function(event) {
+                        _navLeft();
+                    }).on('tap', null, null, function(event) {
+                        // ----------------------------------------------------------
+                        // IMPORTANT: make sure to handle this event last!
+                        // If tap is handled before swipes, the tap event is
+                        // also triggered in case of swipe event
+                        // ----------------------------------------------------------
+                        // So, we don't need the tolerance check any more (left
+                        // here for documentation though)
+                        // ----------------------------------------------------------
+                        // Since this event is also triggered with swipes, use a
+                        // tolerance: 10px
+                        //
+                        // if((Math.abs(xStart - event.pageX) < 10) &&
+                        // (Math.abs(yStart - event.pageY) < 10)) {
+                        // ----------------------------------------------------------
+                        var images = $('#content-browser img');
+                        images.toggleClass('fit_width');
+                        if (images.hasClass('fit_width')) {
+                            images.css('height', '');
+                        } else {
+                            _view.pages.pagebrowser.adjustImages();
+                        }
+                        return false;
+                    });
+                }
 
                 $("#browser-delete").click(function() {
                     var selSlider = $('#browser-slider');
@@ -1003,6 +1280,7 @@
 
                 // Adjust when page is settled.
                 _this.adjustImages();
+                _resizeOverlayCanvas();
 
             }).on("pagehide", function(event, ui) {
                 _ns.userEvent.resume();
@@ -1518,17 +1796,28 @@
                 $('#button-outbox-back').click();
                 return false;
             },
+                _countJobs = function() {
+                return $('#outbox-job-list .sp-outbox-job-entry').length;
+            },
+                _countJobsToCancel = function() {
+                return $('#outbox-job-list .sp-outbox-cancel-job').length + $('#outbox-job-list .sp-outbox-cancel-jobticket').length;
+            },
                 _refresh = function() {
-                var html = _view.getUserPageHtml('OutboxAddin', {
+                var jobsToCancel,
+                    html = _view.getUserPageHtml('OutboxAddin', {
                     jobTickets : false,
                     expiryAsc : false
                 });
+
                 if (html) {
                     $('#outbox-job-list').html(html).enhanceWithin();
                     $('.sp-sparkline-printout').sparkline('html', {
                         enableTagOptions : true
                     });
+                    jobsToCancel = _countJobsToCancel();
+                    $('#button-outbox-clear-job-count').text(jobsToCancel);
                     _view.visible($('#button-outbox-extend'), $('#outbox-job-list .sp-outbox-item-type-hold').length > 0);
+                    _view.visible($('#button-outbox-clear'), jobsToCancel > 0);
                 }
                 return false;
             },
@@ -1550,6 +1839,18 @@
 
                 $('#button-outbox-clear').click(function() {
                     _this.onOutboxClear();
+                    _refresh();
+                    if (_countJobs() > 0) {
+                        return false;
+                    }
+                    return _close();
+                });
+
+                $('#button-outbox-refresh').click(function() {
+                    _refresh();
+                    if (_countJobs() > 0) {
+                        return false;
+                    }
                     return _close();
                 });
 
@@ -1667,16 +1968,120 @@
         /**
          * Constructor
          */
-        function PageUserInternetPrinter(_i18n, _view, _model) {
-            var _page = new _ns.Page(_i18n, _view, '#page-user-internet-printer', 'InternetPrinter'),
+        function PageUserInternetPrinter(_i18n, _view, _model, _api) {
+            var _pageId = '#page-user-internet-printer',
+                _page = new _ns.Page(_i18n, _view, _pageId, 'InternetPrinter'),
                 _self = _ns.derive(_page);
+
+            $(_pageId).on('pagecreate', function(event) {
+                $(this).on('click', '#user-uuid-replace-popup-btn', null, function() {
+                    $('#user-uuid-replace-popup').popup('open', {
+                        positionTo : $(this)
+                    });
+                    $("#user-uuid-replace-btn-no").focus();
+                }).on('click', '#user-uuid-replace-btn', null, function() {
+                    _view.showApiMsg(_api.call({
+                        'request' : 'user-uuid-replace'
+                    }));
+                    $('#user-uuid-replace-popup').popup('close');
+                    $('#page-user-internet-printer-content').html(_view.getUserPageHtml('InternetPrinterAddIn'));
+                    $(_pageId).enhanceWithin();
+                });
+            });
+            return _self;
+        }
+
+        /**
+         * Constructor
+         */
+        function PageUserTelegram(_i18n, _view, _model, _api) {
+            var _pageId = '#page-user-telegram',
+                _page = new _ns.Page(_i18n, _view, _pageId, 'UserTelegram'),
+                _self = _ns.derive(_page),
+                _savedTelegramID;
+
+            $(_pageId).on('pagecreate', function(event) {
+                $(this).on('click', '#user-set-telegram-id-btn-apply', null, function() {
+                    var id = $('#user-totp-telegram-id').val(),
+                        res = _api.call({
+                        request : 'user-set-telegram-id',
+                        dto : JSON.stringify({
+                            'id' : id
+                        })
+                    });
+                    if (res.result.code === '0') {
+                        _savedTelegramID = id;
+                    }
+                    _view.showApiMsg(res);
+                }).on('click', '#user-set-telegram-id-btn-test', null, function() {
+                    _view.showApiMsg(_api.call({
+                        request : 'user-test-telegram-id'
+                    }));
+                }).on('click', '#user-set-telegram-id-btn-2-step', null, function() {
+                    _view.pages.main.showUserTOTP();
+                }).on('click', '#user-set-telegram-id-btn-back', null, function() {
+                    $('#user-totp-telegram-id').val(_savedTelegramID);
+                });
+            }).on("pagebeforeshow", function(event, ui) {
+                _savedTelegramID = $('#user-totp-telegram-id').val();
+            });
+            return _self;
+        }
+
+        /**
+         * Constructor
+         */
+        function PageTOTPUser(_i18n, _view, _model, _api) {
+            var _pageId = '#page-user-totp',
+                _page = new _ns.Page(_i18n, _view, _pageId, 'TOTPUser'),
+                _self = _ns.derive(_page),
+            //
+                _m2v = function() {
+                var isEnabled = $('#sp-user-totp-enable-chb').is(':checked'),
+                    isTelegram = $('#sp-user-totp-telegram-enable-chb').is(':checked');
+                _view.visible($('#sp-user-totp-qr-code'), isEnabled && !isTelegram);
+                _view.visible($('#sp-user-totp-telegram-enable-span'), isEnabled);
+            };
+
+            $(_pageId).on('pagecreate', function(event) {
+                $(this).on('click', '#user-totp-replace-popup-btn', null, function() {
+                    $('#user-totp-replace-popup').popup('open', {
+                        positionTo : $(this)
+                    });
+                    $("#user-totp-replace-btn-no").focus();
+                }).on('click', '#user-totp-replace-btn', null, function() {
+                    _view.showApiMsg(_api.call({
+                        'request' : 'user-totp-replace'
+                    }));
+                    $('#user-totp-replace-popup').popup('close');
+                    $('#page-user-totp-content').html(_view.getUserPageHtml('TOTPUserAddIn'));
+                    $(_pageId).enhanceWithin();
+                    _m2v();
+                }).on('change', "input:checkbox[id='sp-user-totp-enable-chb']", null, function(e) {
+                    _view.showApiMsg(_api.call({
+                        'request' : 'user-totp-enable',
+                        dto : JSON.stringify({
+                            'enabled' : $(this).is(':checked')
+                        })
+                    }));
+                    _m2v();
+                }).on('change', "input:checkbox[id='sp-user-totp-telegram-enable-chb']", null, function(e) {
+                    _view.showApiMsg(_api.call({
+                        'request' : 'user-totp-telegram-enable',
+                        dto : JSON.stringify({
+                            'enabled' : $(this).is(':checked')
+                        })
+                    }));
+                    _m2v();
+                });
+            });
             return _self;
         }
 
         /**
          *
          */
-        function PageDashboard(_i18n, _view, _model) {
+        function PageDashboard(_i18n, _view, _model, _api) {
 
             $('#page-dashboard').on('pagecreate', function(event) {
 
@@ -1707,7 +2112,20 @@
                             $('#page-user-internet-printer-content').html(html);
                             $(pageId).enhanceWithin();
                         }
+                        return false;
+                    });
+                }
 
+                if ($('#button-user-totp-dialog')) {
+                    $(this).on('click', '#button-user-totp-dialog', null, function() {
+                        _view.pages.main.showUserTOTP();
+                        return false;
+                    });
+                }
+
+                if ($('#button-user-telegram-dialog')) {
+                    $(this).on('click', '#button-user-telegram-dialog', null, function() {
+                        _view.showUserPage('#page-user-telegram', 'UserTelegram');
                         return false;
                     });
                 }
@@ -2050,11 +2468,27 @@
             // for now ...
             this.id = '#page-main';
 
+            //
+            this.refreshPagesOnShow = false;
+
             /**
              * Clears all traces of previous editing.
              */
             this.clearEditState = function() {
                 _showArrange(_isEditMode);
+            };
+
+            /**
+             *
+             */
+            this.showUserTOTP = function() {
+                var pageId = '#page-user-totp',
+                    html = _view.getUserPageHtml('TOTPUserAddIn');
+                _view.showUserPage(pageId, 'TOTPUser');
+                if (html) {
+                    $('#page-user-totp-content').html(html);
+                    $(pageId).enhanceWithin();
+                }
             };
 
             /**
@@ -2202,11 +2636,16 @@
                          * fixed width and the proper height (ratio).
                          */
                         item = "";
-                        item += '<div><img onload="org.savapage.removeImgHeight(this)" width="' + imgWidth + '" height="' + imgHeightA4 + '" border="0" src="' + _view.getImgSrc(page.url) + '" style="padding: ' + _IMG_PADDING + 'px;" />';
+                        item += '<div><img class="sp-preload-spinner" onload="org.savapage.removeImgHeight(this)" width="' + imgWidth + '" height="' + imgHeightA4 + '" border="0" src="' + _view.getImgSrc(page.url) + '" style="padding: ' + _IMG_PADDING + 'px;" />';
                         item += '<a tabindex="-1" title="' + title + '" href="#" class="sp-thumbnail-subscript ui-btn ui-mini" style="margin-top:-' + (2 * _IMG_PADDING + 1) + 'px; margin-right: ' + _IMG_PADDING + 'px; margin-left: ' + _IMG_PADDING + 'px; border: none; box-shadow: none;">';
                         item += '<span class="sp-thumbnail-page"/>';
                         item += '<span class="sp-thumbnail-tot-pages"/>';
                         item += '<span class="sp-thumbnail-tot-chunk"/>';
+
+                        if (page.overlay) {
+                            item += '<span class="sp-txt-info"> &#9998;</span>';
+                        }
+                        item += '<span class="sp-txt-info sp-thumbnail-tot-chunk-overlays"/>';
 
                         if (_model.myJobs[page.job].rotate !== "0") {
                             item += " &#x21b7;";
@@ -2215,7 +2654,6 @@
                         item += '</a></div>';
 
                         divCur = $(item);
-
                     }
 
                     if (divPrv) {
@@ -2257,6 +2695,19 @@
                         span.text(' (' + page.pages + ')');
                     } else {
                         span.text('');
+                    }
+                    /*
+                     * Set the chunk overlay total.
+                     */
+                    span = divCur.find('.sp-thumbnail-tot-chunk-overlays');
+                    if ((page.overlayPages > 0 && !page.overlay) || page.overlayPages > 1) {
+                        if (page.overlay) {
+                            span.html(' ' + page.overlayPages);
+                        } else {
+                            span.html(' ' + page.overlayPages + '&#9998;');
+                        }
+                    } else {
+                        span.html('');
                     }
 
                     //--------------------------
@@ -2530,9 +2981,8 @@
                     page,
                     job,
                     sel2,
-                    nDel
-                //
-                ,
+                    nDel,
+                    html,
                     cssCls = 'sp-thumbnail-subscript'
                 //
                 ;
@@ -2599,6 +3049,12 @@
                         sel2.find('span').html(_ns.Utils.formatDateTime(new Date(page.expiryTime)));
                     }
                     _view.visible(sel2, page.expiryTime);
+
+                    //
+                    html = _view.getUserPageHtml('PdfDocumentFontsAddIn', {
+                        ijob : _model.iPopUpJob
+                    }) || 'error';
+                    $('#sp-popup-job-info-fonts-addin').html(html);
 
                     $('#sp-popup-job-info').enhanceWithin().popup('open', {
                         positionTo : '#page-main-thumbnail-images .sp-thumbnail-page:eq(' + iImg + ')'
@@ -3631,7 +4087,7 @@
 
                 _areMultiplePrinterAvailable = function() {
                 var res = _api.call({
-                    request : 'printer-quick-search',
+                    request : 'printer-quick-search-user',
                     dto : JSON.stringify({
                         filter : '',
                         jobTicket : null,
@@ -3676,7 +4132,7 @@
                 _quickPrinterSelected = undefined;
 
                 res = _api.call({
-                    request : 'printer-quick-search',
+                    request : 'printer-quick-search-user',
                     dto : JSON.stringify({
                         filter : filter,
                         jobTicket : filterJobTicket,
@@ -4703,7 +5159,12 @@
                 return this.jobsMatchMedia === this.MediaMatchEnum.MATCH;
             };
 
-            this.refreshUniqueImgUrlValue = function() {
+            // Thumbnails
+            this.refreshUniqueImgUrlValueTn = function() {
+                this.uniqueImgUrlValue = new Date().getTime().toString();
+            };
+
+            this.refreshUniqueImgUrlValues = function() {
                 // number of milliseconds since 1970/01/01
                 var d = new Date();
                 this.uniqueImgUrlValue = d.getTime().toString();
@@ -4824,7 +5285,7 @@
                 this.mySelectPages = {};
                 this.myPrinter = undefined;
                 this.propPdf = this.propPdfDefault;
-                this.refreshUniqueImgUrlValue();
+                this.refreshUniqueImgUrlValues();
                 this.prevMsgTime = null;
 
                 this.printDelegation = {};
@@ -5411,6 +5872,12 @@
 
                         _ns.startAppWatchdog(false);
 
+                        if (!authMode && authPw) {
+                            _ns.Utils.asyncFoo(function() {
+                                _view.pages.main.showUserTOTP();
+                            });
+                        }
+
                     } else {
 
                         if (_view.activePage().attr('id') === 'page-login') {
@@ -5425,6 +5892,8 @@
                                  */
                                 _view.pages.login.notifyCardAssoc(authId);
 
+                            } else if (data.authTOTPRequired) {
+                                _view.pages.login.notifyTOTPRequired();
                             } else {
                                 _view.pages.login.notifyLoginFailed(( assocCardNumber ? null : authMode), data.result.txt);
 
@@ -5999,6 +6468,10 @@
                 }
                 _view.showApiMsg(res);
                 return isOk;
+            };
+
+            _view.pages.pagebrowser.onOverlayOnOff = function() {
+                _view.pages.main.refreshPagesOnShow = true;
             };
 
             /**
@@ -6893,6 +7366,12 @@
                 // first statement
                 _ns.deferAppWakeUp(false);
 
+                if (this.refreshPagesOnShow) {
+                    this.refreshPagesOnShow = false;
+                    _model.refreshUniqueImgUrlValueTn();
+                    this.onExpandPage(0);
+                }
+
                 _view.pages.main.alignThumbnails();
 
                 _userEvent.resume();
@@ -6912,7 +7391,6 @@
                     }
                     _view.pages.main.showUserStats();
                 }
-
             };
 
             _view.pages.main.onHide = function() {
@@ -7093,8 +7571,8 @@
                 doclog : new PageDocLog(_i18n, _view, _model, _api),
                 outbox : new PageOutbox(_i18n, _view, _model, _api),
                 send : new PageSend(_i18n, _view, _model),
-                pagebrowser : new PageBrowser(_i18n, _view, _model),
-                pageDashboard : new PageDashboard(_i18n, _view, _model),
+                pagebrowser : new PageBrowser(_i18n, _view, _model, _api),
+                pageDashboard : new PageDashboard(_i18n, _view, _model, _api),
                 voucherRedeem : new PageVoucherRedeem(_i18n, _view, _model),
                 creditTransfer : new PageCreditTransfer(_i18n, _view, _model),
                 moneyTransfer : new PageMoneyTransfer(_i18n, _view, _model),
@@ -7105,7 +7583,9 @@
                 printSettings : new PagePrintSettings(_i18n, _view, _model),
                 fileUpload : new PageFileUpload(_i18n, _view, _model),
                 userPinReset : new PageUserPinReset(_i18n, _view, _model),
-                userInternetPrinter : new PageUserInternetPrinter(_i18n, _view, _model),
+                userInternetPrinter : new PageUserInternetPrinter(_i18n, _view, _model, _api),
+                totpUser : new PageTOTPUser(_i18n, _view, _model, _api),
+                userTelegram : new PageUserTelegram(_i18n, _view, _model, _api),
                 userPwReset : new _ns.PageUserPasswordReset(_i18n, _view, _model),
                 gdprExport : new PageGdprExport(_i18n, _view, _model, _api)
             };
@@ -7161,10 +7641,7 @@
                 // By NOT returning anything the unload dialog will not show.
                 $.noop();
             }).on('unload', function() {
-                _api.removeCallbacks();
-                _api.call({
-                    request : 'webapp-unload'
-                });
+                _api.unloadWebApp();
             });
         };
 

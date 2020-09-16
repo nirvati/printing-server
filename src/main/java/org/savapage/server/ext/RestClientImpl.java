@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -54,19 +57,22 @@ public final class RestClientImpl implements RestClient {
     }
 
     @Override
-    public String post(final String entity, final String mediaTypeReq,
-            final String mediaTypeRsp) {
+    public <T> T post(final String entity, final String mediaTypeReq,
+            final String mediaTypeRsp, final Class<T> entityRspType) {
 
         final Invocation.Builder builder = this.webTarget.request(mediaTypeRsp);
 
         try (Response response =
                 builder.post(Entity.entity(entity, mediaTypeReq));) {
+
             switch (response.getStatusInfo().toEnum()) {
             case CREATED:
-                return response.readEntity(String.class);
+                return response.readEntity(entityRspType);
             default:
                 throw new IllegalStateException(
-                        response.getStatusInfo().toString());
+                        String.format("REST API response status %d (%s)",
+                                response.getStatus(),
+                                response.getStatusInfo().toString()));
             }
         }
     }

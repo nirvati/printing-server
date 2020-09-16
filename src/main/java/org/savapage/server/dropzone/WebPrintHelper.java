@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2017 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -39,7 +42,6 @@ import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.doc.DocContent;
 import org.savapage.core.doc.DocContentTypeEnum;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
-import org.savapage.core.jpa.User;
 import org.savapage.core.print.server.DocContentPrintException;
 import org.savapage.core.print.server.DocContentPrintReq;
 import org.savapage.core.services.QueueService;
@@ -82,7 +84,7 @@ public final class WebPrintHelper {
      */
     public static boolean isWebPrintEnabled(final String originatorIp) {
         return ConfigManager.isWebPrintEnabled()
-                && InetUtils.isIp4AddrInCidrRanges(
+                && InetUtils.isIpAddrInCidrRanges(
                         ConfigManager.instance().getConfigValue(
                                 Key.WEB_PRINT_LIMIT_IP_ADDRESSES),
                         originatorIp);
@@ -197,8 +199,8 @@ public final class WebPrintHelper {
     /**
      * @param originatorIp
      *            The client IP address.
-     * @param user
-     *            The user who uploaded the file.
+     * @param userId
+     *            The unique ID of user who uploaded the file.
      * @param uploadedFile
      *            The uploaded file.
      * @param preferredFont
@@ -211,7 +213,7 @@ public final class WebPrintHelper {
      *             When service is unavailable.
      */
     public static void handleFileUpload(final String originatorIp,
-            final User user, final FileUpload uploadedFile,
+            final String userId, final FileUpload uploadedFile,
             final InternalFontFamilyEnum preferredFont)
             throws DocContentPrintException, IOException, UnavailableException {
 
@@ -220,7 +222,7 @@ public final class WebPrintHelper {
 
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace(String.format("User [%s] uploaded file [%s] [%s]",
-                        user.getUserId(), uploadedFile.getContentType(),
+                        userId, uploadedFile.getContentType(),
                         uploadedFile.getClientFileName()));
             }
 
@@ -250,8 +252,8 @@ public final class WebPrintHelper {
             docContentPrintReq.setProtocol(DocLogProtocolEnum.HTTP);
             docContentPrintReq.setTitle(fileName);
 
-            QUEUE_SERVICE.printDocContent(ReservedIppQueueEnum.WEBPRINT, user,
-                    true, docContentPrintReq, uploadedFile.getInputStream());
+            QUEUE_SERVICE.printDocContent(ReservedIppQueueEnum.WEBPRINT, userId,
+                    docContentPrintReq, uploadedFile.getInputStream());
 
         } finally {
             // Close quietly.

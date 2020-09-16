@@ -1,9 +1,12 @@
-/*! SavaPage | (c) 2011-2018 Datraverse B.V. | GNU Affero General Public License */
+/*! SavaPage | © 2020 Datraverse B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Authors: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -22,9 +25,6 @@
  * address: info@datraverse.com
  */
 
-@import url("jquery.savapage-common-icons.css");
-@import url("jquery.savapage-user-icons.css");
-
 .main_actions {
 }
 .main_action_base {
@@ -33,6 +33,11 @@
 .fit_width {
     width: 95%;
 }
+
+.sp-overflow-scroll {
+    overflow: scroll;
+}
+
 .image_reel img {
     position: relative;
     top: 0;
@@ -269,6 +274,13 @@ a:hover.poll_button {
     margin-right: auto;
     width: 90%;
     max-width: 700px;
+}
+
+.sp-table-td-button {
+    padding-top: 0.70em !important;
+    padding-bottom: 0.70em !important;
+    padding-left: 1em !important;
+    padding-right: 1em !important;
 }
 
 /* end-of-file */

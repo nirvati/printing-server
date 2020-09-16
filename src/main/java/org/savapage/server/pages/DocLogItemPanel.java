@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2011-2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -55,7 +58,6 @@ import org.savapage.core.ipp.helpers.IppOptionMap;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
-import org.savapage.core.jpa.User;
 import org.savapage.core.print.proxy.TicketJobSheetDto;
 import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.JobTicketService;
@@ -133,6 +135,21 @@ public class DocLogItemPanel extends Panel {
     //
     private final boolean showTicketReopen;
 
+    /** */
+    private static final String[] WICKET_IDS = new String[] { "prompt-user",
+            "user-name", "title", "log-comment", "printoutMode",
+            "prompt-signature", "signature", "prompt-origin", "origin",
+            "prompt-destination", "destination", "letterhead", "author",
+            "subject", "keywords", "print-in-label", "pdfpgp", "userpw",
+            "ownerpw", "duplex", "simplex", "color", "grayscale", "papersize",
+            "media-source", "output-bin", "jog-offset", "cost-currency", "cost",
+            "job-id", "job-state", "job-completed-date",
+            "print-in-denied-reason-hyphen", "print-in-denied-reason",
+            "collate", "ecoPrint", "removeGraphics", "pageRotate180", "punch",
+            "staple", "fold", "booklet", "jobticket-tag-plain",
+            "jobticket-media", "jobticket-copy", "jobticket-finishing-ext",
+            "jobticket-custom-ext", "landscape", "scaled" };
+
     /**
      *
      * @param id
@@ -159,23 +176,13 @@ public class DocLogItemPanel extends Panel {
 
         final DocLogItem obj = model.getObject();
         final Locale locale = getLocale();
+        final WebAppTypeEnum webAppType = SpSession.get().getWebAppType();
 
         String cssClass = null;
 
         final Map<String, String> mapVisible = new HashMap<>();
 
-        for (final String attr : new String[] { "user-name", "title",
-                "log-comment", "printoutMode", "signature", "destination",
-                "letterhead", "author", "subject", "keywords", "drm", "pdfpgp",
-                "userpw", "ownerpw", "duplex", "simplex", "color", "grayscale",
-                "papersize", "media-source", "output-bin", "jog-offset",
-                "cost-currency", "cost", "job-id", "job-state",
-                "job-completed-date", "print-in-denied-reason-hyphen",
-                "print-in-denied-reason", "collate", "ecoPrint",
-                "removeGraphics", "pageRotate180", "punch", "staple", "fold",
-                "booklet", "jobticket-tag-plain", "jobticket-media",
-                "jobticket-copy", "jobticket-finishing-ext",
-                "jobticket-custom-ext", "landscape", "scaled" }) {
+        for (final String attr : WICKET_IDS) {
             mapVisible.put(attr, null);
         }
 
@@ -408,8 +415,6 @@ public class DocLogItemPanel extends Panel {
             helper.encloseLabel("account-trx-refund",
                     NounEnum.REFUND.uiText(locale), obj.isRefunded());
 
-            final WebAppTypeEnum webAppType = SpSession.get().getWebAppType();
-
             if (webAppType == WebAppTypeEnum.JOBTICKETS
                     || webAppType == WebAppTypeEnum.ADMIN
                     || webAppType == WebAppTypeEnum.USER) {
@@ -461,33 +466,49 @@ public class DocLogItemPanel extends Panel {
 
             cssClass = MarkupHelper.CSS_PRINT_IN_QUEUE;
 
-            if (obj.getPaperSize() != null) {
-                mapVisible.put("papersize", obj.getPaperSize().toUpperCase());
-            }
+            if (obj.getPrintInPrinted() != null) {
 
-            if (obj.getDrmRestricted()) {
-                mapVisible.put("drm", "DRM");
-            }
-
-            if (!obj.getPrintInPrinted()) {
-
-                mapVisible.put("print-in-denied-reason-hyphen", "-");
-
-                PrintInDeniedReasonEnum deniedReason =
-                        obj.getPrintInDeniedReason();
-
-                String key = "print-in-denied-reason-unknown";
-                if (deniedReason != null
-                        && deniedReason.equals(PrintInDeniedReasonEnum.DRM)) {
-                    key = "print-in-denied-reason-drm";
+                if (obj.getPaperSize() != null) {
+                    mapVisible.put("papersize",
+                            obj.getPaperSize().toUpperCase());
                 }
 
-                mapVisible.put("print-in-denied-reason", localized(key));
+                if (obj.getDrmRestricted()) {
+                    mapVisible.put("print-in-label", "DRM");
+                }
 
-            } else {
-                pieData = String.valueOf(obj.getTotalPages());
-                pieSliceColors =
-                        SparklineHtml.arrayAttr(SparklineHtml.COLOR_QUEUE);
+                if (!obj.getPrintInPrinted()) {
+
+                    final PrintInDeniedReasonEnum deniedReason =
+                            obj.getPrintInDeniedReason();
+
+                    final String reason;
+
+                    if (deniedReason == null) {
+                        reason = localized("print-in-denied-reason-unknown");
+                    } else {
+                        switch (deniedReason) {
+                        case DRM:
+                            reason = localized("print-in-denied-reason-drm");
+                            break;
+                        case INVALID:
+                            mapVisible.put("print-in-label",
+                                    AdjectiveEnum.INVALID.uiText(getLocale()));
+                            reason = AdjectiveEnum.REJECTED.uiText(getLocale());
+                            break;
+                        default:
+                            throw new IllegalStateException("Unhandled "
+                                    .concat(deniedReason.toString()));
+                        }
+                    }
+
+                    mapVisible.put("print-in-denied-reason", reason);
+
+                } else {
+                    pieData = String.valueOf(obj.getTotalPages());
+                    pieSliceColors =
+                            SparklineHtml.arrayAttr(SparklineHtml.COLOR_QUEUE);
+                }
             }
 
         } else {
@@ -506,13 +527,15 @@ public class DocLogItemPanel extends Panel {
                 cssClass = MarkupHelper.CSS_PRINT_OUT_PDF;
 
                 mapVisible.put("destination", obj.getDestination());
+                mapVisible.put("prompt-destination",
+                        NounEnum.DESTINATION.uiText(getLocale()));
 
                 mapVisible.put("author", obj.getAuthor());
                 mapVisible.put("subject", obj.getSubject());
                 mapVisible.put("keywords", obj.getKeywords());
 
                 if (obj.getDrmRestricted()) {
-                    mapVisible.put("drm", "DRM");
+                    mapVisible.put("print-in-label", "DRM");
                 }
                 if (obj.getUserPw()) {
                     mapVisible.put("userpw", "U");
@@ -721,9 +744,14 @@ public class DocLogItemPanel extends Panel {
 
         add(labelWlk);
 
+        mapVisible.put("prompt-user", NounEnum.USER.uiText(getLocale()));
+        mapVisible.put("user-name", obj.getUserId());
+
         //
-        if (!obj.getUserId().equals(User.ERASED_USER_ID)) {
-            mapVisible.put("user-name", obj.getUserId());
+        if (StringUtils.isNotBlank(obj.getDocInOriginatorIp())) {
+            mapVisible.put("prompt-origin",
+                    NounEnum.CLIENT.uiText(getLocale()));
+            mapVisible.put("origin", obj.getDocInOriginatorIp());
         }
 
         //
@@ -768,13 +796,14 @@ public class DocLogItemPanel extends Panel {
 
         // n-up
         if (obj.getNumberUp() != null && obj.getNumberUp().intValue() > 1) {
-            totals.append(", ").append(localized("n-up", obj.getNumberUp()));
+            totals.append(" &bull; ").append(PrintOutNounEnum.N_UP
+                    .uiText(locale, obj.getNumberUp().toString()));
         }
 
         //
         if (copies > 1) {
 
-            totals.append(", ").append(copies).append(" ")
+            totals.append(" &bull; ").append(copies).append(" ")
                     .append(helper.localized(PrintOutNounEnum.COPY, true));
         }
 
@@ -788,10 +817,12 @@ public class DocLogItemPanel extends Panel {
 
         //
         if (obj.getHumanReadableByteCount() != null) {
-            totals.append(", ").append(obj.getHumanReadableByteCount());
+            totals.append(" &bull; ").append(obj.getHumanReadableByteCount());
         }
 
-        add(new Label("totals", totals.toString()));
+        labelWlk = new Label("totals", totals.toString());
+        labelWlk.setEscapeModelStrings(false);
+        add(labelWlk);
 
         //
         if (copies > 1 && obj.getCollateCopies() != null
