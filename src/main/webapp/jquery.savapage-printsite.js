@@ -1,3 +1,5 @@
+// @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
+
 /*! SavaPage jQuery Mobile Print Site Web App | (c) 2011-2020 Datraverse B.V.
  * | GNU Affero General Public License */
 
@@ -187,6 +189,11 @@
 
                 _api.onDisconnected(function() {
                     window.location.reload();
+                });
+
+                $('body').on('click', '.sp-btn-show-librejs', null, function() {
+                    _view.changePage($('#page-librejs'));
+                    return false;
                 });
 
                 /*
@@ -559,7 +566,13 @@
             $.mobile.defaultDialogTransition = "none";
         }).on("ready", null, null, function() {
             // Initialize AFTER document is read
-            $.savapageApp.init();
+            try {
+                $.savapageApp.init();
+            } catch (e) {
+                _ns.onLoadException();
+            }
         });
 
     }(jQuery, this, this.document, JSON, this.org.savapage));
+
+// @license-end

@@ -1,10 +1,15 @@
-/*! SavaPage jQuery Mobile Exceeded WebApp | (c) 2011-2015 Datraverse B.V. | GNU
+// @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
+
+/*! SavaPage jQuery Mobile Exceeded WebApp | (c) 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
 /*
- * This file is part of the SavaPage project <http://savapage.org>.
- * Copyright (c) 2011-2015 Datraverse B.V.
+ * This file is part of the SavaPage project <https://www.savapage.org>.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,7 +22,7 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
@@ -115,8 +120,14 @@
             $.mobile.defaultDialogTransition = "none";
         }).on("ready", null, null, function() {
             // Initialize AFTER document is read
-            $.savapageApp.init();
+            try {
+                $.savapageApp.init();
+            } catch (e) {
+                _ns.onLoadException();
+            }
 
         });
 
     }(jQuery, this, this.document, JSON, this.org.savapage));
+
+// @license-end

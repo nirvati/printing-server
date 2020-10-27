@@ -1,7 +1,10 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2019 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -35,6 +38,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.wicket.protocol.http.WebApplication;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.ServerBasePath;
 import org.savapage.core.config.ServerPathEnum;
 import org.savapage.core.util.IOHelper;
 
@@ -59,10 +63,9 @@ public final class CustomWebServlet extends HttpServlet {
     private static final int BUFFER_SIZE = 1014;
 
     /**
-     * Base path of custom web files (without leading or trailing '/'). Same as
-     * {@link ServerPathEnum#CUSTOM_WEB}.
+     * Base path of custom web files (without leading or trailing '/').
      */
-    public static final String PATH_BASE = "custom/web";
+    public static final String PATH_BASE = ServerBasePath.CUSTOM_WEB;
 
     /**
      * Base path of custom web themes (without leading or trailing '/'). Same as

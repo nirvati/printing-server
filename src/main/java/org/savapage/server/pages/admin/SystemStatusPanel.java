@@ -1,9 +1,9 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2020 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
- * SPDX-FileCopyrightText: 2011-2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
@@ -86,7 +86,6 @@ import org.savapage.core.util.NumberUtil;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.bitcoin.BitcoinGateway;
-import org.savapage.ext.smartschool.SmartschoolPrinter;
 import org.savapage.lib.pgp.PGPPublicKeyInfo;
 import org.savapage.server.WebApp;
 import org.savapage.server.cometd.UserEventService;
@@ -436,67 +435,6 @@ public final class SystemStatusPanel extends Panel {
         }
 
         /*
-         * Smartschool Print.
-         */
-        if (ConfigManager.isSmartSchoolPrintActiveAndEnabled()) {
-
-            if (SmartschoolPrinter.isBlocked()) {
-                msgKey = "blocked";
-                cssColor = MarkupHelper.CSS_TXT_WARN;
-            } else {
-                msgKey = null;
-
-                final CircuitStateEnum circuitState = ConfigManager
-                        .getCircuitBreaker(
-                                CircuitBreakerEnum.SMARTSCHOOL_CONNECTION)
-                        .getCircuitState();
-
-                switch (circuitState) {
-
-                case CLOSED:
-                    break;
-
-                case DAMAGED:
-                    msgKey = "circuit-damaged";
-                    cssColor = MarkupHelper.CSS_TXT_ERROR;
-                    break;
-
-                case HALF_OPEN:
-                    // no break intended
-                case OPEN:
-                    msgKey = "circuit-open";
-                    cssColor = MarkupHelper.CSS_TXT_WARN;
-                    break;
-
-                default:
-                    throw new SpException("Oops we missed "
-                            + CircuitStateEnum.class.getSimpleName()
-                            + " value [" + circuitState.toString() + "]");
-                }
-            }
-
-            if (msgKey == null) {
-                msgText = "";
-            } else {
-                msgText = getLocalizer().getString(msgKey, this);
-            }
-
-            labelWrk = helper.encloseLabel("smartschool-print-status", msgText,
-                    true);
-
-            MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
-                    cssColor);
-
-            labelWrk = helper.addCheckbox("flipswitch-smartschool-online",
-                    SmartschoolPrinter.isOnline());
-
-            setFlipswitchOnOffText(labelWrk);
-
-        } else {
-            helper.discloseLabel("smartschool-print-status");
-        }
-
-        /*
          * Proxy Print Service (CUPS connection status)
          */
         add(new Label("prompt-proxy-print",
@@ -741,7 +679,9 @@ public final class SystemStatusPanel extends Panel {
             final Date dateRef = new Date();
             if (sslCert.isNotAfterWithinYear(dateRef)) {
                 certText = localeHelper.getMediumDate(sslCert.getNotAfter());
-                if (sslCert.isNotAfterWithinMonth(dateRef)) {
+                if (sslCert.isNotAfterWithinDay(dateRef)) {
+                    certClass = "sp-txt-error";
+                } else if (sslCert.isNotAfterWithinMonth(dateRef)) {
                     certClass = "sp-txt-warn";
                 } else {
                     certClass = "sp-txt-info";
@@ -1084,7 +1024,8 @@ public final class SystemStatusPanel extends Panel {
                         url.append("&v_minor=")
                                 .append(VersionInfo.VERSION_B_MINOR);
                         url.append("&v_revision=")
-                                .append(VersionInfo.VERSION_C_REVISION);
+                                .append(VersionInfo.VERSION_C_REVISION)
+                                .append(VersionInfo.VERSION_D_STATUS);
                         url.append("&v_build=")
                                 .append(VersionInfo.VERSION_E_BUILD);
 

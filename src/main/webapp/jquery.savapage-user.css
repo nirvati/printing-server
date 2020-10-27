@@ -276,11 +276,14 @@ a:hover.poll_button {
     max-width: 700px;
 }
 
-.sp-table-td-button {
-    padding-top: 0.70em !important;
-    padding-bottom: 0.70em !important;
-    padding-left: 1em !important;
-    padding-right: 1em !important;
+.sp-canvas-drawing-mode-select-prop {
+}
+
+.sp-canvas-drawing-select-color {
+}
+
+.sp-canvas-color-fixed {
+    border: 1px solid gray !important;
 }
 
 /* end-of-file */

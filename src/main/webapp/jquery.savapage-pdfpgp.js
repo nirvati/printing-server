@@ -1,10 +1,15 @@
-/*! SavaPage jQuery Mobile PDF Verification Web App | (c) 2011-2018 Datraverse
+// @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
+
+/*! SavaPage jQuery Mobile PDF Verification Web App | (c) 2020 Datraverse
  * B.V. | GNU Affero General Public License */
 
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2011-2018 Datraverse B.V.
+ * Copyright (c) 2020 Datraverse B.V.
  * Author: Rijk Ravestein.
+ *
+ * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -106,6 +111,16 @@
                 i18nRefresh(res);
 
                 _view.initI18n(res.language);
+
+                $('body').on('click', '.sp-btn-show-librejs', null, function() {
+                    _view.changePage($('#page-librejs'));
+                    return false;
+                });
+
+                $('.sp-btn-about').click(function() {
+                    _view.showPageAsync('#page-info', 'AppAbout');
+                    return false;
+                });
 
                 //
                 // Call-back: api
@@ -372,7 +387,13 @@
             $.mobile.defaultDialogTransition = "none";
         }).on("ready", null, null, function() {
             // Initialize AFTER document is read
-            $.savapageApp.init();
+            try {
+                $.savapageApp.init();
+            } catch (e) {
+                _ns.onLoadException();
+            }
         });
 
     }(jQuery, this, this.document, JSON, this.org.savapage));
+
+// @license-end

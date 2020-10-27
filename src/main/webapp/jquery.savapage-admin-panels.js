@@ -1,3 +1,5 @@
+// @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
+
 /*! SavaPage jQuery Mobile Admin Panels | (c) 2011-2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
@@ -979,30 +981,6 @@
                 _view.visible($('.ecoprint-enabled'), enabled);
             },
 
-            onSmartSchoolEnabled : function(enabled1, enabled2) {
-                var _view = _ns.PanelCommon.view;
-                _view.visible($('.smartschool-1-print-enabled'), enabled1);
-                _view.visible($('.smartschool-2-print-enabled'), enabled2);
-                _view.visible($('.smartschool-print-enabled'), enabled1 || enabled2);
-            },
-
-            onSmartSchoolNodeEnabled : function(enabled1, enabled2) {
-                var _view = _ns.PanelCommon.view;
-                _view.visible($('.smartschool-1-print-node-enabled'), enabled1);
-                _view.visible($('.smartschool-2-print-node-enabled'), enabled2);
-            },
-
-            onSmartSchoolNodeProxyEnabled : function(enabled1, enabled2) {
-                var _view = _ns.PanelCommon.view;
-                _view.visible($('.smartschool-1-print-node-proxy-enabled'), !enabled1);
-                _view.visible($('.smartschool-2-print-node-proxy-enabled'), !enabled2);
-            },
-
-            onSmartSchoolPaperCutEnabled : function(enabled) {
-                var _view = _ns.PanelCommon.view;
-                _view.visible($('.smartschool-papercut-enabled'), enabled);
-            },
-
             onProxyPrintDelegateEnabled : function(enabled) {
                 var _view = _ns.PanelCommon.view;
                 _view.visible($('.sp-proxyprint-delegate-enable-enabled'), enabled);
@@ -1064,10 +1042,6 @@
                 my.onAuthLdapUseSsl(_view.isCbChecked($('#auth\\.ldap\\.use-ssl')));
                 my.onInternalUsersEnabled(_view.isCbChecked($('#internal-users\\.enable')));
 
-                my.onSmartSchoolEnabled(_view.isCbChecked($('#smartschool\\.1\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.enable')));
-                my.onSmartSchoolNodeEnabled(_view.isCbChecked($('#smartschool\\.1\\.soap\\.print\\.node\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.soap\\.print\\.node\\.enable')));
-                my.onSmartSchoolNodeProxyEnabled(_view.isCbChecked($('#smartschool\\.1\\.soap\\.print\\.node\\.proxy\\.enable')), _view.isCbChecked($('#smartschool\\.2\\.soap\\.print\\.proxy\\.node\\.enable')));
-                my.onSmartSchoolPaperCutEnabled(_view.isCbChecked($('#smartschool\\.papercut\\.enable')));
                 my.onPaperCutEnabled(_view.isCbChecked($('#papercut\\.enable')));
 
                 my.onGcpRefresh(my);
@@ -1076,9 +1050,6 @@
 
                 $('.user-source-group-display').show();
                 $('.user-source-group-edit').hide();
-
-                _view.mobipick($("#sp-smartschool-papercut-student-cost-date-from"));
-                _view.mobipick($("#sp-smartschool-papercut-student-cost-date-to"));
 
                 _view.mobipick($("#sp-papercut-delegator-cost-date-from"));
                 _view.mobipick($("#sp-papercut-delegator-cost-date-to"));
@@ -1811,3 +1782,5 @@
         };
 
     }(jQuery, this, this.document, JSON, this.org.savapage));
+
+// @license-end

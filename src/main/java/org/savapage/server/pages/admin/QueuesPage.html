@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
-	<!-- 
-    +====================================================================+ 
-    | This file is part of the SavaPage project <https://savapage.org> ..|
-    | Copyright (c) 2011-2019 Datraverse B.V. | Author: Rijk Ravestein...| 
-    |....................................................................| 
-    | SavaPage is free software: you can redistribute it and/or modify ..|
-    | it under the terms of the GNU Affero General Public License as ....|
-    | published by the Free Software Foundation, either version 3 of ....|
-    | the License, or (at your option) any later version. ...............|
-    +====================================================================+ 
-    -->
+    <!--
+This file is part of the SavaPage project <https://savapage.org>
+Copyright (c) 2020 Datraverse B.V. | Author: Rijk Ravestein 
+
+SPDX-FileCopyrightText: © 2020 Datraverse BV <info@datraverse.com>
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+SavaPage is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+-->
 </wicket:remove>
 
 <span style="display: none;" class="json-rsp" wicket:id="json-rsp"></span>
@@ -43,15 +44,6 @@
 			<wicket:enclosure child="url-default">
 				<p style="font-family: monospace;" wicket:id="url-default" />
 				<p style="font-family: monospace;" wicket:id="url-windows" />
-			</wicket:enclosure>
-
-			<wicket:enclosure child="proxy-printer">
-				<p style="font-family: monospace;" class="sp-txt-wrap">
-					<wicket:message key="proxy-print" />
-					&bull;
-					<wicket:message key="proxy-print-direct" />
-					&bull; <span wicket:id="proxy-printer" />
-				</p>
 			</wicket:enclosure>
 
 			<p style="font-family: monospace; color: darkgreen;"

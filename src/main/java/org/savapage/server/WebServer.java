@@ -80,7 +80,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The main class for the Web Server.
+ * Jetty Web Server.
  *
  * @author Rijk Ravestein
  *
@@ -163,6 +163,10 @@ public final class WebServer {
     /** */
     private static final String PROP_KEY_WEBAPP_CUSTOM_I18N =
             "webapp.custom.i18n";
+
+    /** */
+    private static final String PROP_KEY_WEBAPP_GNU_LIBREJS =
+            "webapp.gnulibrejs";
 
     /** */
     private static final String PROP_KEY_SERVER_THREADPOOL_QUEUE_CAPACITY =
@@ -599,7 +603,7 @@ public final class WebServer {
         final Properties propsServer = ConfigManager.loadServerProperties();
 
         /*
-         * Notify central WebApp.
+         * Notify WebApp.
          */
         WebApp.setServerProps(propsServer);
         WebApp.loadWebProperties();

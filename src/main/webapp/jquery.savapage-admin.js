@@ -1,3 +1,5 @@
+// @license http://www.gnu.org/licenses/agpl-3.0.html AGPL-3.0
+
 /*! SavaPage jQuery Mobile Admin Web App | © 2020 Datraverse B.V. | GNU
  * Affero General Public License */
 
@@ -257,6 +259,11 @@
                 // Call-back: api
                 _api.onDisconnected(function() {
                     window.location.reload();
+                });
+
+                $('body').on('click', '.sp-btn-show-librejs', null, function() {
+                    _view.changePage($('#page-librejs'));
+                    return false;
                 });
 
                 $(document).on('click', '.sp-collapse', null, function() {
@@ -580,31 +587,6 @@
                 _saveConfigProps(_fillConfigPropsText({}, ['ipp.internet-printer.uri-base']));
             };
 
-            _view.pages.admin.onApplySmartSchool = function(enable1, enable2) {
-                var props = {};
-
-                props['smartschool.1.enable'] = enable1 ? 'Y' : 'N';
-                props['smartschool.2.enable'] = enable2 ? 'Y' : 'N';
-
-                _fillConfigPropsYN(props, ['smartschool.user.insert.lazy-print']);
-
-                if (enable1) {
-                    _fillConfigPropsText(props, ['smartschool.1.soap.print.endpoint.url', 'smartschool.1.soap.print.endpoint.password', 'smartschool.1.soap.print.proxy-printer', 'smartschool.1.soap.print.proxy-printer-duplex', 'smartschool.1.soap.print.proxy-printer-grayscale', 'smartschool.1.soap.print.proxy-printer-grayscale-duplex', 'smartschool.1.soap.print.node.id', 'smartschool.1.soap.print.node.proxy.endpoint.url']);
-                    _fillConfigPropsYN(props, ['smartschool.1.soap.print.charge-to-students', 'smartschool.1.soap.print.node.enable', 'smartschool.1.soap.print.node.proxy.enable']);
-                }
-                if (enable2) {
-                    _fillConfigPropsText(props, ['smartschool.2.soap.print.endpoint.url', 'smartschool.2.soap.print.endpoint.password', 'smartschool.2.soap.print.proxy-printer', 'smartschool.2.soap.print.proxy-printer-duplex', 'smartschool.2.soap.print.proxy-printer-grayscale', 'smartschool.2.soap.print.proxy-printer-grayscale-duplex', 'smartschool.2.soap.print.node.id', 'smartschool.2.soap.print.node.proxy.endpoint.url']);
-                    _fillConfigPropsYN(props, ['smartschool.2.soap.print.charge-to-students', 'smartschool.2.soap.print.node.enable', 'smartschool.2.soap.print.node.proxy.enable']);
-                }
-                _saveConfigProps(props);
-            };
-
-            _view.pages.admin.onApplySmartSchoolPaperCut = function(enable) {
-                var props = {};
-                props['smartschool.papercut.enable'] = enable ? 'Y' : 'N';
-                _saveConfigProps(props);
-            };
-
             _view.pages.admin.onApplyPaperCut = function(enable) {
                 var props = {};
 
@@ -614,15 +596,6 @@
                     _fillConfigPropsText(props, ['papercut.server.host', 'papercut.server.port', 'papercut.webservices.auth-token', 'papercut.db.jdbc-driver', 'papercut.db.jdbc-url', 'papercut.db.user', 'papercut.db.password']);
                 }
                 _saveConfigProps(props);
-            };
-
-            _view.pages.admin.onDownloadSmartSchoolPaperCutStudentCostCsv = function(timeFrom, timeTo, klassen) {
-                // DelegatedPrintPeriodDto
-                _api.download("smartschool-papercut-student-cost-csv", null, JSON.stringify({
-                    timeFrom : timeFrom,
-                    timeTo : timeTo,
-                    classes : klassen
-                }));
             };
 
             _view.pages.admin.onDownloadPapercutDelegatorCostCsv = function(timeFrom, timeTo, accounts) {
@@ -1965,7 +1938,13 @@
         });
         // Initialize AFTER document is read
         $(document).on("ready", null, null, function() {
-            $.savapageAdm.init();
+            try {
+                $.savapageAdm.init();
+            } catch (e) {
+                _ns.onLoadException();
+            }
         });
 
     }(jQuery, this, this.document, JSON, this.org.savapage));
+
+// @license-end

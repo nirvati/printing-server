@@ -24,21 +24,29 @@
  */
 package org.savapage.server.webapp;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.markup.head.CssHeaderItem;
 import org.apache.wicket.markup.head.HeaderItem;
 import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.head.JavaScriptHeaderItem;
+import org.apache.wicket.markup.head.JavaScriptReferenceHeaderItem;
 import org.apache.wicket.markup.head.PriorityHeaderItem;
 import org.apache.wicket.markup.head.StringHeaderItem;
 import org.apache.wicket.markup.html.IHeaderContributor;
 import org.apache.wicket.request.mapper.parameter.INamedParameters.NamedPair;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.apache.wicket.request.resource.UrlResourceReference;
 import org.savapage.core.VersionInfo;
 import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.community.MemberCard;
@@ -49,11 +57,15 @@ import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.util.InetUtils;
 import org.savapage.server.CustomWebServlet;
+import org.savapage.server.LibreJsLicenseServlet;
 import org.savapage.server.WebApp;
 import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.WebServer;
 import org.savapage.server.api.UserAgentHelper;
 import org.savapage.server.pages.AbstractPage;
+import org.savapage.server.pages.LibreJsHelper;
+import org.savapage.server.pages.LibreJsLicenseEnum;
+import org.savapage.server.pages.LibreJsLicensePanel;
 import org.savapage.server.pages.MessageContent;
 import org.savapage.server.session.SpSession;
 import org.slf4j.Logger;
@@ -76,6 +88,26 @@ public abstract class AbstractWebAppPage extends AbstractPage
 
     /** */
     private static final String[] CSS_REQ_FILENAMES_DEFAULT = new String[] {};
+
+    /**
+     * JavaScript snippet format to render initially. The %s is the mountPath of
+     * this page.
+     */
+    private static final String INITIAL_JAVASCRIPT_FORMAT =
+            "(function(){" + "if(window.location.href.search('#')>0){"
+                    + "window.location.replace("
+                    + "window.location.protocol+\"//\"+window.location.host+\""
+                    + "/" + "%s" + "\");}})();";
+
+    /**
+     * {@link StringHeaderItem} pattern to render initially. The first %s is the
+     * SavaPage version. The second %s is the initial JavaScript as defined in
+     * {@link #INITIAL_JAVASCRIPT_PATTERN}.
+     */
+    private static final String INITIAL_HEADERITEM_FORMAT =
+            "\n<script type=\"text/javascript\">\n" + "/* %s */\n"
+                    + "/*<![CDATA[*/" + "\n" + "%s" + "\n" + "/*]]>*/"
+                    + "\n</script>\n";
 
     /**
      * .
@@ -128,6 +160,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
         SPARKLINE
     }
 
+    protected static final LibreJsLicenseEnum SAVAPAGE_JS_LICENSE =
+            LibreJsLicenseEnum.AGPL_3_0;
+
     /**
      * .
      */
@@ -145,13 +180,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
      */
     static final String CSS_FILE_JQUERY_MOBILE_THEME_ICONS =
             "jquery.mobile.icons.min.css";
-
-    /**
-     *
-     */
-    protected AbstractWebAppPage() {
-        super();
-    }
 
     /**
      *
@@ -179,6 +207,21 @@ public abstract class AbstractWebAppPage extends AbstractPage
     }
 
     /**
+     * Common initialization.
+     */
+    private static void commonInit() {
+        WebApp.get().lazyReplaceJsReference();
+    }
+
+    /**
+     * .
+     */
+    protected AbstractWebAppPage() {
+        super();
+        commonInit();
+    }
+
+    /**
      *
      * @param parameters
      *            The {@link PageParameters}.
@@ -186,6 +229,8 @@ public abstract class AbstractWebAppPage extends AbstractPage
     protected AbstractWebAppPage(final PageParameters parameters) {
 
         super(parameters);
+
+        commonInit();
 
         final String language =
                 parameters.get(WebAppParmEnum.SP_LANG.parm()).toString();
@@ -300,26 +345,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
     protected abstract Set<JavaScriptLibrary> getJavaScriptToRender();
 
     /**
-     * JavaScript snippet format to render initially. The %s is the mountPath of
-     * this page.
-     */
-    private static final String INITIAL_JAVASCRIPT_FORMAT =
-            "(function(){" + "if(window.location.href.search('#')>0){"
-                    + "window.location.replace("
-                    + "window.location.protocol+\"//\"+window.location.host+\""
-                    + "/" + "%s" + "\");}})();";
-
-    /**
-     * {@link StringHeaderItem} pattern to render initially. The first %s is the
-     * SavaPage version. The second %s is the initial JavaScript as defined in
-     * {@link #INITIAL_JAVASCRIPT_PATTERN}.
-     */
-    private static final String INITIAL_HEADERITEM_FORMAT =
-            "\n<script type=\"text/javascript\">\n" + "/* %s */\n"
-                    + "/*<![CDATA[*/" + "\n" + "%s" + "\n" + "/*]]>*/"
-                    + "\n</script>\n";
-
-    /**
      * Renders tiny JavaScript snippet at the very start of the page to
      * workaround the Browser F5 refresh problem.
      * <p>
@@ -405,6 +430,10 @@ public abstract class AbstractWebAppPage extends AbstractPage
                 nParms++;
             }
         }
+
+        response.render(new PriorityHeaderItem(
+                new StringHeaderItem(LibreJsHelper.getInitialHeaderScript())));
+
         final String javascript =
                 String.format(INITIAL_JAVASCRIPT_FORMAT, mountPath.toString());
 
@@ -416,18 +445,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
     }
 
     /**
-     * Renders the {@link WebAppTypeEnum} specific JS files.
-     *
-     * @param response
-     *            The {@link IHeaderResponser}.
-     * @param nocache
-     *            The "nocache" string.
-     *
-     */
-    protected abstract void renderWebAppTypeJsFiles(IHeaderResponse response,
-            String nocache);
-
-    /**
      * Renders a JavaScript file.
      *
      * @param response
@@ -435,9 +452,33 @@ public abstract class AbstractWebAppPage extends AbstractPage
      * @param url
      *            The URL of the file to render.
      */
-    protected final void renderJs(final IHeaderResponse response,
+    private final void renderJs(final IHeaderResponse response,
             final String url) {
         response.render(JavaScriptHeaderItem.forUrl(url));
+    }
+
+    /**
+     * Renders a Wicket JavaScript headeritem.
+     *
+     * @param response
+     *            Header response.
+     * @param lic
+     *            License.
+     * @param orgItem
+     *            Original header item.
+     */
+    private void renderLibreJs(final IHeaderResponse response,
+            final LibreJsLicenseEnum lic,
+            final JavaScriptReferenceHeaderItem orgItem) {
+
+        final String urlPath = WebApp.getLibreJsResourceRef(true, lic, orgItem);
+
+        final UrlResourceReference urlResRef =
+                WebApp.createUrlResourceRef(urlPath);
+
+        response.render(new JavaScriptReferenceHeaderItem(urlResRef,
+                orgItem.getPageParameters(), orgItem.getId(), orgItem.isDefer(),
+                orgItem.getCharset(), orgItem.getCondition()));
     }
 
     /**
@@ -610,7 +651,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
     @Override
     public final void renderHead(final IHeaderResponse response) {
 
-        renderInitialJavaScript(response);
+        this.renderInitialJavaScript(response);
 
         final String nocache = this.getNoCacheUrlParm();
 
@@ -631,7 +672,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
                 this.getCssThemeFileName(webAppType);
 
         if (customThemeCssFileName != null) {
-
             response.render(CssHeaderItem.forUrl(
                     String.format("/%s/%s%s", CustomWebServlet.PATH_BASE_THEMES,
                             customThemeCssFileName, nocache)));
@@ -689,67 +729,202 @@ public abstract class AbstractWebAppPage extends AbstractPage
         }
 
         /*
-         * JS files
+         * JS files.
          */
         if (!isJqueryCoreRenderedByWicket()) {
-            response.render(
+            this.renderLibreJs(response, LibreJsLicenseEnum.MIT,
                     WebApp.getWebjarsJsRef(WebApp.WEBJARS_PATH_JQUERY_CORE_JS));
         }
 
+        for (final Pair<String, LibreJsLicenseEnum> pair : this
+                .getJavaScriptFiles()) {
+            this.renderJs(response, pair.getKey());
+        }
+    }
+
+    /**
+     * Gets he {@link WebAppTypeEnum} specific JS files.
+     *
+     * @param list
+     *            List to append opn.
+     * @param nocache
+     *            The "nocache" string.
+     *
+     */
+    protected abstract void appendWebAppTypeJsFiles(
+            List<Pair<String, LibreJsLicenseEnum>> list, String nocache);
+
+    /**
+     * Gets JavaScript files to render, <i>except</i> the main (first)
+     * {@link WebApp#WEBJARS_PATH_JQUERY_CORE_JS}.
+     *
+     * @return List of files in render order.
+     */
+    private List<Pair<String, LibreJsLicenseEnum>> getJavaScriptFiles() {
+
+        final Set<JavaScriptLibrary> jsToRender = this.getJavaScriptToRender();
+        final String nocache = this.getNoCacheUrlParm();
+        final List<Pair<String, LibreJsLicenseEnum>> list = new ArrayList<>();
+
         if (jsToRender.contains(JavaScriptLibrary.SPARKLINE)) {
-            response.render(
-                    WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_SPARKLINE));
+
+            final LibreJsLicenseEnum license = LibreJsLicenseEnum.BSD_3_CLAUSE;
+
+            list.add(
+                    new ImmutablePair<>(
+                            WebApp.getLibreJsResourceRef(true, license,
+                                    WebApp.getWebjarsJsRef(
+                                            WEBJARS_PATH_JQUERY_SPARKLINE)),
+                            license));
         }
 
         if (jsToRender.contains(JavaScriptLibrary.JQPLOT)) {
-            response.render(
-                    WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_JQPLOT_JS));
+
+            final LibreJsLicenseEnum license = LibreJsLicenseEnum.GPL_2_0;
+
+            list.add(
+                    new ImmutablePair<>(
+                            WebApp.getLibreJsResourceRef(true, license,
+                                    WebApp.getWebjarsJsRef(
+                                            WEBJARS_PATH_JQUERY_JQPLOT_JS)),
+                            license));
 
             for (String plugin : new String[] { "jqplot.highlighter.js",
                     "jqplot.pieRenderer.js", "jqplot.json2.js",
                     "jqplot.logAxisRenderer.js",
                     "jqplot.dateAxisRenderer.js" }) {
 
-                response.render(WebApp.getWebjarsJsRef(
-                        String.format("jqplot/current/plugins/%s", plugin)));
-
+                list.add(new ImmutablePair<>(
+                        WebApp.getLibreJsResourceRef(true, license,
+                                WebApp.getWebjarsJsRef(String.format(
+                                        "jqplot/current/plugins/%s", plugin))),
+                        license));
             }
         }
 
-        this.renderJs(response, "jquery/json2.js");
+        list.add(new ImmutablePair<>(
+                this.getJsPathForRender("jquery/json2.js",
+                        LibreJsLicenseEnum.CC0_1_0),
+                LibreJsLicenseEnum.CC0_1_0));
 
         if (jsToRender.contains(JavaScriptLibrary.COMETD)) {
+
             // Use nocache, to prevent loading of old browser cached .js files,
-            // when cometd is upgraded .
-            this.renderJs(response,
-                    String.format("%s%s", "org/cometd/cometd.js", nocache));
-            this.renderJs(response,
-                    String.format("%s%s", "jquery/jquery.cometd.js", nocache));
+            // when cometd is upgraded.
+
+            list.add(
+                    new ImmutablePair<>(
+                            this.getJsPathForRender(
+                                    String.format("%s%s",
+                                            "org/cometd/cometd.js", nocache),
+                                    LibreJsLicenseEnum.APACHE_2_0),
+                            LibreJsLicenseEnum.APACHE_2_0));
+
+            list.add(
+                    new ImmutablePair<>(
+                            this.getJsPathForRender(
+                                    String.format("%s%s",
+                                            "jquery/jquery.cometd.js", nocache),
+                                    LibreJsLicenseEnum.APACHE_2_0),
+                            LibreJsLicenseEnum.APACHE_2_0));
         }
 
-        this.renderJs(response, String.format("%s%s", "savapage.js", nocache));
-        this.renderJs(response,
-                String.format("%s%s", "jquery.savapage.js", nocache));
+        list.add(new ImmutablePair<>(
+                String.format("%s%s", "savapage.js", nocache),
+                SAVAPAGE_JS_LICENSE));
+        list.add(new ImmutablePair<>(
+                String.format("%s%s", "jquery.savapage.js", nocache),
+                SAVAPAGE_JS_LICENSE));
 
-        this.renderWebAppTypeJsFiles(response, nocache);
+        this.appendWebAppTypeJsFiles(list, nocache);
 
         /*
          * Note: render jQuery Mobile AFTER jquery.savapage.js, because the
          * $(document).bind("mobileinit") is implemented in jquery.savapage.js
          */
-        response.render(WebApp.getWebjarsJsRef(WEBJARS_PATH_JQUERY_MOBILE_JS));
+        list.add(
+                new ImmutablePair<>(
+                        WebApp.getLibreJsResourceRef(true,
+                                LibreJsLicenseEnum.MIT,
+                                WebApp.getWebjarsJsRef(
+                                        WEBJARS_PATH_JQUERY_MOBILE_JS)),
+                        LibreJsLicenseEnum.MIT));
 
         /*
          * Render after JQM.
          */
         if (jsToRender.contains(JavaScriptLibrary.MOBIPICK)) {
-            this.renderJs(response, String.format("%s%s",
-                    WebApp.getJqMobiPickLocation(), "xdate.js"));
-            this.renderJs(response, String.format("%s%s",
-                    WebApp.getJqMobiPickLocation(), "xdate.i18n.js"));
-            this.renderJs(response, String.format("%s%s",
-                    WebApp.getJqMobiPickLocation(), "mobipick.js"));
+
+            final LibreJsLicenseEnum license = LibreJsLicenseEnum.MIT;
+
+            list.add(new ImmutablePair<>(this.getJsPathForRender(
+                    WebApp.getJqMobiPickLocation().concat("xdate.js"), license),
+                    license));
+
+            list.add(new ImmutablePair<>(this.getJsPathForRender(
+                    WebApp.getJqMobiPickLocation().concat("xdate.i18n.js"),
+                    license), license));
+
+            list.add(new ImmutablePair<>(this.getJsPathForRender(
+                    WebApp.getJqMobiPickLocation().concat("mobipick.js"),
+                    license), license));
         }
+
+        return list;
+    }
+
+    /**
+     * Gets JavaScript URL path for render in head.
+     *
+     * @param path
+     *            URL path
+     * @param license
+     *            License.
+     * @return URL path for render.
+     */
+    protected final String getJsPathForRender(final String path,
+            final LibreJsLicenseEnum license) {
+
+        return LibreJsLicenseServlet.wrapLibreJsPath(license, path);
+    }
+
+    /**
+     * Adds LibreJS license panel.
+     *
+     * @param panelId
+     *            Wicket id.
+     */
+    protected final void addLibreJsLicensePanel(final String panelId) {
+
+        // Create insertion-ordered LinkedHashMap.
+        final Map<String, LibreJsLicenseEnum> jsRendered =
+                new LinkedHashMap<>();
+
+        // Main.
+        jsRendered.put(
+                WebApp.getLibreJsResourceRef(true, LibreJsLicenseEnum.MIT,
+                        WebApp.getWebjarsJsRef(
+                                WebApp.WEBJARS_PATH_JQUERY_CORE_JS)),
+                LibreJsLicenseEnum.MIT);
+
+        // Wicket JavaScript resources.
+        jsRendered.put(WebApp.get().getWicketJavaScriptAjaxReferenceUrl(),
+                LibreJsLicenseEnum.APACHE_2_0);
+
+        if (WebServer.isDeveloperEnv()) {
+            jsRendered.put(
+                    WebApp.get().getWicketJavaScriptAjaxDebugReferenceUrl(),
+                    LibreJsLicenseEnum.APACHE_2_0);
+        }
+
+        // Other files.
+        for (final Pair<String, LibreJsLicenseEnum> pair : this
+                .getJavaScriptFiles()) {
+            jsRendered.put(pair.getKey(), pair.getValue());
+        }
+
+        //
+        this.add(new LibreJsLicensePanel(panelId, jsRendered));
     }
 
     /**
