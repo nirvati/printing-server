@@ -31,6 +31,7 @@ import javax.persistence.EntityManager;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
+import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.WebAppTypeEnum;
@@ -38,6 +39,8 @@ import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
 import org.savapage.core.dao.impl.DaoContextImpl;
+import org.savapage.core.dto.UserIdDto;
+import org.savapage.core.i18n.PhraseEnum;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.server.session.SpSession;
@@ -53,6 +56,7 @@ public final class DocLogPage extends AbstractListPage {
 
     private static final long serialVersionUID = 1L;
 
+    /** */
     private static final Logger LOGGER =
             LoggerFactory.getLogger(DocLogPage.class);
 
@@ -72,14 +76,20 @@ public final class DocLogPage extends AbstractListPage {
     }
 
     /**
-     *
+     * @param parameters
+     *            Page parameters.
      */
     public DocLogPage(final PageParameters parameters) {
 
         super(parameters);
 
+        final boolean isAccountsEditor;
+
         if (this.getSessionWebAppType() == WebAppTypeEnum.ADMIN) {
             this.probePermissionToRead(ACLOidEnum.A_DOCUMENTS);
+            isAccountsEditor = this.hasPermissionToEdit(ACLOidEnum.A_ACCOUNTS);
+        } else {
+            isAccountsEditor = false;
         }
 
         final String data = getParmValue(POST_PARM_DATA);
@@ -95,6 +105,8 @@ public final class DocLogPage extends AbstractListPage {
         final DocLogDao.Type docType = req.getSelect().getDocType();
 
         final Long userId;
+        final UserIdDto sessionUserIdDtoDocLog =
+                SpSession.get().getUserIdDtoDocLog();
 
         final WebAppTypeEnum webAppType = this.getSessionWebAppType();
 
@@ -114,26 +126,26 @@ public final class DocLogPage extends AbstractListPage {
                  * If we are called in a User WebApp context we ALWAYS use the
                  * user of the current session.
                  */
-                userId = SpSession.get().getUserDbKey();
+                userId = SpSession.get().getUserDbKeyDocLog();
 
                 showFinancialData = ACCESS_CONTROL_SERVICE.hasAccess(
-                        SpSession.get().getUserIdDto(), ACLOidEnum.U_FINANCIAL);
+                        sessionUserIdDtoDocLog, ACLOidEnum.U_FINANCIAL);
             }
         } else {
             showFinancialData = true;
             userId = null;
         }
 
-        //
+        final Integer userQueueJournalPrivilege =
+                ACCESS_CONTROL_SERVICE.getPrivileges(sessionUserIdDtoDocLog,
+                        ACLOidEnum.U_QUEUE_JOURNAL);
+
         final boolean isTicketReopen = webAppType == WebAppTypeEnum.JOBTICKETS
                 && ConfigManager.instance()
                         .isConfigValue(Key.WEBAPP_JOBTICKETS_REOPEN_ENABLE);
 
-        // this.openServiceContext();
         final EntityManager em = DaoContextImpl.peekEntityManager();
-
         final DocLogItem.AbstractQuery query = DocLogItem.createQuery(docType);
-
         final long logCount = query.filteredCount(em, userId, req);
 
         /*
@@ -152,7 +164,8 @@ public final class DocLogPage extends AbstractListPage {
                  * Step 1: Create panel and add to page.
                  */
                 final DocLogItemPanel panel = new DocLogItemPanel("doc-entry",
-                        item.getModel(), showFinancialData, isTicketReopen);
+                        item.getModel(), showFinancialData, isTicketReopen,
+                        isAccountsEditor, userQueueJournalPrivilege);
 
                 item.add(panel);
 
@@ -175,10 +188,15 @@ public final class DocLogPage extends AbstractListPage {
             }
         });
 
-        /*
-         * Display the navigation bars and write the response.
-         */
+        // Display the navigation bars and write the response.
         createNavBarResponse(req, logCount, MAX_PAGES_IN_NAVBAR,
                 "sp-doclog-page", new String[] { "nav-bar-1", "nav-bar-2" });
+        //
+        final ConfirmationPopupPanel pnl =
+                new ConfirmationPopupPanel("doclog-store-delete-popup");
+        pnl.populate("sp-doclog-store-delete-popup",
+                CommunityDictEnum.DOC_STORE.getWord(getLocale()),
+                PhraseEnum.Q_DELETE_DOCUMENT.uiText(getLocale()));
+        this.add(pnl);
     }
 }

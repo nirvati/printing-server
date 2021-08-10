@@ -40,15 +40,21 @@ import org.apache.wicket.markup.html.list.PropertyListView;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.UserGroupAccountDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dto.SharedAccountDto;
 import org.savapage.core.dto.UserIdDto;
+import org.savapage.core.i18n.AdjectiveEnum;
+import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.JobTicketNounEnum;
 import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.ipp.IppSyntaxException;
+import org.savapage.core.ipp.attribute.IppDictJobTemplateAttr;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.services.AccessControlService;
@@ -221,17 +227,20 @@ public class Main extends AbstractUserPage {
         final boolean hasHelpURL = StringUtils.isNotBlank(urlHelp)
                 && cm.isConfigValue(Key.WEBAPP_USER_HELP_URL_ENABLE);
 
-        final UserIdDto userIdDto = SpSession.get().getUserIdDto();
+        final SpSession session = SpSession.get();
+        final UserIdDto userIdDto = session.getUserIdDto();
 
-        final Set<NavButtonEnum> buttonPrivileged = getNavButtonPriv(userIdDto);
+        final Set<NavButtonEnum> buttonPrivileged =
+                this.getNavButtonPriv(userIdDto);
 
         final Set<NavButtonEnum> buttonSubstCandidates = new HashSet<>();
+        final Set<NavButtonEnum> buttonSubstCandidatesFill = new HashSet<>();
 
         buttonSubstCandidates.add(NavButtonEnum.BROWSE);
-        buttonSubstCandidates.add(NavButtonEnum.ABOUT);
+        buttonSubstCandidatesFill.add(NavButtonEnum.ABOUT);
 
         if (hasHelpURL) {
-            buttonSubstCandidates.add(NavButtonEnum.HELP);
+            buttonSubstCandidatesFill.add(NavButtonEnum.HELP);
         }
 
         final boolean isUpload =
@@ -246,7 +255,8 @@ public class Main extends AbstractUserPage {
             buttonSubstCandidates.add(NavButtonEnum.TICKET_QUEUE);
         }
 
-        this.populateNavBar(buttonPrivileged, buttonSubstCandidates);
+        this.populateNavBar(buttonPrivileged, buttonSubstCandidates,
+                buttonSubstCandidatesFill);
 
         // final boolean isPrintDelegate = user != null &&
         // ACCESS_CONTROL_SERVICE
@@ -261,22 +271,67 @@ public class Main extends AbstractUserPage {
         addVisible(cm.isConfigValue(Key.WEBAPP_USER_GDPR_ENABLE),
                 "btn-txt-gdpr", "GDPR");
 
-        // Mini-buttons in footer/header bar
-        addVisible(
-                isUpload && buttonSubstCandidates
-                        .contains(NavButtonEnum.UPLOAD),
-                "button-upload", localized(HtmlButtonEnum.UPLOAD));
+        //
+        final boolean isMailTicketOperatorNative =
+                userIdDto != null && ConfigManager
+                        .isMailPrintTicketOperator(userIdDto.getUserId());
 
-        addVisible(buttonSubstCandidates.contains(NavButtonEnum.ABOUT),
-                "button-mini-about", localized(HtmlButtonEnum.ABOUT));
+        final WebAppTypeEnum webAppType = this.getSessionWebAppType();
+
+        final boolean isMailTicketOperatorRole =
+                userIdDto != null && webAppType == WebAppTypeEnum.MAILTICKETS
+                        && ConfigManager.isMailPrintTicketingEnabled()
+                        && ACCESS_CONTROL_SERVICE.hasAccess(userIdDto,
+                                ACLRoleEnum.MAIL_TICKET_OPERATOR);
+
+        if (isMailTicketOperatorNative || isMailTicketOperatorRole) {
+            helper.addTransparentAppendAttr("ticket-input",
+                    MarkupHelper.ATTR_PLACEHOLDER,
+                    JobTicketNounEnum.TICKET.uiText(getLocale()));
+        } else {
+            helper.discloseLabel("ticket-input");
+        }
+
+        // Mini-buttons in footer/header bar
+
+        helper.addTransparentWithAttrTitle("button-mini-outbox", String.format(
+                "%s (%s) %s", AdjectiveEnum.HELD.uiText(getLocale()),
+                PrintOutNounEnum.JOB.uiText(getLocale(), true).toLowerCase(),
+                HtmlButtonEnum.DOTTED_SUFFIX));
+
+        helper.addTransparentWithAttrTitle("button-mini-media-sources-info",
+                PROXY_PRINT_SERVICE.localizePrinterOpt(getLocale(),
+                        IppDictJobTemplateAttr.ATTR_MEDIA));
+
+        helper.addTransparentWithAttrTitle("button-mini-count-overlays",
+                String.format("%s (%s)",
+                        AdjectiveEnum.EDITED.uiText(getLocale()),
+                        NounEnum.PAGE.uiText(getLocale(), true).toLowerCase()));
+
+        helper.addTransparentWithAttrTitle("button-mini-page-range-select",
+                String.format("%s (%s)",
+                        AdjectiveEnum.SELECTED.uiText(getLocale()),
+                        NounEnum.RANGE.uiText(getLocale()).toLowerCase()));
+
+        helper.addTransparentWithAttrTitle("button-mini-page-range-cut",
+                String.format("%s (%s)", AdjectiveEnum.CUT.uiText(getLocale()),
+                        NounEnum.RANGE.uiText(getLocale()).toLowerCase()));
+
+        final boolean showUploadInFooter = isUpload
+                && buttonSubstCandidates.contains(NavButtonEnum.UPLOAD);
+        addVisible(showUploadInFooter, "button-upload",
+                localized(HtmlButtonEnum.UPLOAD));
+        if (showUploadInFooter) {
+            helper.addTransparentWithAttrTitle("button-mini-upload",
+                    HtmlButtonEnum.UPLOAD.uiText(getLocale(), true));
+        }
 
         helper.addAppendLabelAttr("btn-about-popup-menu",
                 HtmlButtonEnum.ABOUT.uiText(getLocale()),
                 MarkupHelper.ATTR_CLASS, CssClassEnum.SP_BTN_ABOUT.clazz());
 
         // Action pop-up in sort view.
-        this.add(MarkupHelper.createEncloseLabel("main-arr-action-pdf",
-                localized("button-pdf"),
+        this.add(MarkupHelper.createEncloseLabel("main-arr-action-pdf", "PDF",
                 buttonPrivileged.contains(NavButtonEnum.PDF)));
 
         this.add(MarkupHelper.createEncloseLabel("main-arr-action-print",
@@ -293,8 +348,11 @@ public class Main extends AbstractUserPage {
                         && buttonPrivileged.contains(NavButtonEnum.TICKET)));
 
         // Fixed buttons in sort view.
+        helper.addButton("button-cut", HtmlButtonEnum.CUT);
         helper.addButton("button-back", HtmlButtonEnum.BACK);
         helper.addButton("button-delete", HtmlButtonEnum.DELETE);
+        helper.addButton("button-undo", HtmlButtonEnum.UNDO);
+        helper.addButton("button-unselect-all", HtmlButtonEnum.UNSELECT_ALL);
 
         //
         final String userId;
@@ -304,8 +362,9 @@ public class Main extends AbstractUserPage {
             userId = "";
             userName = "";
         } else {
-            userName = StringUtils.defaultString(userIdDto.getFullName());
             userId = userIdDto.getUserId();
+            userName =
+                    StringUtils.defaultIfBlank(userIdDto.getFullName(), userId);
         }
 
         final boolean showUserBalance = ACCESS_CONTROL_SERVICE.hasPermission(
@@ -313,6 +372,22 @@ public class Main extends AbstractUserPage {
 
         helper.encloseLabel("mini-user-balance", "", showUserBalance);
 
+        if (showUserBalance) {
+            helper.addTransparentWithAttrTitle("button-mini-user-balance",
+                    NounEnum.BALANCE.uiText(getLocale())
+                            .concat(HtmlButtonEnum.DOTTED_SUFFIX));
+        }
+
+        final UserIdDto userIdDtoDocLog = session.getUserIdDtoDocLog();
+        if (userIdDtoDocLog != null) {
+            helper.encloseLabel("btn-mini-user-name-doclog",
+                    StringUtils.defaultIfBlank(userIdDtoDocLog.getFullName(),
+                            userIdDtoDocLog.getUserId()),
+                    userIdDtoDocLog != null && !userIdDto.getDbKey()
+                            .equals(userIdDtoDocLog.getDbKey()));
+        } else {
+            helper.discloseLabel("btn-mini-user-name-doclog");
+        }
         //
         final Label name = helper.addLabel("mini-user-name", userName);
         final Component nameButton =
@@ -337,12 +412,12 @@ public class Main extends AbstractUserPage {
                             SparklineHtml.COLOR_PDF));
         }
 
-        add(name.add(new AttributeModifier("title", userId)));
+        add(name.add(new AttributeModifier(MarkupHelper.ATTR_TITLE, userId)));
 
         //
         helper.encloseLabel("mini-sys-maintenance",
                 SystemModeEnum.MAINTENANCE.uiText(getLocale()),
-                ConfigManager.isSysMaintenance());
+                ConfigManager.getSystemMode() == SystemModeEnum.MAINTENANCE);
 
         if (hasHelpURL) {
 
@@ -351,7 +426,7 @@ public class Main extends AbstractUserPage {
 
             MarkupHelper.modifyLabelAttr(btn, MarkupHelper.ATTR_HREF, urlHelp);
 
-            if (!buttonSubstCandidates.contains(NavButtonEnum.HELP)) {
+            if (!buttonSubstCandidatesFill.contains(NavButtonEnum.HELP)) {
                 // Hide: href is used by the substitute main button.
                 MarkupHelper.modifyLabelAttr(btn, MarkupHelper.ATTR_STYLE,
                         "display:none;");
@@ -360,6 +435,28 @@ public class Main extends AbstractUserPage {
         } else {
             helper.discloseLabel("button-mini-help");
         }
+
+        // Job info pop-up
+        helper.addLabel("header-document", NounEnum.DOCUMENT);
+
+        helper.addLabel("prompt-job-pages",
+                NounEnum.PAGE.uiText(getLocale(), true));
+
+        // as in "Pages: 4 • 1 deleted" or "Pages: 4 • 3 deleted"
+        helper.addLabel("prompt-deleted",
+                AdverbEnum.DELETED.uiText(getLocale()).toLowerCase());
+
+        helper.addButton("prompt-job-rotate", HtmlButtonEnum.ROTATE);
+        helper.addButton("button-apply", HtmlButtonEnum.APPLY);
+        helper.addButton("button-close", HtmlButtonEnum.CLOSE);
+
+        helper.addLabel("button-paste-before",
+                HtmlButtonEnum.PASTE.uiText(getLocale()).concat(" ::"));
+        helper.addLabel("button-paste-after",
+                ":: ".concat(HtmlButtonEnum.PASTE.uiText(getLocale())));
+
+        //
+        helper.addButton("button-continue", HtmlButtonEnum.CONTINUE);
     }
 
     /**
@@ -393,8 +490,8 @@ public class Main extends AbstractUserPage {
 
             final boolean allowPrint;
 
-            if (ACCESS_CONTROL_SERVICE.hasPermission(user,
-                    ACLOidEnum.U_PERSONAL_PRINT, ACLPermissionEnum.SELECT)) {
+            if (ACCESS_CONTROL_SERVICE.hasAccess(user,
+                    ACLOidEnum.U_PERSONAL_PRINT)) {
 
                 allowPrint = true;
 
@@ -500,27 +597,6 @@ public class Main extends AbstractUserPage {
             }
         }
 
-        // #3
-        if (item == null) {
-            candidate = NavButtonEnum.HELP;
-            if (buttonCandidates.contains(candidate)) {
-                item = new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
-                        "ui-icon-main-help", "button-main-help",
-                        localized(HtmlButtonEnum.HELP));
-            }
-        }
-
-        // #4
-        if (item == null) {
-            candidate = NavButtonEnum.ABOUT;
-            if (buttonCandidates.contains(candidate)) {
-                item = new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
-                        String.format("%s %s", "ui-icon-main-about",
-                                CssClassEnum.SP_BTN_ABOUT.clazz()),
-                        "button-about", localized(HtmlButtonEnum.ABOUT));
-            }
-        }
-
         // #5
         if (item == null) {
             candidate = NavButtonEnum.BROWSE;
@@ -539,33 +615,75 @@ public class Main extends AbstractUserPage {
     }
 
     /**
+     * Uses a {@link NavBarItem} by removing it from the set of filler
+     * candidates.
+     *
+     * @param buttonCandidatesFill
+     *            The set of candidates.
+     * @return The {@link NavBarItem} used.
+     */
+    private NavBarItem useButtonCandidateFill(
+            final Set<NavButtonEnum> buttonCandidatesFill) {
+
+        NavButtonEnum candidate = null;
+        NavBarItem item = null;
+
+        // #1
+        if (item == null) {
+            candidate = NavButtonEnum.HELP;
+            if (buttonCandidatesFill.contains(candidate)) {
+                item = new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+                        "ui-icon-main-help", "button-main-help",
+                        localized(HtmlButtonEnum.HELP));
+            }
+        }
+
+        // #2
+        if (item == null) {
+            candidate = NavButtonEnum.ABOUT;
+            if (buttonCandidatesFill.contains(candidate)) {
+                item = new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+                        String.format("%s %s", "ui-icon-main-about",
+                                CssClassEnum.SP_BTN_ABOUT.clazz()),
+                        "button-about", localized(HtmlButtonEnum.ABOUT));
+            }
+        }
+
+        if (item != null) {
+            buttonCandidatesFill.remove(candidate);
+        }
+
+        return item;
+    }
+
+    /**
      * Populates the central navigation bar.
      *
      * @param buttonPrivileged
      * @param buttonCandidates
      *            The substitute buttons.
+     * @param buttonCandidatesFill
+     *            Filler buttons.
      */
     private void populateNavBar(final Set<NavButtonEnum> buttonPrivileged,
-            final Set<NavButtonEnum> buttonCandidates) {
-
-        List<NavBarItem> items = new ArrayList<>();
-
-        NavBarItem itemWlk;
+            final Set<NavButtonEnum> buttonCandidates,
+            final Set<NavButtonEnum> buttonCandidatesFill) {
 
         // ----------------------------------------------------------
         // Row 1
         // ----------------------------------------------------------
+        final List<NavBarItem> itemsRow1 = new ArrayList<>();
 
         // ------------
         // PDF
         // ------------
         if (buttonPrivileged.contains(NavButtonEnum.PDF)) {
-            items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
+            itemsRow1.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
                     "ui-icon-main-pdf-properties", "button-main-pdf-properties",
-                    localized("button-pdf")));
+                    "PDF"));
         } else {
             // Immediate replacement.
-            items.add(useButtonCandidate(buttonCandidates));
+            itemsRow1.add(this.useButtonCandidate(buttonCandidates));
         }
 
         // --------------------------
@@ -576,7 +694,7 @@ public class Main extends AbstractUserPage {
 
         if (buttonPrivileged.contains(NavButtonEnum.PRINT)) {
 
-            items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
+            itemsRow1.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
                     "ui-icon-main-print", "button-main-print",
                     localized(HtmlButtonEnum.PRINT)));
 
@@ -590,7 +708,7 @@ public class Main extends AbstractUserPage {
                 cssClass = CSS_CLASS_MAIN_ACTIONS;
             }
 
-            items.add(new NavBarItem(cssClass, "ui-icon-main-print",
+            itemsRow1.add(new NavBarItem(cssClass, "ui-icon-main-print",
                     "button-main-print", localized(HtmlButtonEnum.PRINT)));
 
         } else if (buttonPrivileged.contains(NavButtonEnum.TICKET)) {
@@ -603,7 +721,7 @@ public class Main extends AbstractUserPage {
                 cssClass = CSS_CLASS_MAIN_ACTIONS;
             }
 
-            items.add(new NavBarItem(cssClass, "ui-icon-main-jobticket",
+            itemsRow1.add(new NavBarItem(cssClass, "ui-icon-main-jobticket",
                     "button-main-print", localized("button-ticket")));
         }
 
@@ -611,50 +729,74 @@ public class Main extends AbstractUserPage {
         // Letterhead
         // ------------
         if (buttonPrivileged.contains(NavButtonEnum.LETTERHEAD)) {
-            items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+            itemsRow1.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
                     "ui-icon-main-letterhead", "button-main-letterhead",
-                    localized("button-letterhead")));
+                    NounEnum.LETTERHEAD.uiText(getLocale(), true)));
         }
 
         // ------------
         // Delete
         // ------------
-        items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS, "ui-icon-main-clear",
-                "button-main-clear", localized(HtmlButtonEnum.DELETE)));
+        itemsRow1.add(
+                new NavBarItem(CSS_CLASS_MAIN_ACTIONS, "ui-icon-main-clear",
+                        "button-main-clear", localized(HtmlButtonEnum.DELETE)));
 
         // Append filler buttons.
-        for (int i = items.size(); i < BUTTONS_IN_ROW; i++) {
-            items.add(useButtonCandidate(buttonCandidates));
+        for (int i = itemsRow1.size(); i < BUTTONS_IN_ROW; i++) {
+            final NavBarItem nbi = this.useButtonCandidate(buttonCandidates);
+            if (nbi != null) {
+                itemsRow1.add(nbi);
+            }
         }
-        //
-        add(new NavBarRow("main-navbar-row-top", items));
-
         // ----------------------------------------------------------
         // Row 2
         // ----------------------------------------------------------
-        items = new ArrayList<>();
+        final List<NavBarItem> itemsRow2 = new ArrayList<>();
 
-        items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+        itemsRow2.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
                 "ui-icon-main-logout", "button-logout",
                 localized(HtmlButtonEnum.LOGOUT)));
 
-        items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+        itemsRow2.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
                 "ui-icon-main-refresh", "button-main-refresh",
                 localized(HtmlButtonEnum.REFRESH)));
 
-        items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
+        itemsRow2.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS_BASE,
                 "ui-icon-main-doclog", "button-main-doclog",
                 localized("button-doclog")));
 
         if (buttonPrivileged.contains(NavButtonEnum.SORT)) {
-            items.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
+            itemsRow2.add(new NavBarItem(CSS_CLASS_MAIN_ACTIONS,
                     "ui-icon-main-arr-edit", "main-arr-edit",
                     localized(HtmlButtonEnum.SORT)));
         } else {
-            items.add(useButtonCandidate(buttonCandidates));
+            final NavBarItem nbi = this.useButtonCandidate(buttonCandidates);
+            if (nbi != null) {
+                itemsRow2.add(nbi);
+            }
         }
-
-        add(new NavBarRow("main-navbar-row-bottom", items));
+        // Make sure rows have same number of buttons.
+        if (itemsRow1.size() != itemsRow2.size()) {
+            final List<NavBarItem> itemsRowFill;
+            final int nFill;
+            if (itemsRow1.size() < itemsRow2.size()) {
+                itemsRowFill = itemsRow1;
+                nFill = itemsRow2.size() - itemsRow1.size();
+            } else {
+                itemsRowFill = itemsRow2;
+                nFill = itemsRow1.size() - itemsRow2.size();
+            }
+            for (int i = 0; i < nFill; i++) {
+                final NavBarItem nbi =
+                        this.useButtonCandidateFill(buttonCandidatesFill);
+                if (nbi != null) {
+                    itemsRowFill.add(nbi);
+                }
+            }
+        }
+        //
+        add(new NavBarRow("main-navbar-row-top", itemsRow1));
+        add(new NavBarRow("main-navbar-row-bottom", itemsRow2));
     }
 
 }

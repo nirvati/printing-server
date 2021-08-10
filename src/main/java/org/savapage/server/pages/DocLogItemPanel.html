@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <html xmlns:wicket="http://wicket.apache.org">
 <wicket:remove>
-    <!--
+	<!--
 This file is part of the SavaPage project <https://savapage.org>
 Copyright (c) 2020 Datraverse B.V. | Author: Rijk Ravestein 
 
@@ -28,6 +28,7 @@ the License, or (at your option) any later version.
 			<span wicket:id="prompt-user" /> : <strong wicket:id="user-name" />
 		</div>
 	</wicket:enclosure>
+
 	<div class="sp-txt-wrap">
 		<wicket:enclosure child="img-copy-job">
 			<img wicket:id="img-copy-job" src="" height="16" />&nbsp;
@@ -70,6 +71,10 @@ the License, or (at your option) any later version.
 		<wicket:enclosure child="job-id"> &bull; <wicket:message
 				key="job-id" />
 			<span wicket:id="job-id" /> &bull; <span wicket:id="job-state" />
+		</wicket:enclosure>
+		<wicket:enclosure child="printout-reversed">
+            &bull; <span class="sp-txt-warn"
+				wicket:id="printout-reversed" />
 		</wicket:enclosure>
 		<wicket:enclosure child="job-completed-date"> &bull; <span
 				wicket:id="job-completed-date" />
@@ -121,6 +126,9 @@ the License, or (at your option) any later version.
 		</wicket:enclosure>
 		<wicket:enclosure child="booklet"> &bull; <span
 				class="sp-txt-job-finishing" wicket:id="booklet" />
+		</wicket:enclosure>
+		<wicket:enclosure child="jobcopy-options"> &bull; <span
+				class="sp-txt-job-finishing" wicket:id="jobcopy-options" />
 		</wicket:enclosure>
 		<wicket:enclosure child="jobticket-media"> &bull; <span
 				class="sp-txt-job-ticket-attr" wicket:id="jobticket-media" />
@@ -192,8 +200,27 @@ the License, or (at your option) any later version.
 		</p>
 	</wicket:enclosure>
 	<wicket:enclosure child="origin">
-		<p class="sp-txt-wrap">
-			<span wicket:id="prompt-origin" /> : <span wicket:id="origin" />
+		<p>
+		<div class="sp-txt-wrap">
+			<small> <span wicket:id="prompt-origin" /> : <span
+				wicket:id="origin" /> <wicket:enclosure child="email-ticket">&bull;
+            <span wicket:id="prompt-email-ticket" /> : <span
+						wicket:id="email-ticket" />
+				</wicket:enclosure> <wicket:enclosure child="email-ticket-completed">&bull;
+            <span class="sp-txt-valid"
+						wicket:id="prompt-email-ticket-completed" /> : <span
+						wicket:id="email-ticket-completed" />
+				</wicket:enclosure> <wicket:enclosure child="email-ticket-failed">&bull;
+            <span class="sp-txt-error"
+						wicket:id="prompt-email-ticket-failed" /> : <span
+						wicket:id="email-ticket-failed" />
+				</wicket:enclosure> <wicket:enclosure child="email-ticket-pending">&bull;
+            <span class="sp-txt-warn"
+						wicket:id="prompt-email-ticket-pending" /> : <span
+						wicket:id="email-ticket-pending" />
+				</wicket:enclosure>
+			</small>
+		</div>
 		</p>
 	</wicket:enclosure>
 
@@ -208,11 +235,16 @@ the License, or (at your option) any later version.
 				<button data-savapage="the-doc-log-db-key"
 					wicket:id="btn-account-trx-info"
 					class="sp-doclog-accounttrx-info ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-shop" />
-				<wicket:enclosure child="btn-account-trx-refund">
-					<button data-savapage="the-doc-log-db-key"
-						wicket:id="btn-account-trx-refund"
-						class="sp-doclog-accounttrx-refund ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-recycle" />
-				</wicket:enclosure>
+			</wicket:enclosure>
+			<wicket:enclosure child="btn-account-trx-refund">
+				<button data-savapage="the-doc-log-db-key"
+					wicket:id="btn-account-trx-refund"
+					class="sp-doclog-accounttrx-refund ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-recycle" />
+			</wicket:enclosure>
+			<wicket:enclosure child="btn-printout-reverse">
+				<button data-savapage="the-doc-log-db-key"
+					wicket:id="btn-printout-reverse"
+					class="sp-doclog-printout-reverse ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-recycle" />
 			</wicket:enclosure>
 			<wicket:enclosure child="btn-doclog-docstore-archive-download">
 				<button data-savapage="the-unique-filename"
@@ -223,6 +255,21 @@ the License, or (at your option) any later version.
 				<button data-savapage="the-unique-filename"
 					wicket:id="btn-doclog-docstore-journal-download"
 					class="sp-doclog-docstore-journal-download ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-eye" />
+			</wicket:enclosure>
+			<wicket:enclosure child="btn-inbox-printin-restore-add">
+				<button data-savapage="the-doc-log-db-key"
+					wicket:id="btn-inbox-printin-restore-add"
+					class="sp-inbox-restore-printin-add ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-plus" />
+			</wicket:enclosure>
+			<wicket:enclosure child="btn-inbox-printin-restore-replace">
+				<button data-savapage="the-doc-log-db-key"
+					wicket:id="btn-inbox-printin-restore-replace"
+					class="sp-inbox-restore-printin-replace ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-refresh" />
+			</wicket:enclosure>
+			<wicket:enclosure child="btn-doclog-store-delete">
+				<button data-savapage="the-unique-filename"
+					wicket:id="btn-doclog-store-delete"
+					class="sp-doclog-docstore-delete ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-delete" />
 			</wicket:enclosure>
 			<wicket:enclosure child="btn-ticket-reopen">
 				<button data-savapage="the-unique-filename"

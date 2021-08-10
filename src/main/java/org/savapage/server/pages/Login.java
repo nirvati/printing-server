@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -48,6 +49,7 @@ import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.i18n.LabelEnum;
+import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.UserAuth;
@@ -84,11 +86,10 @@ public final class Login extends AbstractPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
-        final List<Locale> availableLocales =
-                LocaleHelper.getAvailableLanguages();
+        final Set<Locale> availableLocales = LocaleHelper.getI18nAvailable();
 
         if (availableLocales.size() == 1) {
-            SpSession.get().setLocale(availableLocales.get(0));
+            SpSession.get().setLocale(availableLocales.iterator().next());
         }
 
         helper.encloseLabel("button-lang", getString("button-lang"),
@@ -153,6 +154,10 @@ public final class Login extends AbstractPage {
                 loginDescript = localized("login-descript-role",
                         ACLRoleEnum.JOB_TICKET_OPERATOR.uiText(getLocale()));
                 break;
+            case MAILTICKETS:
+                loginDescript = localized("login-descript-role",
+                        ACLRoleEnum.MAIL_TICKET_OPERATOR.uiText(getLocale()));
+                break;
             case POS:
                 loginDescript = localized("login-descript-role",
                         ACLRoleEnum.WEB_CASHIER.uiText(getLocale()));
@@ -200,7 +205,7 @@ public final class Login extends AbstractPage {
         addOAuthButtons(localLoginRestricted);
 
         //
-        if (ConfigManager.isSysMaintenance()) {
+        if (ConfigManager.getSystemMode() == SystemModeEnum.MAINTENANCE) {
             helper.addLabel("maintenance-header",
                     localized("maintenance-header"));
             helper.addLabel("maintenance-body", localized("maintenance-body"));

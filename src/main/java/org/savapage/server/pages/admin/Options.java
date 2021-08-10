@@ -39,10 +39,12 @@ import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.circuitbreaker.CircuitStateEnum;
+import org.savapage.core.community.CommunityDictEnum;
 import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.SystemStatusEnum;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
@@ -57,8 +59,7 @@ import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.jmx.JmxRemoteProperties;
 import org.savapage.core.job.SpJobScheduler;
 import org.savapage.core.job.SpJobType;
-import org.savapage.core.print.gcp.GcpPrinter;
-import org.savapage.core.print.imap.ImapPrinter;
+import org.savapage.core.print.imap.MailPrinter;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.ProxyPrintService;
 import org.savapage.core.services.ServiceContext;
@@ -475,7 +476,7 @@ public final class Options extends AbstractAdminPage {
         MarkupHelper.modifyLabelAttr(labelWrk, "class", cssColor);
 
         labelWrk = helper.addCheckbox("flipswitch-mailprint-online",
-                ImapPrinter.isOnline());
+                MailPrinter.isOnline());
         setFlipswitchOnOffText(labelWrk);
 
         /*
@@ -510,49 +511,8 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.Key.IPP_INTERNET_PRINTER_URI_BASE);
 
         /*
-         * Google Cloud Print.
-         */
-        labelledCheckbox("gcp-enable", IConfigProp.Key.GCP_ENABLE);
-
-        helper.addTextInput("gcp-client-id", GcpPrinter.getOAuthClientId());
-        helper.addTextInput("gcp-client-secret",
-                GcpPrinter.getOAuthClientSecret());
-        helper.addTextInput("gcp-printer-name", GcpPrinter.getPrinterName());
-
-        addCheckbox("gcp-mail-after-cancel-enable",
-                cm.isConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_ENABLE));
-
-        helper.addTextInput("gcp-mail-after-cancel-subject", cm
-                .getConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_SUBJECT));
-
-        add(new Label("gcp-mail-after-cancel-body", ConfigManager.instance()
-                .getConfigValue(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_BODY)));
-
-        add(new Label("gcp-summary-printer-name", GcpPrinter.getPrinterName()));
-        add(new Label("gcp-summary-printer-owner", GcpPrinter.getOwnerId()));
-        add(new Label("gcp-summary-printer-state",
-                GcpPrinter.getState().toString()));
-
-        boolean enabled = ConfigManager.isGcpEnabled();
-        final GcpPrinter.State gcpStatus = GcpPrinter.getState();
-
-        if (enabled && gcpStatus == GcpPrinter.State.ON_LINE) {
-            cssColor = MarkupHelper.CSS_TXT_VALID;
-        } else {
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-        }
-
-        labelWrk = new Label("gcp-summary-printer-state-display",
-                GcpPrinter.localized(enabled, gcpStatus));
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
-
-        /*
          * Financial
          */
-
-        // General
-
         try {
             final String creditLimit = BigDecimalUtil.localize(
                     cm.getConfigBigDecimal(
@@ -576,8 +536,8 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.Key.FINANCIAL_USER_BALANCE_DECIMALS);
 
         //
-        boolean disableCurrencyChange =
-                ConfigManager.instance().isAppReadyToUse();
+        final boolean disableCurrencyChange = ConfigManager.instance()
+                .getSystemStatus() != SystemStatusEnum.SETUP;
 
         final Label labelCurrency = tagInput("financial-currency-code",
                 Key.FINANCIAL_GLOBAL_CURRENCY_CODE);
@@ -706,6 +666,9 @@ public final class Options extends AbstractAdminPage {
         add(clearInboxScopePanel);
 
         // Delegated Print
+        helper.addLabel("proxyprint-delegate-enable-header",
+                CommunityDictEnum.DELEGATED_PRINT.getWord(getLocale()));
+
         labelledCheckbox("proxyprint-delegate-enable",
                 IConfigProp.Key.PROXY_PRINT_DELEGATE_ENABLE);
 
@@ -715,6 +678,12 @@ public final class Options extends AbstractAdminPage {
 
         labelledCheckbox("proxyprint-personal-papercut-enable",
                 IConfigProp.Key.PROXY_PRINT_PERSONAL_PAPERCUT_ENABLE);
+
+        helper.addLabel("papercut-delegator-cost-period-header",
+                NounEnum.PERIOD.uiText(getLocale()));
+        helper.addLabel(
+                "proxyprint-delegate-papercut-invoicing-accounts-header",
+                NounEnum.GROUP.uiText(getLocale()));
 
         /*
          * xpstopdf
@@ -781,9 +750,7 @@ public final class Options extends AbstractAdminPage {
                 NounEnum.DATABASE.uiText(getLocale()), MarkupHelper.ATTR_TITLE,
                 NounEnum.STATISTICS.uiText(getLocale()));
 
-        /*
-         *
-         */
+        //
         labelledCheckbox("enable-automatic-backup",
                 IConfigProp.Key.SYS_BACKUP_ENABLE_AUTOMATIC);
         labelledInput("backups-keep-days",
@@ -804,9 +771,7 @@ public final class Options extends AbstractAdminPage {
         labelledInput("backup-delete-app-log-days",
                 IConfigProp.Key.DELETE_APP_LOG_DAYS);
 
-        /*
-         *
-         */
+        //
         labelledCheckbox("print-in-allow-encrypted-pdf",
                 IConfigProp.Key.PRINT_IN_PDF_ENCRYPTED_ALLOW);
 
@@ -819,9 +784,11 @@ public final class Options extends AbstractAdminPage {
         labelledInput("print-in-expiry-signal-mins",
                 IConfigProp.Key.WEBAPP_USER_PRINT_IN_JOB_EXPIRY_SIGNAL_MINS);
 
-        /*
-         *
-         */
+        //
+        helper.addButton("btn-username-aliases-refresh",
+                HtmlButtonEnum.REFRESH);
+
+        //
         helper.labelledCheckbox("pagometer-reset-users",
                 "pagometer-reset-users", false);
         helper.labelledCheckbox("pagometer-reset-queues",
@@ -831,9 +798,7 @@ public final class Options extends AbstractAdminPage {
         helper.labelledCheckbox("pagometer-reset-dashboard",
                 "pagometer-reset-dashboard", false);
 
-        /*
-         *
-         */
+        //
         tagInput("locale-description", Key.SYS_DEFAULT_LOCALE);
         add(new Label("locale-description-label",
                 MessageFormat.format(
@@ -1187,10 +1152,10 @@ public final class Options extends AbstractAdminPage {
         // Disable
         for (final String wicketId : new String[] { "sect-user-source",
                 "sect-user-creation", "sect-user-authentication", "sect-mail",
-                "sect-papercut", "sect-gcp", "sect-mail-print",
-                "sect-web-print", "sect-internet-print", "sect-proxy-print",
-                "sect-eco-print", "sect-financial", "sect-backups",
-                "sect-telegram", "sect-advanced" }) {
+                "sect-papercut", "sect-mail-print", "sect-web-print",
+                "sect-internet-print", "sect-proxy-print", "sect-eco-print",
+                "sect-financial", "sect-backups", "sect-telegram",
+                "sect-advanced" }) {
             helper.addTransparantDisabled(wicketId, readonly);
         }
 
@@ -1199,12 +1164,11 @@ public final class Options extends AbstractAdminPage {
                 "btn-apply-internal-users", "btn-apply-user-source-group-apply",
                 "btn-user-sync-apply", "btn-apply-user-create",
                 "btn-apply-user-auth-mode-local", "btn-apply-smtp",
-                "btn-apply-mail", "btn-apply-papercut", "btn-gcp-apply-enable",
-                "btn-gcp-apply-notification", "btn-apply-imap",
+                "btn-apply-mail", "btn-apply-papercut", "btn-apply-imap",
                 "btn-apply-webprint", "btn-apply-internetprint",
-                "btn-apply-proxyprint", "btn-apply-ecoprint",
-                "btn-apply-financial-general", "btn-apply-financial-pos",
-                "btn-apply-financial-vouchers",
+                "btn-apply-proxyprint", "btn-apply-proxyprint-papercut",
+                "btn-apply-ecoprint", "btn-apply-financial-general",
+                "btn-apply-financial-pos", "btn-apply-financial-vouchers",
                 "btn-apply-financial-user-transfers",
                 "btn-apply-backup-automatic", "btn-apply-cliapp-auth",
                 "btn-admin-pw-reset", "btn-jmx-pw-reset", "btn-apply-locale",
@@ -1224,15 +1188,6 @@ public final class Options extends AbstractAdminPage {
                 helper.discloseLabel(wicketId);
             } else {
                 helper.addButton(wicketId, HtmlButtonEnum.TEST);
-            }
-        }
-
-        // Refresh
-        for (final String wicketId : new String[] { "btn-gcp-refresh" }) {
-            if (readonly) {
-                helper.discloseLabel(wicketId);
-            } else {
-                helper.addButton(wicketId, HtmlButtonEnum.REFRESH);
             }
         }
 

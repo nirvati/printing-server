@@ -98,11 +98,13 @@ import org.savapage.core.dto.PosDepositDto;
 import org.savapage.core.dto.PosDepositReceiptDto;
 import org.savapage.core.dto.PrimaryKeyDto;
 import org.savapage.core.dto.ProxyPrinterCostDto;
+import org.savapage.core.dto.QuickSearchFilterUserGroupDto;
+import org.savapage.core.dto.QuickSearchUserGroupMemberFilterDto;
 import org.savapage.core.dto.UserCreditTransferDto;
-import org.savapage.core.dto.UserIdDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
 import org.savapage.core.i18n.PhraseEnum;
+import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.imaging.EcoPrintPdfTask;
 import org.savapage.core.imaging.EcoPrintPdfTaskPendingException;
 import org.savapage.core.imaging.ImageUrl;
@@ -127,11 +129,8 @@ import org.savapage.core.json.rpc.JsonRpcError;
 import org.savapage.core.json.rpc.ResultDataBasic;
 import org.savapage.core.json.rpc.impl.ResultPosDeposit;
 import org.savapage.core.pdf.PdfCreateRequest;
-import org.savapage.core.print.gcp.GcpClient;
-import org.savapage.core.print.gcp.GcpPrinter;
-import org.savapage.core.print.gcp.GcpRegisterPrinterRsp;
-import org.savapage.core.print.imap.ImapListener;
-import org.savapage.core.print.imap.ImapPrinter;
+import org.savapage.core.print.imap.MailPrintListener;
+import org.savapage.core.print.imap.MailPrinter;
 import org.savapage.core.print.proxy.ProxyPrintAuthManager;
 import org.savapage.core.reports.JrExportFileExtEnum;
 import org.savapage.core.reports.JrPosDepositReceipt;
@@ -266,7 +265,7 @@ public final class JsonApiServer extends AbstractPage {
     private void applyLocaleToSession() {
 
         final String currentLanguage = getSession().getLocale().getLanguage();
-        for (final Locale locale : LocaleHelper.getAvailableLanguages()) {
+        for (final Locale locale : LocaleHelper.getI18nAvailable()) {
             if (locale.getLanguage().equals(currentLanguage)) {
                 return;
             }
@@ -472,25 +471,8 @@ public final class JsonApiServer extends AbstractPage {
                 if (requestId != null
                         && JsonApiDict.isDownloadRequest(requestId)) {
 
-                    String urlPath;
-
-                    switch (getSessionWebAppType()) {
-                    case ADMIN:
-                        urlPath = WebApp.MOUNT_PATH_WEBAPP_ADMIN;
-                        break;
-                    case PRINTSITE:
-                        urlPath = WebApp.MOUNT_PATH_WEBAPP_PRINTSITE;
-                        break;
-                    case JOBTICKETS:
-                        urlPath = WebApp.MOUNT_PATH_WEBAPP_JOBTICKETS;
-                        break;
-                    case POS:
-                        urlPath = WebApp.MOUNT_PATH_WEBAPP_POS;
-                        break;
-                    default:
-                        urlPath = WebApp.MOUNT_PATH_WEBAPP_USER;
-                        break;
-                    }
+                    final String urlPath =
+                            WebApp.getMountPath(getSessionWebAppType());
 
                     final StringBuilder html = new StringBuilder();
 
@@ -1105,6 +1087,9 @@ public final class JsonApiServer extends AbstractPage {
             final boolean grayscalePdf = Boolean.parseBoolean(
                     getParmValue(parameters, isGetAction, "grayscale"));
 
+            final boolean rasterizePdf = Boolean.parseBoolean(
+                    getParmValue(parameters, isGetAction, "rasterize"));
+
             final DocLog docLog = new DocLog();
 
             /*
@@ -1114,7 +1099,8 @@ public final class JsonApiServer extends AbstractPage {
                     Integer.parseInt(
                             getParmValue(parameters, isGetAction, "jobIndex")),
                     getParmValue(parameters, isGetAction, "ranges"),
-                    removeGraphics, ecoPrint, grayscalePdf, docLog, "download");
+                    removeGraphics, ecoPrint, grayscalePdf, rasterizePdf,
+                    docLog, "download");
 
             /*
              * (2) Write log to database.
@@ -1467,39 +1453,6 @@ public final class JsonApiServer extends AbstractPage {
                     getParmValue(parameters, isGetAction, "id"),
                     getParmValue(parameters, isGetAction, "data"));
 
-        case JsonApiDict.REQ_GCP_GET_DETAILS:
-
-            return reqGcpGetDetails();
-
-        case JsonApiDict.REQ_GCP_ONLINE:
-
-            return reqGcpOnline(Boolean.parseBoolean(
-                    getParmValue(parameters, isGetAction, "online")));
-
-        case JsonApiDict.REQ_GCP_REGISTER:
-
-            return reqGcpRegister(
-                    getParmValue(parameters, isGetAction, "clientId"),
-                    getParmValue(parameters, isGetAction, "clientSecret"),
-                    getParmValue(parameters, isGetAction, "printerName"));
-
-        case JsonApiDict.REQ_GCP_SET_DETAILS:
-
-            return reqGcpSetDetails(session.getUserIdDto(),
-                    Boolean.parseBoolean(
-                            getParmValue(parameters, isGetAction, "enabled")),
-                    getParmValue(parameters, isGetAction, "clientId"),
-                    getParmValue(parameters, isGetAction, "clientSecret"),
-                    getParmValue(parameters, isGetAction, "printerName"));
-
-        case JsonApiDict.REQ_GCP_SET_NOTIFICATIONS:
-
-            return reqGcpSetNotifications(session.getUserIdDto(),
-                    Boolean.parseBoolean(
-                            getParmValue(parameters, isGetAction, "enabled")),
-                    getParmValue(parameters, isGetAction, "emailSubject"),
-                    getParmValue(parameters, isGetAction, "emailBody"));
-
         case JsonApiDict.REQ_GET_EVENT:
 
             return reqGetEvent(requestingUser,
@@ -1521,10 +1474,11 @@ public final class JsonApiServer extends AbstractPage {
                     Boolean.parseBoolean(getParmValue(parameters, isGetAction,
                             "removeGraphics")),
                     Boolean.parseBoolean(
-                            getParmValue(parameters, isGetAction, "ecoprint"))
-                    //
-                    , Boolean.parseBoolean(getParmValue(parameters, isGetAction,
-                            "grayscale")));
+                            getParmValue(parameters, isGetAction, "ecoprint")),
+                    Boolean.parseBoolean(
+                            getParmValue(parameters, isGetAction, "grayscale")),
+                    Boolean.parseBoolean(getParmValue(parameters, isGetAction,
+                            "rasterize")));
 
         case JsonApiDict.REQ_USER_LAZY_ECOPRINT:
 
@@ -1589,6 +1543,8 @@ public final class JsonApiServer extends AbstractPage {
      *            <code>true</code> if Eco PDF is to be generated.
      * @param grayscalePdf
      *            <code>true</code> if Grayscale PDF is to be generated.
+     * @param rasterizePdf
+     *            <code>true</code> if rasterize PDF is to be generated.
      * @param docLog
      * @param purpose
      *            A simple tag to insert into the filename (to add some
@@ -1604,8 +1560,8 @@ public final class JsonApiServer extends AbstractPage {
     private File generatePdfForExport(final User user,
             final int vanillaJobIndex, final String pageRangeFilter,
             final boolean removeGraphics, final boolean ecoPdf,
-            final boolean grayscalePdf, final DocLog docLog,
-            final String purpose)
+            final boolean grayscalePdf, final boolean rasterizePdf,
+            final DocLog docLog, final String purpose)
             throws LetterheadNotFoundException, IOException,
             PostScriptDrmException, EcoPrintPdfTaskPendingException {
 
@@ -1618,7 +1574,8 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * Get the (filtered) jobs.
          */
-        InboxInfoDto inboxInfo = INBOX_SERVICE.getInboxInfo(user.getUserId());
+        InboxInfoDto inboxInfo = INBOX_SERVICE.getInboxInfo(
+                ApiRequestMixin.getInboxContext(user.getUserId()));
 
         if (StringUtils.isNotBlank(documentPageRangeFilter)) {
             inboxInfo = INBOX_SERVICE.filterInboxInfoPages(inboxInfo,
@@ -1636,6 +1593,7 @@ public final class JsonApiServer extends AbstractPage {
         pdfRequest.setForPrinting(false);
         pdfRequest.setEcoPdfShadow(ecoPdf);
         pdfRequest.setGrayscale(grayscalePdf);
+        pdfRequest.setRasterized(rasterizePdf);
 
         final ConfigManager cm = ConfigManager.instance();
 
@@ -1655,7 +1613,8 @@ public final class JsonApiServer extends AbstractPage {
 
         pdfRequest.setVerifyUrl(verifyUrl);
 
-        return OutputProducer.instance().generatePdfForExport(pdfRequest,
+        return OutputProducer.instance().generatePdfForExport(
+                ApiRequestMixin.getInboxContext(user.getUserId()), pdfRequest,
                 docLog);
     }
 
@@ -1725,8 +1684,8 @@ public final class JsonApiServer extends AbstractPage {
         /*
          * Get the (filtered) jobs.
          */
-        InboxInfoDto inboxInfo =
-                INBOX_SERVICE.getInboxInfo(lockedUser.getUserId());
+        InboxInfoDto inboxInfo = INBOX_SERVICE.getInboxInfo(
+                ApiRequestMixin.getInboxContext(lockedUser.getUserId()));
 
         if (StringUtils.isNotBlank(documentPageRangeFilter)) {
             inboxInfo = INBOX_SERVICE.filterInboxInfoPages(inboxInfo,
@@ -2178,7 +2137,8 @@ public final class JsonApiServer extends AbstractPage {
                         + session.getId());
             }
 
-            if (!session.isAdmin() && ConfigManager.isSysMaintenance()) {
+            if (!session.isAdmin() && ConfigManager
+                    .getSystemMode() == SystemModeEnum.MAINTENANCE) {
                 userData = new HashMap<String, Object>();
                 createApiResult(userData, ApiResultCodeEnum.WARN, "",
                         PhraseEnum.SYS_MAINTENANCE.uiText(getLocale()));
@@ -2204,6 +2164,8 @@ public final class JsonApiServer extends AbstractPage {
      *            <code>true</code> if Eco PDF is to be generated.
      * @param grayscalePdf
      *            <code>true</code> if Grayscale PDF is to be generated.
+     * @param rasterizePdf
+     *            <code>true</code> if Imaged PDF is to be generated.
      * @return
      * @throws LetterheadNotFoundException
      * @throws IOException
@@ -2216,9 +2178,10 @@ public final class JsonApiServer extends AbstractPage {
     private Map<String, Object> reqSend(final User lockedUser,
             final String mailto, final String jobIndex, final String ranges,
             final boolean removeGraphics, final boolean ecoPdf,
-            final boolean grayscalePdf) throws LetterheadNotFoundException,
-            IOException, MessagingException, InterruptedException,
-            CircuitBreakerException, ParseException, PGPBaseException {
+            final boolean grayscalePdf, final boolean rasterizePdf)
+            throws LetterheadNotFoundException, IOException, MessagingException,
+            InterruptedException, CircuitBreakerException, ParseException,
+            PGPBaseException {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
@@ -2229,7 +2192,8 @@ public final class JsonApiServer extends AbstractPage {
 
         try {
             INBOX_SERVICE.calcPagesInRanges(
-                    INBOX_SERVICE.getInboxInfo(lockedUser.getUserId()),
+                    INBOX_SERVICE.getInboxInfo(ApiRequestMixin
+                            .getInboxContext(lockedUser.getUserId())),
                     Integer.valueOf(jobIndex),
                     StringUtils.defaultString(getParmValue("ranges")), null);
         } catch (PageRangeException e) {
@@ -2250,7 +2214,7 @@ public final class JsonApiServer extends AbstractPage {
              */
             fileAttach = generatePdfForExport(lockedUser,
                     Integer.parseInt(jobIndex), ranges, removeGraphics, ecoPdf,
-                    grayscalePdf, docLog, "email");
+                    grayscalePdf, rasterizePdf, docLog, "email");
             /*
              * INVARIANT: Since sending the mail is synchronous, file length is
              * important and MUST be less than criterion.
@@ -2622,7 +2586,7 @@ public final class JsonApiServer extends AbstractPage {
             MutableInt nMessagesInbox = new MutableInt();
             MutableInt nMessagesTrash = new MutableInt();
 
-            ImapListener.test(nMessagesInbox, nMessagesTrash);
+            MailPrintListener.test(nMessagesInbox, nMessagesTrash);
 
             setApiResult(userData, ApiResultCodeEnum.INFO,
                     "msg-imap-test-passed", nMessagesInbox.toString(),
@@ -2648,16 +2612,16 @@ public final class JsonApiServer extends AbstractPage {
 
         final Map<String, Object> userData = new HashMap<String, Object>();
 
-        if (!ConfigManager.isPrintImapEnabled()) {
+        if (!ConfigManager.isMailPrintEnabled()) {
             return setApiResultOK(userData);
         }
 
         final String msgKey;
 
-        if (ImapPrinter.isOnline()) {
+        if (MailPrinter.isOnline()) {
             msgKey = "msg-imap-started-already";
         } else {
-            SpJobScheduler.instance().scheduleOneShotImapListener(1L);
+            SpJobScheduler.instance().scheduleOneShotMailPrintListener(1L);
             msgKey = "msg-imap-started";
         }
 
@@ -2673,7 +2637,7 @@ public final class JsonApiServer extends AbstractPage {
         final Map<String, Object> userData = new HashMap<String, Object>();
         final String msgKey;
 
-        if (SpJobScheduler.interruptImapListener()) {
+        if (SpJobScheduler.interruptMailPrintListener()) {
             msgKey = "msg-imap-stopped";
         } else {
             msgKey = "msg-imap-stopped-already";
@@ -3676,7 +3640,7 @@ public final class JsonApiServer extends AbstractPage {
          * Make sure that all User Web App long polls for this user are
          * interrupted.
          */
-        if (savedWebAppType == WebAppTypeEnum.USER && userId != null) {
+        if (savedWebAppType.isUserTypeOrVariant() && userId != null) {
             ApiRequestHelper.interruptPendingLongPolls(userId,
                     this.getClientIP());
         }
@@ -3706,8 +3670,9 @@ public final class JsonApiServer extends AbstractPage {
 
         int nPageOffset = Integer.parseInt(pageOffset);
 
-        final PageImages pages =
-                INBOX_SERVICE.getPageChunks(user, null, uniqueUrlValue, base64);
+        final PageImages pages = INBOX_SERVICE.getPageChunks(
+                ApiRequestMixin.getInboxContext(user), null, uniqueUrlValue,
+                base64);
 
         int totPages = 0;
 
@@ -3736,8 +3701,8 @@ public final class JsonApiServer extends AbstractPage {
      */
     private Map<String, Object> reqInboxIsVanilla(final String user) {
 
-        final boolean isVanilla =
-                INBOX_SERVICE.isInboxVanilla(INBOX_SERVICE.getInboxInfo(user));
+        final boolean isVanilla = INBOX_SERVICE.isInboxVanilla(INBOX_SERVICE
+                .getInboxInfo(ApiRequestMixin.getInboxContext(user)));
         final Map<String, Object> userData = new HashMap<String, Object>();
         userData.put("vanilla", Boolean.valueOf(isVanilla));
         return setApiResultOK(userData);
@@ -3754,231 +3719,6 @@ public final class JsonApiServer extends AbstractPage {
         final Map<String, Object> userData = new HashMap<String, Object>();
 
         return setApiResult(userData, ApiResultCodeEnum.OK, "msg-job-deleted");
-    }
-
-    /**
-     * @param online
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqGcpOnline(final boolean online)
-            throws IOException {
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        final ConfigManager cm = ConfigManager.instance();
-
-        /*
-         * Google Cloud Print MUST be enabled.
-         */
-        if (!cm.isConfigValue(Key.GCP_ENABLE)) {
-            /*
-             * INVARIANT: GCP printer MUST be present.
-             */
-            throw new SpException(
-                    "Operation not allowed: Google Cloud Print is disabled.");
-        }
-
-        /*
-         * INVARIANT: GCP printer MUST be present.
-         */
-        if (!GcpPrinter.isPresent()) {
-            return setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-gcp-state-mismatch", GcpPrinter.getState().toString());
-        }
-
-        String msgKey;
-
-        if (online == GcpPrinter.isOnline()) {
-
-            if (online) {
-                msgKey = "msg-gcp-already-online";
-            } else {
-                msgKey = "msg-gcp-already-offline";
-            }
-
-        } else {
-
-            GcpPrinter.setOnline(online);
-
-            if (online) {
-                SpJobScheduler.instance().scheduleOneShotGcpListener(0L);
-                msgKey = "msg-gcp-online";
-            } else {
-                SpJobScheduler.interruptGcpListener();
-                msgKey = "msg-gcp-offline";
-            }
-        }
-
-        /*
-         * Anticipate to the new state...
-         */
-        GcpPrinter.State newState;
-
-        if (online) {
-            newState = GcpPrinter.State.ON_LINE;
-        } else {
-            newState = GcpPrinter.State.OFF_LINE;
-        }
-
-        userData.put("state", newState.toString());
-        userData.put("displayState",
-                GcpPrinter.localized(ConfigManager.isGcpEnabled(), newState));
-
-        /*
-         *
-         */
-        return setApiResult(userData, ApiResultCodeEnum.OK, msgKey);
-    }
-
-    /**
-     *
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqGcpGetDetails() {
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        userData.put("clientId", GcpPrinter.getOAuthClientId());
-        userData.put("clientSecret", GcpPrinter.getOAuthClientSecret());
-        userData.put("printerName", GcpPrinter.getPrinterName());
-        userData.put("ownerId", GcpPrinter.getOwnerId());
-
-        final GcpPrinter.State state = GcpPrinter.getState();
-
-        userData.put("state", state.toString());
-        userData.put("displayState",
-                GcpPrinter.localized(ConfigManager.isGcpEnabled(), state));
-
-        return setApiResultOK(userData);
-    }
-
-    /**
-     *
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqGcpSetNotifications(final UserIdDto dto,
-            boolean enabled, final String emailSubject,
-            final String emailBody) {
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        final ConfigManager cm = ConfigManager.instance();
-
-        cm.updateConfigKey(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_ENABLE,
-                enabled, dto.getUserId());
-
-        cm.updateConfigKey(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_SUBJECT,
-                emailSubject, dto.getUserId());
-
-        cm.updateConfigKey(Key.GCP_JOB_OWNER_UNKNOWN_CANCEL_MAIL_BODY,
-                emailBody, dto.getUserId());
-
-        return setApiResult(userData, ApiResultCodeEnum.OK,
-                "msg-config-props-applied");
-    }
-
-    /**
-     *
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqGcpSetDetails(final UserIdDto dto,
-            boolean enabled, final String clientId, final String clientSecret,
-            final String printerName) {
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        /*
-         * Update the printer singleton.
-         */
-        GcpPrinter.setPrinterName(printerName);
-        GcpPrinter.storeOauthProps(clientId, clientSecret);
-
-        /*
-         * Currently enabled?
-         */
-        final ConfigManager cm = ConfigManager.instance();
-        final Key key = Key.GCP_ENABLE;
-        final boolean enabledCurrent = cm.isConfigValue(key);
-
-        /*
-         * Anticipate to the new state...
-         */
-        final GcpPrinter.State stateCurrent = GcpPrinter.getState();
-        GcpPrinter.State stateNext = stateCurrent;
-
-        /*
-         *
-         */
-        if (enabled && stateCurrent == GcpPrinter.State.NOT_FOUND) {
-            SpJobScheduler.instance().scheduleOneShotGcpListener(0L);
-        }
-
-        if (enabledCurrent != enabled) {
-
-            cm.updateConfigKey(key, enabled, dto.getUserId());
-
-            if (!enabled) {
-                SpJobScheduler.interruptGcpListener();
-                stateNext = GcpPrinter.State.OFF_LINE;
-            }
-        }
-
-        /*
-         * Anticipate to the new state...
-         */
-        userData.put("state", stateNext.toString());
-        userData.put("displayState",
-                GcpPrinter.localized(ConfigManager.isGcpEnabled(), stateNext));
-
-        return setApiResult(userData, ApiResultCodeEnum.OK,
-                "msg-config-props-applied");
-    }
-
-    /**
-     *
-     * @param user
-     * @param printerName
-     * @return
-     * @throws IOException
-     */
-    private Map<String, Object> reqGcpRegister(final String clientId,
-            final String clientSecret, final String printerName)
-            throws IOException {
-
-        Map<String, Object> userData = new HashMap<String, Object>();
-
-        /*
-         * Update the printer singleton.
-         */
-        GcpPrinter.setPrinterName(printerName);
-        GcpPrinter.storeOauthProps(clientId, clientSecret);
-
-        /*
-         * Register...
-         */
-        GcpRegisterPrinterRsp rsp = GcpClient.instance().registerPrinter();
-
-        if (rsp.isSuccess()) {
-
-            SpJobScheduler.instance().scheduleOneShotGcpPollForAuthCode(
-                    rsp.getPollingUrl(), rsp.getTokenDuration(), 0L);
-
-            userData.put("registration_token", rsp.getRegistrationToken());
-            userData.put("invite_url", rsp.getInviteUrl());
-            userData.put("invite_page_url", rsp.getInvitePageUrl());
-            userData.put("complete_invite_url", rsp.getCompleteInviteUrl());
-
-            setApiResultOK(userData);
-
-        } else {
-            throw new SpException("Registration failed");
-        }
-
-        return userData;
     }
 
     /**
@@ -4110,7 +3850,8 @@ public final class JsonApiServer extends AbstractPage {
 
         setApiResultOK(userData);
 
-        PageImages pages = INBOX_SERVICE.getPageChunks(user, nFirstDetailPage,
+        PageImages pages = INBOX_SERVICE.getPageChunks(
+                ApiRequestMixin.getInboxContext(user), nFirstDetailPage,
                 uniqueUrlValue, base64);
 
         userData.put("jobs", pages.getJobs());
@@ -4237,24 +3978,48 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("jobticketDeliveryDaysOfweek",
                 JOBTICKET_SERVICE.getDeliveryDaysOfWeek());
 
+        userData.put("jobticketDomainsRetain",
+                cm.isConfigValue(Key.JOBTICKET_DOMAINS_RETAIN));
+
         //
         userData.put("proxyPrintClearPrinter",
                 cm.isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_PRINTER));
 
         if (cm.isConfigValue(Key.PROXY_PRINT_DELEGATE_ENABLE)) {
 
-            userData.put("delegatorGroupHideId", cm.isConfigValue(
-                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_GROUP_HIDE_ID));
+            final QuickSearchFilterUserGroupDto.GroupDetail groupDetail;
+            if (cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_GROUP_HIDE_ID)) {
+                groupDetail = QuickSearchFilterUserGroupDto.GroupDetail.NAME;
+            } else {
+                groupDetail = cm.getConfigEnum(
+                        QuickSearchFilterUserGroupDto.GroupDetail.class,
+                        Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_GROUP_DETAIL);
+            }
+            userData.put("delegatorGroupDetail", groupDetail.toString());
+            //
+            final QuickSearchUserGroupMemberFilterDto.UserDetail userDetail;
+            if (cm.isConfigValue(
+                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_USER_HIDE_ID)) {
+                userDetail =
+                        QuickSearchUserGroupMemberFilterDto.UserDetail.NAME;
+            } else {
+                userDetail = cm.getConfigEnum(
+                        QuickSearchUserGroupMemberFilterDto.UserDetail.class,
+                        Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_USER_DETAIL);
+            }
+            userData.put("delegatorUserDetail", userDetail.toString());
 
-            userData.put("delegatorUserHideId", cm.isConfigValue(
-                    Key.WEBAPP_USER_PROXY_PRINT_DELEGATOR_USER_HIDE_ID));
-
+            //
             userData.put("proxyPrintClearDelegate", cm
                     .isConfigValue(Key.WEBAPP_USER_PROXY_PRINT_CLEAR_DELEGATE));
-
             userData.put("delegateAccountSharedGroup", cm.isConfigValue(
                     Key.PROXY_PRINT_DELEGATE_ACCOUNT_SHARED_GROUP_ENABLE));
         }
+
+        //
+        userData.put("quickSearchMaxPrinters",
+                cm.getConfigLong(Key.WEBAPP_USER_PRINTERS_QUICK_SEARCH_MAX));
 
         // Web Print
         final boolean isWebPrintEnabled =
@@ -4297,7 +4062,7 @@ public final class JsonApiServer extends AbstractPage {
 
         userData.put("colors", colors);
 
-        if (webAppType == WebAppTypeEnum.USER) {
+        if (webAppType.isUserTypeOrVariant()) {
 
             Map<String, Object> scaling;
 

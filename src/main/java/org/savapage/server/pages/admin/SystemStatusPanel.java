@@ -32,6 +32,7 @@ import java.net.MalformedURLException;
 import java.net.UnknownHostException;
 import java.text.MessageFormat;
 import java.util.Date;
+import java.util.EnumSet;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -59,7 +60,9 @@ import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.SetupNeededEnum;
 import org.savapage.core.config.SslCertInfo;
+import org.savapage.core.config.SystemStatusEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.impl.DaoContextImpl;
@@ -69,8 +72,7 @@ import org.savapage.core.i18n.JobTicketNounEnum;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.i18n.SystemModeEnum;
-import org.savapage.core.print.gcp.GcpPrinter;
-import org.savapage.core.print.imap.ImapPrinter;
+import org.savapage.core.print.imap.MailPrinter;
 import org.savapage.core.print.proxy.ProxyPrintJobStatusMonitor;
 import org.savapage.core.services.AppLogService;
 import org.savapage.core.services.JobTicketService;
@@ -153,12 +155,45 @@ public final class SystemStatusPanel extends Panel {
     private static final String WID_TOOLTIP_USERHOME_STATS =
             "tooltip-userhome-stats";
 
+    /** */
+    private static final String WID_BTN_SMTP = "btn-setup-smtp";
+
+    /** */
+    private static final String WID_BTN_CURRENCY = "btn-setup-currency";
+
     /**
      * @param panelId
      *            The panel id.
      */
     public SystemStatusPanel(final String panelId) {
         super(panelId);
+    }
+
+    /**
+     *
+     * @param helper
+     *            Markup helper.
+     * @param cm
+     *            ConfigManager.
+     * @param isSetupNeeded
+     *            {@code true} if setup is needed.
+     */
+    private void handleSetupNeeded(final MarkupHelper helper,
+            final ConfigManager cm, final boolean isSetupNeeded) {
+
+        if (!isSetupNeeded) {
+            helper.discloseLabel(WID_BTN_SMTP);
+            helper.discloseLabel(WID_BTN_CURRENCY);
+            return;
+        }
+
+        final EnumSet<SetupNeededEnum> needed = cm.getReadyToUseSetupNeeded();
+        helper.encloseLabel(WID_BTN_SMTP,
+                SetupNeededEnum.MAIL.uiText(getLocale()),
+                needed.contains(SetupNeededEnum.MAIL));
+        helper.encloseLabel(WID_BTN_CURRENCY,
+                SetupNeededEnum.CURRENCY.uiText(getLocale()),
+                needed.contains(SetupNeededEnum.CURRENCY));
     }
 
     /**
@@ -178,13 +213,16 @@ public final class SystemStatusPanel extends Panel {
         String cssColor;
         String msg;
 
-        /*
-         *
-         */
-        if (!cm.isAppReadyToUse()) {
+        //
+        final SystemStatusEnum systemStatus = cm.getSystemStatus();
+
+        final boolean isSetupNeeded = systemStatus == SystemStatusEnum.SETUP;
+        this.handleSetupNeeded(helper, cm, isSetupNeeded);
+
+        if (isSetupNeeded) {
             cssColor = MarkupHelper.CSS_TXT_ERROR;
             msg = getLocalizer().getString("sys-status-setup-needed", this);
-        } else if (ConfigManager.isTempUnavailable()) {
+        } else if (systemStatus == SystemStatusEnum.UNAVAILABLE) {
             cssColor = MarkupHelper.CSS_TXT_WARN;
             msg = getLocalizer().getString("sys-status-not-available", this);
         } else if (memberCard.isMembershipDesirable()) {
@@ -267,7 +305,7 @@ public final class SystemStatusPanel extends Panel {
         String msgKey;
         String msgText;
 
-        final boolean isMailPrintEnabled = ConfigManager.isPrintImapEnabled();
+        final boolean isMailPrintEnabled = ConfigManager.isMailPrintEnabled();
 
         if (isMailPrintEnabled) {
 
@@ -311,7 +349,7 @@ public final class SystemStatusPanel extends Panel {
                     cssColor);
 
             labelWrk = helper.addCheckbox("flipswitch-mailprint-online",
-                    ImapPrinter.isOnline());
+                    MailPrinter.isOnline());
             setFlipswitchOnOffText(labelWrk);
 
         } else {
@@ -335,53 +373,6 @@ public final class SystemStatusPanel extends Panel {
             add(tooltip);
         } else {
             helper.discloseLabel("pgp-uid");
-        }
-
-        /*
-         * Google Cloud Print
-         */
-        if (ConfigManager.isGcpEnabled()) {
-
-            final GcpPrinter.State gcpStatus = GcpPrinter.getState();
-            final boolean isGcpOnline = GcpPrinter.State.ON_LINE == gcpStatus;
-
-            msgKey = null;
-
-            switch (gcpStatus) {
-            case NOT_CONFIGURED:
-                msgKey = "not-configured";
-                cssColor = MarkupHelper.CSS_TXT_WARN;
-                break;
-            case NOT_FOUND:
-                msgKey = "not-found";
-                cssColor = MarkupHelper.CSS_TXT_WARN;
-                break;
-            case OFF_LINE:
-            case ON_LINE:
-                break;
-            default:
-                throw new SpException(
-                        "Unhandled GcpPrinter.Status [" + gcpStatus + "]");
-            }
-
-            if (msgKey == null) {
-                msgText = "";
-            } else {
-                msgText = getLocalizer().getString(msgKey, this);
-            }
-
-            labelWrk = helper.encloseLabel("gcp-status", msgText, true);
-
-            if (msgKey != null) {
-                MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_CLASS,
-                        cssColor);
-            }
-
-            labelWrk = helper.addCheckbox("flipswitch-gcp-online", isGcpOnline);
-            setFlipswitchOnOffText(labelWrk);
-
-        } else {
-            helper.discloseLabel("gcp-status");
         }
 
         /*
@@ -819,7 +810,7 @@ public final class SystemStatusPanel extends Panel {
 
         if (showTechInfo) {
             final long sizeDb = ServiceContext.getDaoContext().getPrintOutDao()
-                    .countActiveCupsJobs();
+                    .countActiveCupsJobs(false);
             size = ProxyPrintJobStatusMonitor.getPendingJobs();
 
             printJobQueue =

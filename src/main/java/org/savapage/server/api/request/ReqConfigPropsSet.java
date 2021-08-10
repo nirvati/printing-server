@@ -40,6 +40,9 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.PullPushEnum;
 import org.savapage.core.config.validator.ValidationResult;
+import org.savapage.core.config.validator.ValidationStatusEnum;
+import org.savapage.core.dao.IppQueueDao;
+import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.ipp.IppSyntaxException;
 import org.savapage.core.ipp.client.IppConnectException;
 import org.savapage.core.job.SpJobScheduler;
@@ -81,6 +84,10 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
     /** */
     private static final ProxyPrintService PROXYPRINT_SERVICE =
             ServiceContext.getServiceFactory().getProxyPrintService();
+
+    /** */
+    private static final IppQueueDao IPP_QUEUE_DAO =
+            ServiceContext.getDaoContext().getIppQueueDao();
 
     @Override
     protected void onRequest(final String requestingUser, final User lockedUser)
@@ -167,6 +174,7 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                     break;
                 case WEB_PRINT_ENABLE:
                     isSOfficeTrigger = true;
+                    break;
                 case CUPS_IPP_NOTIFICATION_METHOD:
                     isCUPSNotifierUpdate = true;
                     cupsNotifierMethodPrv =
@@ -216,10 +224,22 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                         PAPERCUT_SERVICE.resetDbConnectionPool();
                     }
 
-                } else if (configKey == Key.PRINT_IMAP_ENABLE && preValue
-                        && !cm.isConfigValue(configKey)) {
-                    if (SpJobScheduler.interruptImapListener()) {
-                        msgKey = "msg-config-props-applied-mail-print-stopped";
+                } else if (configKey == Key.WEB_PRINT_ENABLE) {
+
+                    IPP_QUEUE_DAO.updateDisabled(ReservedIppQueueEnum.WEBPRINT,
+                            !cm.isConfigValue(configKey));
+
+                } else if (configKey == Key.PRINT_IMAP_ENABLE) {
+
+                    final boolean newValue = cm.isConfigValue(configKey);
+
+                    IPP_QUEUE_DAO.updateDisabled(ReservedIppQueueEnum.MAILPRINT,
+                            !newValue);
+
+                    if (preValue && !newValue) {
+                        if (SpJobScheduler.interruptMailPrintListener()) {
+                            msgKey = "msg-config-props-applied-mail-print-stopped";
+                        }
                     }
 
                 } else if (configKey == Key.DOC_CONVERT_LIBRE_OFFICE_ENABLED
@@ -230,22 +250,28 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                     // Provoke errors/warnings in server.log.
                     WebPrintHelper.getExcludeTypes();
 
-                } else if (configKey == Key.JOBTICKET_DOMAINS
-                        && StringUtils.isNotBlank(value)) {
+                } else if (configKey == Key.JOBTICKET_DOMAINS) {
                     JobTicketLabelCache.initTicketDomains(value);
 
-                } else if (configKey == Key.JOBTICKET_USES
-                        && StringUtils.isNotBlank(value)) {
+                } else if (configKey == Key.JOBTICKET_USES) {
                     JobTicketLabelCache.initTicketUses(value);
 
-                } else if (configKey == Key.JOBTICKET_TAGS
-                        && StringUtils.isNotBlank(value)) {
-                    JobTicketLabelCache.initTicketTags(value);
+                } else if (configKey == Key.JOBTICKET_TAGS) {
+                    JobTicketLabelCache.initTicketTags(value,
+                            cm.getConfigValue(Key.JOBTICKET_TAGS_1));
+
+                } else if (configKey == Key.JOBTICKET_TAGS_1) {
+                    JobTicketLabelCache.initTicketTags(
+                            cm.getConfigValue(Key.JOBTICKET_TAGS), value);
                 }
 
             } else {
-                setApiResult(ApiResultCodeEnum.ERROR, "msg-config-props-error",
-                        value);
+                if (res.getStatus() == ValidationStatusEnum.ERROR_MAX_LEN_EXCEEDED) {
+                    setApiResultText(ApiResultCodeEnum.ERROR, res.getMessage());
+                } else {
+                    setApiResult(ApiResultCodeEnum.ERROR,
+                            "msg-config-props-error", res.getValue());
+                }
             }
 
         } // end-while
@@ -375,7 +401,8 @@ public final class ReqConfigPropsSet extends ApiRequestMixin {
                     JobTicketLabelCache.parseTicketDomains(value);
                 } else if (key == Key.JOBTICKET_USES) {
                     JobTicketLabelCache.parseTicketUses(value);
-                } else if (key == Key.JOBTICKET_TAGS) {
+                } else if (key == Key.JOBTICKET_TAGS
+                        || key == Key.JOBTICKET_TAGS_1) {
                     JobTicketLabelCache.parseTicketTags(value);
                 }
             } catch (IllegalArgumentException e) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2020 the original author or authors.
+ * Copyright (c) 2008-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-/* CometD Version 4.0.8 */
+/* CometD Version 5.0.8 */
 
 (function(root, factory) {
     if (typeof exports === 'object') {
@@ -238,8 +238,30 @@
             _cometd = null;
         };
 
+        this._notifyTransportTimeout = function(messages) {
+            var callbacks = _cometd._getTransportListeners('timeout');
+            if (callbacks) {
+                for (var i = 0; i < callbacks.length; ++i) {
+                    var listener = callbacks[i];
+                    try {
+                        var result = listener.call(this, messages);
+                        if (typeof result === 'number' && result > 0) {
+                            return result;
+                        }
+                    } catch (x) {
+                        this._info('Exception during execution of transport listener', listener, x);
+                    }
+                }
+            }
+            return 0;
+        }
+
         this._debug = function() {
             _cometd._debug.apply(_cometd, arguments);
+        };
+
+        this._info = function() {
+            _cometd._info.apply(_cometd, arguments);
         };
 
         this._mixin = function() {
@@ -260,6 +282,24 @@
 
         this.clearTimeout = function(id) {
             _cometd.clearTimeout(id);
+        };
+
+        this.convertToJSON = function(messages) {
+            var maxSize = this.getConfiguration().maxSendBayeuxMessageSize;
+            var result = '[';
+            for (var i = 0; i < messages.length; ++i) {
+                if (i > 0) {
+                    result += ',';
+                }
+                var message = messages[i];
+                var json = JSON.stringify(message);
+                if (json.length > maxSize) {
+                    throw 'maxSendBayeuxMessageSize ' + maxSize + ' exceeded';
+                }
+                result += json;
+            }
+            result += ']';
+            return result;
         };
 
         /**
@@ -373,33 +413,45 @@
             }
         }
 
-        function _transportSend(envelope, request) {
-            this.transportSend(envelope, request);
-            request.expired = false;
-
-            if (!envelope.sync) {
-                var maxDelay = this.getConfiguration().maxNetworkDelay;
-                var delay = maxDelay;
-                if (request.metaConnect === true) {
-                    delay += this.getAdvice().timeout;
-                }
-
-                this._debug('Transport', this.getType(), 'waiting at most', delay, 'ms for the response, maxNetworkDelay', maxDelay);
-
+        function _onTransportTimeout(envelope, request, delay) {
+            var result = this._notifyTransportTimeout(envelope.messages);
+            if (result > 0) {
+                this._debug('Transport', this.getType(), 'extended waiting for message replies of request', request.id, ':', result, 'ms');
                 var self = this;
                 request.timeout = this.setTimeout(function() {
-                    request.expired = true;
-                    var errorMessage = 'Request ' + request.id + ' of transport ' + self.getType() + ' exceeded ' + delay + ' ms max network delay';
-                    var failure = {
-                        reason: errorMessage
-                    };
-                    var xhr = request.xhr;
-                    failure.httpCode = self.xhrStatus(xhr);
-                    self.abortXHR(xhr);
-                    self._debug(errorMessage);
-                    self.complete(request, false, request.metaConnect);
-                    envelope.onFailure(xhr, envelope.messages, failure);
-                }, delay);
+                    _onTransportTimeout.call(self, envelope, request, delay + result);
+                }, result);
+            } else {
+                request.expired = true;
+                var errorMessage = 'Transport ' + this.getType() + ' expired waiting for message replies of request ' + request.id + ': ' + delay + ' ms';
+                var failure = {
+                    reason: errorMessage
+                };
+                var xhr = request.xhr;
+                failure.httpCode = this.xhrStatus(xhr);
+                this.abortXHR(xhr);
+                this._debug(errorMessage);
+                this.complete(request, false, request.metaConnect);
+                envelope.onFailure(xhr, envelope.messages, failure);
+            }
+        }
+
+        function _transportSend(envelope, request) {
+            if (this.transportSend(envelope, request)) {
+                request.expired = false;
+                if (!envelope.sync) {
+                    var delay = this.getConfiguration().maxNetworkDelay;
+                    if (request.metaConnect === true) {
+                        delay += this.getAdvice().timeout;
+                    }
+
+                    this._debug('Transport', this.getType(), 'started waiting for message replies of request', request.id, ':', delay, 'ms');
+
+                    var self = this;
+                    request.timeout = this.setTimeout(function() {
+                        _onTransportTimeout.call(self, envelope, request, delay);
+                    }, delay);
+                }
             }
         }
 
@@ -449,7 +501,7 @@
                     _queueSend.call(this, nextEnvelope);
                     this._debug('Transport completed request', request.id, nextEnvelope);
                 } else {
-                    // Keep the semantic of calling response callbacks asynchronously after the request
+                    // Keep the semantic of calling callbacks asynchronously.
                     var self = this;
                     this.setTimeout(function() {
                         self.complete(nextRequest, false, nextRequest.metaConnect);
@@ -476,6 +528,7 @@
          * Performs the actual send depending on the transport type details.
          * @param envelope the envelope to send
          * @param request the request information
+         * @return {boolean} whether the send succeeded
          */
         _self.transportSend = function(envelope, request) {
             throw 'Abstract';
@@ -484,6 +537,7 @@
         _self.transportSuccess = function(envelope, request, responses) {
             if (!request.expired) {
                 this.clearTimeout(request.timeout);
+                this._debug('Transport', this.getType(), 'cancelled waiting for message replies');
                 this.complete(request, true, request.metaConnect);
                 if (responses && responses.length > 0) {
                     envelope.onSuccess(responses);
@@ -498,6 +552,7 @@
         _self.transportFailure = function(envelope, request, failure) {
             if (!request.expired) {
                 this.clearTimeout(request.timeout);
+                this._debug('Transport', this.getType(), 'cancelled waiting for failed message replies');
                 this.complete(request, false, request.metaConnect);
                 envelope.onFailure(request.xhr, envelope.messages, failure);
             }
@@ -647,7 +702,7 @@
                     url: envelope.url,
                     sync: envelope.sync,
                     headers: this.getConfiguration().requestHeaders,
-                    body: JSON.stringify(envelope.messages),
+                    body: this.convertToJSON(envelope.messages),
                     onSuccess: function(response) {
                         self._debug('Transport', self.getType(), 'received response', response);
                         var success = false;
@@ -683,7 +738,7 @@
                         };
                         failure.httpCode = self.xhrStatus(request.xhr);
                         if (sameStack) {
-                            // Keep the semantic of calling response callbacks asynchronously after the request
+                            // Keep the semantic of calling callbacks asynchronously.
                             self.setTimeout(function() {
                                 self.transportFailure(envelope, request, failure);
                             }, 0);
@@ -693,14 +748,17 @@
                     }
                 });
                 sameStack = false;
+                return true;
             } catch (x) {
+                this._debug('Transport', this.getType(), 'exception:', x);
                 _supportsCrossDomain = false;
-                // Keep the semantic of calling response callbacks asynchronously after the request
+                // Keep the semantic of calling callbacks asynchronously.
                 this.setTimeout(function() {
                     self.transportFailure(envelope, request, {
                         exception: x
                     });
                 }, 0);
+                return false;
             }
         };
 
@@ -772,7 +830,7 @@
                     if (length === 1) {
                         var x = 'Bayeux message too big (' + urlLength + ' bytes, max is ' + maxLength + ') ' +
                             'for transport ' + this.getType();
-                        // Keep the semantic of calling response callbacks asynchronously after the request
+                        // Keep the semantic of calling callbacks asynchronously.
                         this.setTimeout(_failTransportFn.call(this, envelope, request, x), 0);
                         return;
                     }
@@ -846,7 +904,7 @@
                             exception: exception
                         };
                         if (sameStack) {
-                            // Keep the semantic of calling response callbacks asynchronously after the request
+                            // Keep the semantic of calling callbacks asynchronously.
                             self.setTimeout(function() {
                                 self.transportFailure(envelopeToSend, request, failure);
                             }, 0);
@@ -856,13 +914,15 @@
                     }
                 });
                 sameStack = false;
+                return true;
             } catch (xx) {
-                // Keep the semantic of calling response callbacks asynchronously after the request
+                // Keep the semantic of calling callbacks asynchronously.
                 this.setTimeout(function() {
                     self.transportFailure(envelopeToSend, request, {
                         exception: xx
                     });
                 }, 0);
+                return false;
             }
         };
 
@@ -893,7 +953,9 @@
                 _webSocketConnected = false;
             }
             _stickyReconnect = true;
-            _context = null;
+            if (init) {
+                _context = null;
+            }
             _connecting = null;
             _connected = false;
         };
@@ -922,6 +984,34 @@
             }
             context.envelopes[messageIds.join(',')] = [envelope, metaConnect];
             this._debug('Transport', this.getType(), 'stored envelope, envelopes', context.envelopes);
+        }
+
+        function _removeEnvelope(context, messageIds) {
+            var removed = false;
+            var envelopes = context.envelopes;
+            for (var j = 0; j < messageIds.length; ++j) {
+                var id = messageIds[j];
+                for (var key in envelopes) {
+                    if (envelopes.hasOwnProperty(key)) {
+                        var ids = key.split(',');
+                        var index = Utils.inArray(id, ids);
+                        if (index >= 0) {
+                            removed = true;
+                            ids.splice(index, 1);
+                            var envelope = envelopes[key][0];
+                            var metaConnect = envelopes[key][1];
+                            delete envelopes[key];
+                            if (ids.length > 0) {
+                                envelopes[ids.join(',')] = [envelope, metaConnect];
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (removed) {
+                this._debug('Transport', this.getType(), 'removed envelope, envelopes', envelopes);
+            }
         }
 
         function _websocketConnect(context) {
@@ -1009,20 +1099,52 @@
             this._debug('Transport', this.getType(), 'configured callbacks on', context);
         }
 
+        function _onTransportTimeout(context, message, delay) {
+            var result = this._notifyTransportTimeout([message]);
+            if (result > 0) {
+                this._debug('Transport', this.getType(), 'extended waiting for message replies:', result, 'ms');
+                var self = this;
+                context.timeouts[message.id] = this.setTimeout(function() {
+                    _onTransportTimeout.call(self, context, message, delay + result);
+                }, result);
+            } else {
+                this._debug('Transport', this.getType(), 'expired waiting for message reply', message.id, ':', delay, 'ms');
+                _forceClose.call(this, context, {code: 1000, reason: 'Message Timeout'});
+            }
+        }
+
         function _webSocketSend(context, envelope, metaConnect) {
-            var json = JSON.stringify(envelope.messages);
+            var self = this;
+
+            try {
+                var json = this.convertToJSON(envelope.messages);
+            } catch (x) {
+                this._debug('Transport', this.getType(), 'exception:', x);
+                var mIds = [];
+                for (var j = 0; j < envelope.messages.length; ++j) {
+                    var m = envelope.messages[j];
+                    mIds.push(m.id);
+                }
+                _removeEnvelope.call(this, context, mIds);
+                // Keep the semantic of calling callbacks asynchronously.
+                this.setTimeout(function() {
+                    self._notifyFailure(envelope.onFailure, context, envelope.messages, {
+                        exception: x
+                    });
+                }, 0);
+                return;
+            }
+
             context.webSocket.send(json);
             this._debug('Transport', this.getType(), 'sent', envelope, '/meta/connect =', metaConnect);
 
             // Manage the timeout waiting for the response.
-            var maxDelay = this.getConfiguration().maxNetworkDelay;
-            var delay = maxDelay;
+            var delay = this.getConfiguration().maxNetworkDelay;
             if (metaConnect) {
                 delay += this.getAdvice().timeout;
                 _connected = true;
             }
 
-            var self = this;
             var messageIds = [];
             for (var i = 0; i < envelope.messages.length; ++i) {
                 (function() {
@@ -1030,14 +1152,13 @@
                     if (message.id) {
                         messageIds.push(message.id);
                         context.timeouts[message.id] = self.setTimeout(function() {
-                            _cometd._debug('Transport', self.getType(), 'timing out message', message.id, 'after', delay, 'on', context);
-                            _forceClose.call(self, context, {code: 1000, reason: 'Message Timeout'});
+                            _onTransportTimeout.call(self, context, message, delay);
                         }, delay);
                     }
                 })();
             }
 
-            this._debug('Transport', this.getType(), 'waiting at most', delay, 'ms for messages', messageIds, 'maxNetworkDelay', maxDelay, ', timeouts:', context.timeouts);
+            this._debug('Transport', this.getType(), 'started waiting for message replies', delay, 'ms, messageIds:', messageIds, ', timeouts:', context.timeouts);
         }
 
         _self._notifySuccess = function(fn, messages) {
@@ -1062,7 +1183,7 @@
                     _webSocketSend.call(this, context, envelope, metaConnect);
                 }
             } catch (x) {
-                // Keep the semantic of calling response callbacks asynchronously after the request.
+                // Keep the semantic of calling callbacks asynchronously.
                 var self = this;
                 this.setTimeout(function() {
                     _forceClose.call(self, context, {
@@ -1124,31 +1245,7 @@
             }
 
             // Remove the envelope corresponding to the messages.
-            var removed = false;
-            var envelopes = context.envelopes;
-            for (var j = 0; j < messageIds.length; ++j) {
-                var id = messageIds[j];
-                for (var key in envelopes) {
-                    if (envelopes.hasOwnProperty(key)) {
-                        var ids = key.split(',');
-                        var index = Utils.inArray(id, ids);
-                        if (index >= 0) {
-                            removed = true;
-                            ids.splice(index, 1);
-                            var envelope = envelopes[key][0];
-                            var metaConnect = envelopes[key][1];
-                            delete envelopes[key];
-                            if (ids.length > 0) {
-                                envelopes[ids.join(',')] = [envelope, metaConnect];
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            if (removed) {
-                this._debug('Transport', this.getType(), 'removed envelope, envelopes', envelopes);
-            }
+            _removeEnvelope.call(this, context, messageIds);
 
             this._notifySuccess(_successCallback, messages);
 
@@ -1254,6 +1351,7 @@
         var _internalBatch = false;
         var _listenerId = 0;
         var _listeners = {};
+        var _transportListeners = {};
         var _backoff = 0;
         var _scheduledSend = null;
         var _extensions = [];
@@ -1282,6 +1380,7 @@
             autoBatch: false,
             urls: {},
             maxURILength: 2000,
+            maxSendBayeuxMessageSize: 8192,
             advice: {
                 timeout: 60000,
                 interval: 0,
@@ -1348,6 +1447,61 @@
 
         function _isString(value) {
             return Utils.isString(value);
+        }
+
+        function _isAlpha(char) {
+            if (char >= 'A' && char <= 'Z') {
+                return true;
+            }
+            return char >= 'a' && char <= 'z';
+        }
+
+        function _isNumeric(char) {
+            return char >= '0' && char <= '9';
+        }
+
+        function _isAllowed(char) {
+            switch (char) {
+                case ' ':
+                case '!':
+                case '#':
+                case '$':
+                case '(':
+                case ')':
+                case '*':
+                case '+':
+                case '-':
+                case '.':
+                case '/':
+                case '@':
+                case '_':
+                case '{':
+                case '~':
+                case '}':
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        function _isValidChannel(value) {
+            if (!_isString(value)) {
+                return false;
+            }
+            if (value.length < 2) {
+                return false;
+            }
+            if (value.charAt(0) !== '/') {
+                return false;
+            }
+            for (var i = 1; i < value.length; ++i) {
+                var char = value.charAt(i);
+                if (_isAlpha(char) || _isNumeric(char) || _isAllowed(char)) {
+                    continue;
+                }
+                return false;
+            }
+            return true;
         }
 
         function _isFunction(value) {
@@ -2739,6 +2893,57 @@
         };
 
         /**
+         * Adds a transport listener for the specified transport event,
+         * executing the given callback when the event happens.
+         *
+         * The currently supported event is `timeout`.
+         *
+         * The callback function takes an array of messages for which
+         * the event happened.
+         *
+         * For the 'timeout' event, the callback function may return a
+         * positive value that extends the wait for message replies by
+         * the returned amount, in milliseconds.
+         *
+         * @param {String} event the type of transport event
+         * @param {Function} callback the function associate to the given transport event
+         * @see #removeTransportListener
+         */
+        this.addTransportListener = function(event, callback) {
+            if (event !== 'timeout') {
+                throw 'Unsupported event ' + event;
+            }
+            var callbacks = _transportListeners[event];
+            if (!callbacks) {
+                _transportListeners[event] = callbacks = [];
+            }
+            callbacks.push(callback);
+        }
+
+        /**
+         * Removes the transport listener for the specified transport event.
+         * @param {String} event the type of transport event
+         * @param {Function} callback the function disassociate from the given transport event
+         * @return {boolean} whether the disassociation was successful
+         * @see #addTransportListener
+         */
+        this.removeTransportListener = function(event, callback) {
+            var callbacks = _transportListeners[event];
+            if (callbacks) {
+                var index = callbacks.indexOf(callback);
+                if (index >= 0) {
+                    callbacks.splice(index, 1);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        this._getTransportListeners = function(event) {
+            return _transportListeners[event];
+        }
+
+        /**
          * Adds a listener for bayeux messages, performing the given callback in the given scope
          * when a message for the given channel arrives.
          * @param channel the channel the listener is interested to
@@ -2794,8 +2999,8 @@
             if (arguments.length < 2) {
                 throw 'Illegal arguments number: required 2, got ' + arguments.length;
             }
-            if (!_isString(channel)) {
-                throw 'Illegal argument type: channel must be a string';
+            if (!_isValidChannel(channel)) {
+                throw 'Illegal argument: invalid channel ' + channel;
             }
             if (_isDisconnected()) {
                 throw 'Illegal state: disconnected';
@@ -2834,6 +3039,18 @@
                 _cometd._putCallback(message.id, subscribeCallback);
 
                 _queueSend(message);
+            } else {
+                if (_isFunction(subscribeCallback)) {
+                    // Keep the semantic of calling callbacks asynchronously.
+                    _cometd.setTimeout(function() {
+                        _notifyCallback(subscribeCallback, {
+                            id: _nextMessageId(),
+                            successful: true,
+                            channel: '/meta/subscribe',
+                            subscription: channel
+                        });
+                    }, 0);
+                }
             }
 
             return subscription;
@@ -2877,6 +3094,18 @@
                 _cometd._putCallback(message.id, unsubscribeCallback);
 
                 _queueSend(message);
+            } else {
+                if (_isFunction(unsubscribeCallback)) {
+                    // Keep the semantic of calling callbacks asynchronously.
+                    _cometd.setTimeout(function() {
+                        _notifyCallback(unsubscribeCallback, {
+                            id: _nextMessageId(),
+                            successful: true,
+                            channel: '/meta/unsubscribe',
+                            subscription: channel
+                        });
+                    }, 0);
+                }
             }
         };
 
@@ -2907,8 +3136,8 @@
             if (arguments.length < 1) {
                 throw 'Illegal arguments number: required 1, got ' + arguments.length;
             }
-            if (!_isString(channel)) {
-                throw 'Illegal argument type: channel must be a string';
+            if (!_isValidChannel(channel)) {
+                throw 'Illegal argument: invalid channel ' + channel;
             }
             if (/^\/meta\//.test(channel)) {
                 throw 'Illegal argument: cannot publish to meta channels';
@@ -3012,6 +3241,9 @@
                 target = '/' + target;
             }
             var channel = '/service' + target;
+            if (!_isValidChannel(channel)) {
+                throw 'Illegal argument: invalid target ' + target;
+            }
 
             var bayeuxMessage = {
                 id: _nextMessageId(),

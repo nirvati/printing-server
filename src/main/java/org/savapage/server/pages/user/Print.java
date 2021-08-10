@@ -38,6 +38,7 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.UserGroupAccountDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
@@ -55,6 +56,7 @@ import org.savapage.core.i18n.JobTicketNounEnum;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutAdjectiveEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
+import org.savapage.core.i18n.PrintOutVerbEnum;
 import org.savapage.core.json.JobTicketProperties;
 import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.DocStoreService;
@@ -106,6 +108,15 @@ public class Print extends AbstractUserPage {
     /** */
     private static final UserGroupAccountDao USER_GROUP_ACCOUNT_DAO =
             ServiceContext.getDaoContext().getUserGroupAccountDao();
+
+    private static final String ID_BTN_JOBTICKET_DATETIME_DEFAULT =
+            "btn-jobticket-datetime-default";
+
+    /** */
+    private static final String ID_BTN_PRINT_AND_CLOSE = "btn-print-and-close";
+    /** */
+    private static final String ID_BTN_PRINT_AND_CLOSE_POPUP =
+            "btn-print-and-close-popup";
 
     /** */
     private static final String ID_DELETE_PAGES = "delete-pages-after-print";
@@ -260,10 +271,15 @@ public class Print extends AbstractUserPage {
                             JOBTICKET_SERVICE.getDeliveryDaysOfWeek(),
                             getLocale()));
 
-            MarkupHelper.modifyComponentAttr(
-                    helper.addTransparant("btn-jobticket-datetime-default"),
-                    MarkupHelper.ATTR_TITLE,
-                    HtmlButtonEnum.DEFAULT.uiText(getLocale()));
+            if (cm.getConfigInt(Key.JOBTICKET_DELIVERY_DAYS, 0) > 0) {
+                MarkupHelper.modifyComponentAttr(
+                        helper.addTransparant(
+                                ID_BTN_JOBTICKET_DATETIME_DEFAULT),
+                        MarkupHelper.ATTR_TITLE,
+                        HtmlButtonEnum.DEFAULT.uiText(getLocale()));
+            } else {
+                helper.discloseLabel(ID_BTN_JOBTICKET_DATETIME_DEFAULT);
+            }
 
             helper.encloseLabel("jobticket-delivery-time-hr", "",
                     cm.isConfigValue(Key.JOBTICKET_DELIVERY_TIME_ENABLE));
@@ -341,7 +357,8 @@ public class Print extends AbstractUserPage {
         final Integer privsLetterhead = ACCESS_CONTROL_SERVICE
                 .getPrivileges(userIdDto, ACLOidEnum.U_LETTERHEAD);
 
-        helper.encloseLabel("prompt-letterhead", localized("prompt-letterhead"),
+        helper.encloseLabel("prompt-letterhead",
+                NounEnum.LETTERHEAD.uiText(getLocale()),
                 privsLetterhead == null || ACLPermissionEnum.READER
                         .isPresent(privsLetterhead.intValue()));
 
@@ -350,15 +367,16 @@ public class Print extends AbstractUserPage {
                 ACLRoleEnum.JOB_TICKET_CREATOR)
                 && !ACCESS_CONTROL_SERVICE.hasAccess(userIdDto,
                         ACLRoleEnum.PRINT_CREATOR)) {
-            add(new Label("title", localized("title_ticket")));
+            add(new Label("title",
+                    JobTicketNounEnum.TICKET.uiText(getLocale())));
         } else {
-            add(new Label("title", localized("title_print")));
+            add(new Label("title", HtmlButtonEnum.PRINT.uiText(getLocale())));
         }
 
         //
         if (cm.isConfigValue(Key.JOBTICKET_COPIER_ENABLE)) {
             helper.encloseLabel("jobticket-type",
-                    localized("jobticket-type-prompt"), true);
+                    NounEnum.TYPE.uiText(getLocale()), true);
             helper.addModifyLabelAttr("jobticket-type-print",
                     MarkupHelper.ATTR_VALUE, "PRINT");
             helper.addModifyLabelAttr("jobticket-type-copy",
@@ -433,8 +451,14 @@ public class Print extends AbstractUserPage {
 
             if (!jobTicketDomains.isEmpty()) {
 
-                final JobTicketProperties ticketProps =
-                        USER_SERVICE.getJobTicketPropsLatest(userIdDto);
+                final JobTicketProperties ticketProps;
+
+                if (cm.isConfigValue(Key.JOBTICKET_DOMAINS_RETAIN)) {
+                    ticketProps =
+                            USER_SERVICE.getJobTicketPropsLatest(userIdDto);
+                } else {
+                    ticketProps = new JobTicketProperties();
+                }
 
                 helper.encloseLabel("label-jobticket-domain",
                         JobTicketNounEnum.DOMAIN.uiText(getLocale()), true);
@@ -512,6 +536,23 @@ public class Print extends AbstractUserPage {
         }
 
         //
+        final WebAppTypeEnum webAppType = getSessionWebAppType();
+        final boolean isMailPrintTicketOperator =
+                webAppType == WebAppTypeEnum.MAILTICKETS || ConfigManager
+                        .isMailPrintTicketingEnabled(userIdDto.getUserId());
+
+        helper.encloseLabel(ID_BTN_PRINT_AND_CLOSE_POPUP,
+                HtmlButtonEnum.PRINT.uiText(getLocale(), true),
+                isMailPrintTicketOperator);
+        helper.encloseLabel(ID_BTN_PRINT_AND_CLOSE,
+                this.localized("button-print-and-close"),
+                !isMailPrintTicketOperator);
+
+        helper.addLabel("sp-popup-print-and-close-title", NounEnum.COST);
+
+        helper.addButton("btn-print-and-close-popup-cancel",
+                HtmlButtonEnum.CANCEL);
+        //
         helper.addButton("button-send-jobticket", HtmlButtonEnum.SEND);
         helper.addButton("button-inbox", HtmlButtonEnum.BACK);
         helper.addLabel("label-invoicing", NounEnum.INVOICING);
@@ -521,6 +562,9 @@ public class Print extends AbstractUserPage {
                 MarkupHelper.ATTR_TITLE,
                 localized("sp-jobticket-copy-pages-tooltip"));
 
+        helper.addLabel("print-page-ranges-label",
+                NounEnum.PAGE.uiText(getLocale(), true));
+
         MarkupHelper.modifyLabelAttr(
                 helper.addModifyLabelAttr("print-page-ranges",
                         MarkupHelper.ATTR_PLACEHOLDER,
@@ -528,8 +572,29 @@ public class Print extends AbstractUserPage {
                 MarkupHelper.ATTR_TITLE,
                 localized("sp-print-page-ranges-tooltip"));
 
-        //
         helper.encloseLabel("print-account-separator", "", hasInvoicingOptions);
+
+        helper.addLabel("title_ticket",
+                JobTicketNounEnum.TICKET.uiText(getLocale()));
+        helper.addLabel("header-printer", NounEnum.PRINTER);
+        helper.addLabel("print-title", NounEnum.TITLE);
+        helper.addLabel("print-job-document", NounEnum.DOCUMENT);
+
+        helper.addLabel("print-copies-1",
+                PrintOutNounEnum.COPY.uiText(getLocale(), true));
+        helper.addLabel("print-copies-2",
+                PrintOutNounEnum.COPY.uiText(getLocale(), true));
+        helper.addLabel("print-copies-3",
+                PrintOutNounEnum.COPY.uiText(getLocale(), true));
+
+        helper.addLabel("prompt-collate",
+                PrintOutVerbEnum.COLLATE.uiText(getLocale()));
+
+        helper.addButton("button-cancel", HtmlButtonEnum.CANCEL);
+        helper.addButton("button-ok", HtmlButtonEnum.OK);
+
+        helper.addLabel("prompt-jobticket-remark",
+                NounEnum.REMARK.uiText(getLocale(), true));
     }
 
     /**

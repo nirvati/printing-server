@@ -44,9 +44,11 @@ import org.codehaus.jackson.JsonProcessingException;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.DeviceDao;
 import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
+import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.enums.ProxyPrintAuthModeEnum;
 import org.savapage.core.dao.helpers.JsonPrintDelegation;
@@ -57,6 +59,7 @@ import org.savapage.core.dto.IppMediaSourceCostDto;
 import org.savapage.core.dto.JobTicketLabelDto;
 import org.savapage.core.dto.PrintDelegationDto;
 import org.savapage.core.i18n.JobTicketNounEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.imaging.EcoPrintPdfTaskPendingException;
 import org.savapage.core.inbox.InboxInfoDto;
@@ -84,7 +87,9 @@ import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.AccountTrxInfo;
 import org.savapage.core.services.helpers.AccountTrxInfoSet;
 import org.savapage.core.services.helpers.ExternalSupplierInfo;
+import org.savapage.core.services.helpers.InboxContext;
 import org.savapage.core.services.helpers.InboxSelectScopeEnum;
+import org.savapage.core.services.helpers.MailTicketOperData;
 import org.savapage.core.services.helpers.PageRangeException;
 import org.savapage.core.services.helpers.PrintScalingEnum;
 import org.savapage.core.services.helpers.PrinterAttrLookup;
@@ -142,14 +147,10 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         PRINT, COPY
     }
 
-    /**
-     *
-     * @author Rijk Ravestein
-     *
-     */
+    /** */
     @JsonInclude(Include.NON_NULL)
     private static class DtoReq extends AbstractDto {
-
+        private Boolean calcCostMode;
         private String user;
         private String printer;
         private String readerName;
@@ -178,6 +179,15 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         private Map<String, String> options;
         private PrintDelegationDto delegation;
         private Long accountId;
+
+        public Boolean getCalcCostMode() {
+            return calcCostMode;
+        }
+
+        @SuppressWarnings("unused")
+        public void setCalcCostMode(Boolean calcCostMode) {
+            this.calcCostMode = calcCostMode;
+        }
 
         @SuppressWarnings("unused")
         public String getUser() {
@@ -440,6 +450,21 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         }
     }
 
+    /** */
+    @JsonInclude(Include.NON_NULL)
+    private static class DtoRspCost extends AbstractDto {
+        private String cost;
+
+        @SuppressWarnings("unused")
+        public String getCost() {
+            return cost;
+        }
+
+        public void setCost(String cost) {
+            this.cost = cost;
+        }
+    }
+
     /**
      * Trims and optionally sanitizes the print job name with extra characters
      * to substitute. See Mantis #987.
@@ -514,6 +539,9 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         }
 
         final boolean isJobTicket = BooleanUtils.isTrue(dtoReq.getJobTicket());
+        if (isJobTicket && !validateJobTicket(dtoReq)) {
+            return;
+        }
 
         final ConfigManager cm = ConfigManager.instance();
 
@@ -664,6 +692,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             }
         }
         //
+        final InboxContext inboxContext = getInboxContext(requestingUser);
         final InboxInfoDto jobs;
 
         final int iJobIndex = dtoReq.getJobIndex().intValue();
@@ -683,7 +712,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         } else {
 
-            jobs = INBOX_SERVICE.getInboxInfo(requestingUser);
+            jobs = INBOX_SERVICE.getInboxInfo(inboxContext);
 
             if (iJobIndex > jobs.jobCount() - 1) {
                 setApiResultText(ApiResultCodeEnum.ERROR, String.format(
@@ -788,6 +817,9 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
          */
         final ProxyPrintInboxReq printReq = new ProxyPrintInboxReq(iVanillaJob);
 
+        printReq.setIdUser(lockedUser.getId());
+        printReq.setIdUserDocLog(SpSession.get().getUserDbKeyDocLog());
+
         printReq.setCollate(dtoReq.getCollate());
         printReq.setJobName(dtoReq.getJobName());
         printReq.setPageRanges(ranges);
@@ -798,7 +830,6 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         printReq.setRemoveGraphics(dtoReq.getRemoveGraphics());
         printReq.setEcoPrintShadow(dtoReq.getEcoprint());
         printReq.setLocale(this.getLocale());
-        printReq.setIdUser(lockedUser.getId());
         printReq.setClearScope(clearScope);
 
         if (isJobTicketDomainEnabled
@@ -828,6 +859,11 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         printReq.setLocalBooklet(!isJobTicket
                 && ProxyPrintInboxReq.isBooklet(dtoReq.getOptions())
                 && PRINTER_SERVICE.isClientSideBooklet(printer));
+
+        final WebAppTypeEnum webAppType = this.getSessionWebAppType();
+        if (webAppType == WebAppTypeEnum.MAILTICKETS) {
+            this.onExtMailTicketsPrint(printReq, inboxContext);
+        }
 
         final boolean isDelegatedPrint = applyPrintDelegation(dtoReq, printReq);
         final boolean isSharedAccountPrint;
@@ -953,12 +989,25 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         printReq.setCostResult(costResult);
 
+        // Cost mode?
+        if (BooleanUtils.isTrue(dtoReq.getCalcCostMode())) {
+            final DtoRspCost rsp = new DtoRspCost();
+            rsp.setCost(BigDecimalUtil.localize(costResult.getCostTotal(), 2,
+                    getLocale(), currencySymbol, true));
+            this.setResponse(rsp);
+            this.setApiResultOk();
+            return;
+        }
+
         /*
          * Save ticket labels as latest choice.
          */
         if (isJobTicketDomainEnabled) {
             final JobTicketProperties ticketProps = new JobTicketProperties();
-            ticketProps.setDomain(dtoReq.getJobTicketDomain());
+            if (ConfigManager.instance()
+                    .isConfigValue(Key.JOBTICKET_DOMAINS_RETAIN)) {
+                ticketProps.setDomain(dtoReq.getJobTicketDomain());
+            }
             USER_SERVICE.setJobTicketPropsLatest(
                     getRetrieveUser(requestingUser, lockedUser), ticketProps);
         }
@@ -1284,6 +1333,27 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
         }
 
         return true;
+    }
+
+    /**
+     * Validates and corrects input for Copy Job ticket.
+     *
+     * @param dtoReq
+     *            The user request.
+     * @return {@code true} when input is valid.
+     */
+    private boolean validateJobTicket(final DtoReq dtoReq) {
+
+        final boolean isValid = !ConfigManager.instance()
+                .isConfigValue(Key.JOBTICKET_DELIVERY_DATETIME_ENABLE)
+                || dtoReq.getJobTicketDate() != null;
+
+        if (!isValid) {
+            this.setApiResult(ApiResultCodeEnum.ERROR,
+                    "msg-value-cannot-be-empty",
+                    NounEnum.DATE.uiText(getLocale()));
+        }
+        return isValid;
     }
 
     /**
@@ -1659,10 +1729,9 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
         if (dtoReq.getJobTicketDate() == null) {
             if (isJobTicketDateTime) {
-                deliveryDate = new Date();
-            } else {
-                deliveryDate = null;
+                throw new SpException("Job Ticket delivery date is missing.");
             }
+            deliveryDate = null;
         } else {
             deliveryDate = new Date(dtoReq.getJobTicketDate().longValue());
         }
@@ -1873,6 +1942,29 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             ApiRequestHelper.addUserStats(this.getUserData(), lockedUser,
                     this.getLocale(), currencySymbol);
         }
+    }
+
+    /**
+     * Sets the {@link ExternalSupplierInfo} for
+     * {@link WebAppTypeEnum#MAILTICKETS} .
+     *
+     * @param printReq
+     *            Print request.
+     * @param inboxContext
+     *            Inbox context.
+     */
+    private void onExtMailTicketsPrint(final ProxyPrintInboxReq printReq,
+            final InboxContext inboxContext) {
+
+        final ExternalSupplierInfo supplierInfo = new ExternalSupplierInfo();
+        supplierInfo.setSupplier(ExternalSupplierEnum.MAIL_TICKET_OPER);
+
+        final MailTicketOperData data = new MailTicketOperData();
+        data.setOperator(inboxContext.getUserIdInbox());
+
+        supplierInfo.setData(data);
+
+        printReq.setSupplierInfo(supplierInfo);
     }
 
     /**

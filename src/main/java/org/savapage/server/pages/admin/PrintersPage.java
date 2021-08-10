@@ -160,7 +160,12 @@ public final class PrintersPage extends AbstractAdminListPage {
             @JsonProperty("text")
             private String containingText = null;
 
+            @JsonProperty("group")
+            private String printerGroup = null;
+
             private Boolean disabled = null;
+            private Boolean ticket = null;
+            private Boolean internal = null;
             private Boolean deleted = null;
 
             public String getContainingText() {
@@ -172,6 +177,15 @@ public final class PrintersPage extends AbstractAdminListPage {
                 this.containingText = containingText;
             }
 
+            public String getPrinterGroup() {
+                return printerGroup;
+            }
+
+            @SuppressWarnings("unused")
+            public void setPrinterGroup(String printerGroup) {
+                this.printerGroup = printerGroup;
+            }
+
             public Boolean getDisabled() {
                 return disabled;
             }
@@ -179,6 +193,24 @@ public final class PrintersPage extends AbstractAdminListPage {
             @SuppressWarnings("unused")
             public void setDisabled(Boolean disabled) {
                 this.disabled = disabled;
+            }
+
+            public Boolean getTicket() {
+                return ticket;
+            }
+
+            @SuppressWarnings("unused")
+            public void setTicket(Boolean ticket) {
+                this.ticket = ticket;
+            }
+
+            public Boolean getInternal() {
+                return internal;
+            }
+
+            @SuppressWarnings("unused")
+            public void setInternal(Boolean internal) {
+                this.internal = internal;
             }
 
             public Boolean getDeleted() {
@@ -346,8 +378,14 @@ public final class PrintersPage extends AbstractAdminListPage {
         /**
          * @param helper
          *            Mark-up helper.
-         * @param printer
-         *            Printer.
+         * @param enabled
+         *            {@code true} if enabled.
+         * @param png
+         *            PNG source (src).
+         * @param widImg
+         *            Wicket ID.
+         * @param nounTitle
+         *            Title.
          */
         private void addDocStoreImg(final MarkupHelper helper,
                 final boolean enabled, final String png, final String widImg,
@@ -472,6 +510,9 @@ public final class PrintersPage extends AbstractAdminListPage {
 
             labelWrk = helper.addModifyLabelAttr("printerImage",
                     MarkupHelper.ATTR_SRC, printerImg.urlPath());
+
+            MarkupHelper.modifyLabelAttr(labelWrk, MarkupHelper.ATTR_TITLE,
+                    printerImg.uiToolTip(getLocale()));
 
             String assocTerminal = null;
             String assocCardReader = null;
@@ -955,7 +996,10 @@ public final class PrintersPage extends AbstractAdminListPage {
 
         final PrinterDao.ListFilter filter = new PrinterDao.ListFilter();
         filter.setContainingText(req.getSelect().getContainingText());
+        filter.setPrinterGroup(req.getSelect().getPrinterGroup());
         filter.setDeleted(req.getSelect().getDeleted());
+        filter.setInternal(req.getSelect().getInternal());
+        filter.setJobTicket(req.getSelect().getTicket());
         filter.setDisabled(req.getSelect().getDisabled());
 
         final long printerCount = printerDao.getListCount(filter);

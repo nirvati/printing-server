@@ -24,24 +24,32 @@ the License, or (at your option) any later version.
 		<img onload="org.savapage.removeSpinnerL(this)" src="" /> <img
 			onload="org.savapage.removeSpinnerL(this)" src="" /> <img
 			onload="org.savapage.removeSpinnerL(this)" src="" />
-		<wicket:enclosure child="canvas-browser-img">
-			<div id="sp-canvas-browser-img-div"
-				style="margin-left: auto; margin-right: auto;">
-				<canvas wicket:id="canvas-browser-img" id="sp-canvas-browser-img" />
-			</div>
-		</wicket:enclosure>
+		<div id="sp-canvas-browser-img-div"
+			style="margin-left: auto; margin-right: auto;">
+			<canvas id="sp-canvas-browser-img" />
+			<div id="sp-canvas-browser-img-curtain"
+				style="background-color: white; opacity: 0.0; z-index: 999;" />
+		</div>
 	</div>
 </div>
 
 <div data-role="footer" id="footer-browser" data-position="fixed"
 	style="padding-top: 0px; margin-top: 0px;">
-	<div wicket:id="browser-footer-div" style="margin-top: 0px;">
+	<div wicket:id="browser-footer-div" id="footer-browser-div"
+		style="margin-top: 0px;">
 		<input type="range" id="browser-slider" value="0" min="0" max="0" />
 		<div data-role="navbar">
 			<ul>
-				<li><a href="#" id="browser-back" data-icon="back"
-						data-rel="back" data-direction="reverse" title=""
-						wicket:id="btn-back" /></li>
+				<li>
+					<a href="#sp-browser-page-actions" data-rel="popup"
+						wicket:id="btn-more-actions"
+						class="ui-btn ui-btn-icon-top ui-icon-main-arr-action-popup">
+					</a>
+				</li>
+				<li>
+					<a href="#" id="browser-back" data-icon="back" data-rel="back"
+						data-direction="reverse" title="" wicket:id="btn-back" />
+				</li>
 				<li>
 					<button id="browser-delete"
 						class="ui-btn ui-btn-icon-top ui-icon-delete" title=""
@@ -62,14 +70,49 @@ the License, or (at your option) any later version.
 	</div>
 </div>
 
+<div data-role="popup" data-arrow="false" id="sp-browser-page-actions">
+
+	<ul data-role="listview" data-inset="true" data-type="vertical"
+		data-icon="false">
+		<wicket:enclosure child="btn-draw">
+			<li>
+				<a href="#" id="sp-browser-page-draw"
+					class="ui-btn ui-btn-icon-left ui-icon-edit">
+					&nbsp;<span wicket:id="btn-draw" />
+				</a>
+			</li>
+		</wicket:enclosure>
+		<li>
+			<a href="#" id="sp-canvas-drawing-zoomin"
+				class="ui-btn ui-btn-icon-left ui-icon-main-browse-canvas-zoom-in">
+				&nbsp;<span wicket:id="btn-zoom-in" />
+			</a>
+		</li>
+		<li>
+			<a href="#" id="sp-canvas-drawing-zoomout"
+				class="ui-btn ui-btn-icon-left ui-icon-main-browse-canvas-zoom-out">
+				&nbsp;<span wicket:id="btn-zoom-out" />
+			</a>
+		</li>
+		<li>
+			<a href="#" id="sp-canvas-drawing-unzoom"
+				class="ui-btn ui-btn-icon-left ui-icon-main-browse-canvas-unzoom">
+				&nbsp;<span wicket:id="btn-unzoom" />
+			</a>
+		</li>
+	</ul>
+</div>
+
 <wicket:enclosure child="tools-panel">
-	<div data-role="panel" data-position-fixed="true" style=""
+	<div data-role="panel" data-position="left" style=""
 		data-dismissible="false" data-display="overlay"
-		wicket:id="tools-panel" id="sp-canvas-tools-panel">
+		data-swipe-close="true" wicket:id="tools-panel"
+		id="sp-canvas-tools-panel">
 
 		<fieldset data-role="controlgroup" data-type="horizontal"
 			class="ui-mini" style="margin-top: -5px">
-			<label for="sp-canvas-use-brush" style="see:java;" wicket:id="checkbox-brush">
+			<label for="sp-canvas-use-brush" style="see: java;"
+				wicket:id="checkbox-brush">
 				<span
 					class="ui-icon-main-browse-canvas-brush ui-btn-icon-notext sp-inline-icon" />
 			</label>
@@ -96,7 +139,7 @@ the License, or (at your option) any later version.
 		<div style="margin: 0px; padding: 0px;" class="ui-mini">
 			<fieldset data-role="controlgroup" data-type="horizontal"
 				class="ui-mini">
-				<label for="sp-canvas-drawing-props-fixed" style="see:java;"
+				<label for="sp-canvas-drawing-props-fixed" style="see: java;"
 					wicket:id="checkbox-props-fixed">
 					<span class="ui-icon-lock ui-btn-icon-notext sp-inline-icon" />
 				</label>
@@ -179,11 +222,17 @@ the License, or (at your option) any later version.
 				class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-main-browse-canvas-clear-all">&nbsp;</button>
 			<button id="sp-canvas-drawing-undo-all" wicket:id="btn-undo-all"
 				class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-main-arr-undo">&nbsp;</button>
+		</div>
+		<div data-role="controlgroup"
+			style="margin-top: 10px; margin-left: 0px; margin-right: 0px;"
+			class="ui-mini">
 			<button id="sp-canvas-drawing-save" wicket:id="btn-save"
 				class="ui-btn ui-btn-inline ui-btn-icon-notext ui-icon-main-browse-canvas-save">&nbsp;</button>
 		</div>
 	</div>
+
 </wicket:enclosure>
+
 
 <wicket:remove>
 	<!-- THIS POPUP MUST BE PRESENT IN EVERY PAGE AND DIALOG -->

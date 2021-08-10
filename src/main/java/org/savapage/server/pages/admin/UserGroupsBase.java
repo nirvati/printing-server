@@ -26,8 +26,12 @@ package org.savapage.server.pages.admin;
 
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.ConfigManager;
+import org.savapage.core.config.SystemStatusEnum;
 import org.savapage.core.dao.enums.ACLOidEnum;
-import org.savapage.server.pages.JrExportFileExtButtonPanel;
+import org.savapage.core.i18n.AdjectiveEnum;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PhraseEnum;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.pages.MarkupHelper;
 import org.savapage.server.pages.TooltipPanel;
 
@@ -65,8 +69,27 @@ public final class UserGroupsBase extends AbstractAdminPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
-        if (ConfigManager.instance().isAppReadyToUse()) {
+        helper.addLabel("title", NounEnum.GROUP.uiText(getLocale(), true));
+        helper.addLabel("select-and-sort", PhraseEnum.SELECT_AND_SORT);
 
+        helper.addLabel("prompt-name-containing-text", NounEnum.NAME);
+
+        helper.addLabel("prompt-sort-by", NounEnum.SORTING);
+        helper.addLabel("sort-asc", AdjectiveEnum.ASCENDING);
+        helper.addLabel("sort-desc", AdjectiveEnum.DESCENDING);
+
+        helper.addButton("button-apply", HtmlButtonEnum.APPLY);
+        helper.addButton("button-default", HtmlButtonEnum.DEFAULT);
+
+        //
+        if (ConfigManager.instance()
+                .getSystemStatus() == SystemStatusEnum.SETUP) {
+
+            helper.discloseLabel(WICKET_ID_BUTTON_ADD_REMOVE);
+            helper.encloseLabel(WICKET_ID_TXT_NOT_READY,
+                    localized("warn-not-ready-to-use"), true);
+
+        } else {
             if (hasEditorAccess) {
 
                 helper.encloseLabel(WICKET_ID_BUTTON_ADD_REMOVE,
@@ -82,14 +105,12 @@ public final class UserGroupsBase extends AbstractAdminPage {
             }
 
             helper.discloseLabel(WICKET_ID_TXT_NOT_READY);
-
-        } else {
-            helper.discloseLabel(WICKET_ID_BUTTON_ADD_REMOVE);
-            helper.encloseLabel(WICKET_ID_TXT_NOT_READY,
-                    localized("warn-not-ready-to-use"), true);
         }
 
-        add(new JrExportFileExtButtonPanel("report-button-panel",
-                "sp-btn-user-groups-report"));
+        /*
+         * Reserved for future use.
+         */
+        // add(new JrExportFileExtButtonPanel("report-button-panel",
+        // "sp-btn-user-groups-report"));
     }
 }

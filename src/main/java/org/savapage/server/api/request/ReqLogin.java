@@ -48,6 +48,8 @@ import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.SetupNeededEnum;
+import org.savapage.core.config.SystemStatusEnum;
 import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.UserDao;
@@ -56,6 +58,8 @@ import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.dto.AbstractDto;
 import org.savapage.core.dto.UserIdDto;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.jpa.Entity;
 import org.savapage.core.jpa.User;
@@ -291,7 +295,8 @@ public final class ReqLogin extends ApiRequestMixin {
          * INVARIANT: The application SHOULD be initialized.
          */
         if (!cm.isInitialized()) {
-            setApiResult(ApiResultCodeEnum.ERROR, "msg-login-not-possible");
+            this.setApiResult(ApiResultCodeEnum.ERROR,
+                    "msg-login-not-possible");
             return;
         }
 
@@ -302,25 +307,25 @@ public final class ReqLogin extends ApiRequestMixin {
         if (!cm.isSetupCompleted()) {
             if (webAppType != WebAppTypeEnum.ADMIN
                     || authMode != UserAuthModeEnum.NAME) {
-                setApiResult(ApiResultCodeEnum.ERROR, "msg-login-install-mode");
+                this.setApiResult(ApiResultCodeEnum.ERROR,
+                        "msg-login-install-mode");
                 return;
             }
             if (!ConfigManager.isInternalAdmin(authId)) {
-                setApiResult(ApiResultCodeEnum.ERROR,
+                this.setApiResult(ApiResultCodeEnum.ERROR,
                         "msg-login-as-internal-admin");
                 return;
             }
         }
 
         /*
-         * INVARIANT: If Application is NOT ready-to-use the only login possible
-         * is as admin in the admin application.
+         * INVARIANT: If application must be setup the only login possible is as
+         * "admin" user in the Admin Web App.
          */
-        if (!cm.isAppReadyToUse()) {
-            if (webAppType != WebAppTypeEnum.ADMIN) {
-                setApiResult(ApiResultCodeEnum.ERROR, "msg-login-app-config");
-                return;
-            }
+        if (cm.getSystemStatus() == SystemStatusEnum.SETUP
+                && webAppType != WebAppTypeEnum.ADMIN) {
+            this.setApiResult(ApiResultCodeEnum.ERROR, "msg-login-app-config");
+            return;
         }
 
         final boolean isAuthTokenLoginEnabled =
@@ -335,7 +340,7 @@ public final class ReqLogin extends ApiRequestMixin {
         } else if (authMode == UserAuthModeEnum.OAUTH) {
 
             /*
-             * If user was AOuth Sign-In is enabled
+             * If user was AOuth Sign-In is enabled.
              *
              * TODO: check if OAuth is enabled.
              */
@@ -361,7 +366,7 @@ public final class ReqLogin extends ApiRequestMixin {
 
             if (userDb == null) {
 
-                onLoginFailed(null);
+                this.onLoginFailed(null);
 
             } else if (userDb != null) {
 
@@ -374,10 +379,10 @@ public final class ReqLogin extends ApiRequestMixin {
                     token = null;
                 }
 
-                onUserLoginGranted(getUserData(), session, webAppType, authMode,
-                        session.getUserId(), userDb, token);
+                this.onUserLoginGranted(getUserData(), session, webAppType,
+                        authMode, session.getUserId(), userDb, token);
 
-                setApiResultOk();
+                this.setApiResultOk();
             }
 
         } else {
@@ -398,11 +403,11 @@ public final class ReqLogin extends ApiRequestMixin {
                         userDao.findActiveUserByUserId(session.getUserId());
 
                 if (userDb == null) {
-                    onLoginFailed(null);
+                    this.onLoginFailed(null);
                 } else {
-                    onUserLoginGranted(getUserData(), session, webAppType,
+                    this.onUserLoginGranted(getUserData(), session, webAppType,
                             authMode, session.getUserId(), userDb, null);
-                    setApiResultOk();
+                    this.setApiResultOk();
                 }
 
             } else {
@@ -439,9 +444,10 @@ public final class ReqLogin extends ApiRequestMixin {
         /*
          * INVARIANT: If system maintenance the only login possible is as admin.
          */
-        if (ConfigManager.isSysMaintenance() && session.getUserId() != null
-                && !session.isAdmin()) {
-            setApiResult(ApiResultCodeEnum.ERROR, "msg-login-not-possible");
+        if (ConfigManager.getSystemMode() == SystemModeEnum.MAINTENANCE
+                && session.getUserId() != null && !session.isAdmin()) {
+            this.setApiResult(ApiResultCodeEnum.ERROR,
+                    "msg-login-not-possible");
             return;
         }
 
@@ -521,13 +527,10 @@ public final class ReqLogin extends ApiRequestMixin {
          * INVARIANT: Password can NOT be empty in Name authentication.
          */
         if (authMode == UserAuthModeEnum.NAME && StringUtils.isBlank(authPw)) {
-            onLoginFailed(null);
+            this.onLoginFailed(null);
             return;
         }
 
-        /*
-         *
-         */
         final String remoteAddr = this.getClientIP();
         final boolean isPublicAddress = InetUtils.isPublicAddress(remoteAddr);
 
@@ -539,7 +542,7 @@ public final class ReqLogin extends ApiRequestMixin {
         if (authMode != UserAuthModeEnum.OAUTH
                 && authMode != UserAuthModeEnum.YUBIKEY) { // TEST TEST
             if (!theUserAuth.isAuthModeAllowed(authMode)) {
-                setApiResult(ApiResultCodeEnum.ERROR,
+                this.setApiResult(ApiResultCodeEnum.ERROR,
                         "msg-auth-mode-not-available", authMode.toString());
                 return;
             }
@@ -612,7 +615,7 @@ public final class ReqLogin extends ApiRequestMixin {
             if (webAppType != WebAppTypeEnum.ADMIN
                     || (isPublicAddress && cm.isConfigValue(
                             Key.WEBAPP_INTERNET_ADMIN_AUTH_MODE_ENABLE))) {
-                onLoginFailed("msg-login-denied", webAppType.getUiText(),
+                this.onLoginFailed("msg-login-denied", webAppType.getUiText(),
                         UserAuth.getUiText(authMode), authId, remoteAddr);
                 return;
             }
@@ -626,7 +629,7 @@ public final class ReqLogin extends ApiRequestMixin {
             isAuthenticated = (userAuth != null);
 
             if (!isAuthenticated) {
-                onLoginFailed("msg-login-invalid-password",
+                this.onLoginFailed("msg-login-invalid-password",
                         webAppType.getUiText(), authId, remoteAddr);
                 return;
             }
@@ -639,7 +642,7 @@ public final class ReqLogin extends ApiRequestMixin {
             if (authMode == UserAuthModeEnum.YUBIKEY) {
 
                 if (authId == null || !YubiKeyOTP.isValidOTPFormat(authId)) {
-                    onLoginFailed(null);
+                    this.onLoginFailed(null);
                     return;
                 }
 
@@ -648,7 +651,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 try {
                     userDb = reqLoginYubico(otp, webAppType);
                 } catch (YubicoVerificationException e) {
-                    onLoginFailed("msg-login-yubikey-connection-error",
+                    this.onLoginFailed("msg-login-yubikey-connection-error",
                             webAppType.getUiText(), otp.getPublicId(),
                             e.getMessage());
                 } catch (YubicoValidationFailure e) {
@@ -656,7 +659,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 }
 
                 if (userDb == null) {
-                    onLoginFailed(null);
+                    this.onLoginFailed(null);
                     return;
                 }
                 uid = userDb.getUserId();
@@ -686,7 +689,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  * INVARIANT: User MUST be present in database.
                  */
                 if (userDb == null) {
-                    onLoginFailed("msg-login-invalid-number",
+                    this.onLoginFailed("msg-login-invalid-number",
                             webAppType.getUiText(), authId, remoteAddr);
                     return;
                 }
@@ -710,8 +713,9 @@ public final class ReqLogin extends ApiRequestMixin {
                  */
                 if (userDb == null) {
 
-                    if (ConfigManager.isSysMaintenance()) {
-                        setApiResult(ApiResultCodeEnum.ERROR,
+                    if (ConfigManager
+                            .getSystemMode() == SystemModeEnum.MAINTENANCE) {
+                        this.setApiResult(ApiResultCodeEnum.ERROR,
                                 "msg-login-not-possible");
                     } else {
                         final boolean selfAssoc =
@@ -722,10 +726,10 @@ public final class ReqLogin extends ApiRequestMixin {
                         getUserData().put("authCardSelfAssoc", selfAssoc);
 
                         if (selfAssoc) {
-                            setApiResult(ApiResultCodeEnum.ERROR,
+                            this.setApiResult(ApiResultCodeEnum.ERROR,
                                     "msg-login-unregistered-card");
                         } else {
-                            onLoginFailed("msg-login-card-unknown",
+                            this.onLoginFailed("msg-login-card-unknown",
                                     webAppType.getUiText(),
                                     UserAuth.getUiText(authMode),
                                     normalizedCardNumber, remoteAddr);
@@ -746,7 +750,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  * lazy user insert allowed in this case)
                  */
                 if (webAppType != WebAppTypeEnum.USER) {
-                    onLoginFailed("msg-login-user-not-present",
+                    this.onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
                             UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
@@ -757,7 +761,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  * source (no lazy user insert allowed in this case).
                  */
                 if (allowInternalUsersOnly) {
-                    onLoginFailed("msg-login-user-not-present",
+                    this.onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
                             UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
@@ -768,7 +772,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  * disabled.
                  */
                 if (!isLazyUserInsert) {
-                    onLoginFailed("msg-login-user-not-present",
+                    this.onLoginFailed("msg-login-user-not-present",
                             webAppType.getUiText(),
                             UserAuth.getUiText(authMode), authId, remoteAddr);
                     return;
@@ -781,7 +785,7 @@ public final class ReqLogin extends ApiRequestMixin {
                  * WebApp.
                  */
                 if (webAppType == WebAppTypeEnum.ADMIN && !userDb.getAdmin()) {
-                    onLoginFailed("msg-login-no-admin-rights",
+                    this.onLoginFailed("msg-login-no-admin-rights",
                             webAppType.getUiText(),
                             UserAuth.getUiText(authMode), userDb.getUserId(),
                             remoteAddr);
@@ -792,7 +796,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  * INVARIANT: User MUST be a Person to login.
                  */
                 if (!userDb.getPerson()) {
-                    onLoginFailed("msg-login-no-person", webAppType.getUiText(),
+                    this.onLoginFailed("msg-login-no-person",
+                            webAppType.getUiText(),
                             UserAuth.getUiText(authMode), userDb.getUserId(),
                             remoteAddr);
                     return;
@@ -804,7 +809,8 @@ public final class ReqLogin extends ApiRequestMixin {
                  * INVARIANT: User MUST be active (enabled) at moment of login.
                  */
                 if (USER_SERVICE.isUserFullyDisabled(userDb, onDate)) {
-                    onLoginFailed("msg-login-disabled", webAppType.getUiText(),
+                    this.onLoginFailed("msg-login-disabled",
+                            webAppType.getUiText(),
                             UserAuth.getUiText(authMode), userDb.getUserId(),
                             remoteAddr);
                     return;
@@ -813,46 +819,64 @@ public final class ReqLogin extends ApiRequestMixin {
                 /*
                  * INVARIANT: User Role MUST match Web App Type.
                  */
-                if (webAppType == WebAppTypeEnum.POS) {
+                final ACLRoleEnum webAppTypeRole;
+
+                switch (webAppType) {
+                case POS:
+                    webAppTypeRole = ACLRoleEnum.WEB_CASHIER;
+                    break;
+                case JOBTICKETS:
+                    webAppTypeRole = ACLRoleEnum.JOB_TICKET_OPERATOR;
+                    break;
+                case MAILTICKETS:
+                    webAppTypeRole = ACLRoleEnum.MAIL_TICKET_OPERATOR;
+                    break;
+                case PRINTSITE:
+                    webAppTypeRole = ACLRoleEnum.PRINT_SITE_OPERATOR;
+                    break;
+                default:
+                    webAppTypeRole = null;
+                    break;
+                }
+
+                if (webAppTypeRole != null) {
                     if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
-                            ACLRoleEnum.WEB_CASHIER)) {
-                        onLoginFailed("msg-login-no-access-to-role",
+                            webAppTypeRole)) {
+                        this.onLoginFailed("msg-login-no-access-to-role",
                                 webAppType.getUiText(),
                                 UserAuth.getUiText(authMode),
                                 userDb.getUserId(),
-                                ACLRoleEnum.WEB_CASHIER.uiText(getLocale()),
-                                remoteAddr);
+                                webAppTypeRole.uiText(getLocale()), remoteAddr);
                         return;
                     }
-                } else if (webAppType == WebAppTypeEnum.JOBTICKETS) {
-                    if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
-                            ACLRoleEnum.JOB_TICKET_OPERATOR)) {
-                        onLoginFailed("msg-login-no-access-to-role",
-                                webAppType.getUiText(),
-                                UserAuth.getUiText(authMode),
-                                userDb.getUserId(),
-                                ACLRoleEnum.JOB_TICKET_OPERATOR
-                                        .uiText(getLocale()),
-                                remoteAddr);
-                        return;
+                }
+                /*
+                 * INVARIANT: User and MailTickets Web App can NOT coexist for
+                 * one (1) user.
+                 */
+                if (webAppType.isUserTypeOrVariant()) {
+                    String roleConflict = null;
+                    if (webAppType == WebAppTypeEnum.USER) {
+                        if (WebApp.getWebAppMailTicketsSessions(
+                                userDb.getUserId()) > 0) {
+                            roleConflict = ACLRoleEnum.MAIL_TICKET_OPERATOR
+                                    .uiText(getLocale());
+                        }
+                    } else if (webAppType == WebAppTypeEnum.MAILTICKETS) {
+                        if (WebApp.getWebAppUserSessions(
+                                userDb.getUserId()) > 0) {
+                            roleConflict = NounEnum.USER.uiText(getLocale())
+                                    .toLowerCase();
+                        }
                     }
-                } else if (webAppType == WebAppTypeEnum.PRINTSITE) {
-                    if (!ACCESSCONTROL_SERVICE.hasAccess(userDb,
-                            ACLRoleEnum.PRINT_SITE_OPERATOR)) {
-                        onLoginFailed("msg-login-no-access-to-role",
-                                webAppType.getUiText(),
-                                UserAuth.getUiText(authMode),
-                                userDb.getUserId(),
-                                ACLRoleEnum.PRINT_SITE_OPERATOR
-                                        .uiText(getLocale()),
-                                remoteAddr);
+                    if (roleConflict != null) {
+                        this.setApiResult(ApiResultCodeEnum.WARN,
+                                "msg-login-conflict", roleConflict);
                         return;
                     }
                 }
 
-                /*
-                 * Identify internal user.
-                 */
+                // Identify internal user.
                 isInternalUser = userDb.getInternal();
             }
 
@@ -873,7 +897,7 @@ public final class ReqLogin extends ApiRequestMixin {
                         /*
                          * INVARIANT: Password of Internal User must be correct.
                          */
-                        onLoginFailed("msg-login-invalid-password",
+                        this.onLoginFailed("msg-login-invalid-password",
                                 webAppType.getUiText(), userDb.getUserId(),
                                 remoteAddr);
                         return;
@@ -897,7 +921,7 @@ public final class ReqLogin extends ApiRequestMixin {
                         /*
                          * INVARIANT: Password of External User must be correct.
                          */
-                        onLoginFailed("msg-login-invalid-password",
+                        this.onLoginFailed("msg-login-invalid-password",
                                 webAppType.getUiText(), uid, remoteAddr);
                         return;
                     }
@@ -945,7 +969,7 @@ public final class ReqLogin extends ApiRequestMixin {
                         /*
                          * INVARIANT: PIN can NOT be empty.
                          */
-                        onLoginFailed("msg-login-no-pin-available",
+                        this.onLoginFailed("msg-login-no-pin-available",
                                 webAppType.getUiText(), authId, remoteAddr);
                         return;
                     }
@@ -964,7 +988,7 @@ public final class ReqLogin extends ApiRequestMixin {
                     /*
                      * INVARIANT: PIN must be correct.
                      */
-                    onLoginFailed("msg-login-invalid-pin",
+                    this.onLoginFailed("msg-login-invalid-pin",
                             webAppType.getUiText(), authId, remoteAddr);
                     return;
                 }
@@ -983,7 +1007,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 try {
                     USER_SERVICE.lazyUserHomeDir(uid);
                 } catch (IOException e) {
-                    setApiResult(ApiResultCodeEnum.ERROR,
+                    this.setApiResult(ApiResultCodeEnum.ERROR,
                             "msg-user-home-dir-create-error");
                     return;
                 }
@@ -997,11 +1021,10 @@ public final class ReqLogin extends ApiRequestMixin {
 
             USER_SERVICE.assocPrimaryCardNumber(userDb,
                     rfidNumberFormat.getNormalizedNumber(assocCardNumber));
-
             /*
              * Do NOT grant a login, just associate the card.
              */
-            setApiResult(ApiResultCodeEnum.INFO, "msg-card-registered-ok");
+            this.setApiResult(ApiResultCodeEnum.INFO, "msg-card-registered-ok");
             return;
         }
 
@@ -1009,17 +1032,28 @@ public final class ReqLogin extends ApiRequestMixin {
          * Warnings for Admin WebApp.
          */
         if (webAppType == WebAppTypeEnum.ADMIN) {
+
             if (!cm.isSetupCompleted()) {
-                setApiResult(ApiResultCodeEnum.WARN, "msg-setup-is-needed");
+                final StringBuilder parm = new StringBuilder();
+                for (final SetupNeededEnum value : cm
+                        .getReadyToUseSetupNeeded()) {
+                    if (parm.length() > 0) {
+                        parm.append(", ");
+                    }
+                    parm.append(value.uiText(getLocale()));
+                }
+                parm.append(".");
+                this.setApiResult(ApiResultCodeEnum.WARN, "msg-setup-is-needed",
+                        parm.toString(), parm.toString());
             } else if (cm.doesInternalAdminHasDefaultPassword()) {
-                setApiResult(ApiResultCodeEnum.WARN,
+                this.setApiResult(ApiResultCodeEnum.WARN,
                         "msg-change-internal-admin-password");
             } else {
-                setApiResultMembershipMsg();
+                this.setApiResultMembershipMsg();
             }
 
         } else {
-            setApiResultOk();
+            this.setApiResultOk();
         }
 
         /*
@@ -1032,9 +1066,9 @@ public final class ReqLogin extends ApiRequestMixin {
                  * there, as backlash of a previous OAuth, and the Login page is
                  * shown, and user is not authenticated by OAuth (yet).
                  */
-                onLoginFailed(null);
+                this.onLoginFailed(null);
             } else {
-                onLoginFailed("msg-login-user-not-present",
+                this.onLoginFailed("msg-login-user-not-present",
                         webAppType.getUiText(), authMode.toString(), "?",
                         remoteAddr);
             }
@@ -1053,8 +1087,8 @@ public final class ReqLogin extends ApiRequestMixin {
             authToken = null;
         }
 
-        onUserLoginGranted(getUserData(), session, webAppType, authMode, uid,
-                userDb, authToken);
+        this.onUserLoginGranted(getUserData(), session, webAppType, authMode,
+                uid, userDb, authToken);
 
         /*
          * Update session.
@@ -1119,7 +1153,7 @@ public final class ReqLogin extends ApiRequestMixin {
      * @param session
      *            {@link SpSession}.
      * @param uid
-     *            userid.
+     *            user id.
      * @param authtoken
      *            token.
      * @param webAppType
@@ -1144,46 +1178,58 @@ public final class ReqLogin extends ApiRequestMixin {
         final UserAuthToken authTokenObj =
                 userAuthManager.getUserAuthToken(authtoken, webAppType);
 
-        final User userDb;
+        String uidAuth = null;
 
-        if (authTokenObj != null && uid.equals(authTokenObj.getUser())
+        if (authTokenObj != null
                 && authTokenObj.getWebAppType() == webAppType) {
 
-            if (webAppType == WebAppTypeEnum.ADMIN
-                    && ConfigManager.isInternalAdmin(uid)) {
-                userDb = ConfigManager.createInternalAdminUser();
-            } else {
-                userDb = userDao.findActiveUserByUserId(uid);
-            }
+            if (uid.equals(authTokenObj.getUser())) {
 
-        } else {
+                uidAuth = uid;
+
+            } else if (webAppType == WebAppTypeEnum.MAILTICKETS) {
+
+                final String uidOperator = StringUtils.defaultString(
+                        ConfigManager.getMailPrintTicketOperator());
+
+                if (uid.equals(uidOperator)) {
+                    uidAuth = authTokenObj.getUser();
+                }
+            }
+        }
+
+        final User userDb;
+
+        if (uidAuth == null) {
             userDb = null;
+        } else if (webAppType == WebAppTypeEnum.ADMIN
+                && ConfigManager.isInternalAdmin(uidAuth)) {
+            userDb = ConfigManager.createInternalAdminUser();
+        } else {
+            userDb = userDao.findActiveUserByUserId(uidAuth);
         }
 
         if (userDb != null) {
 
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(String
-                        .format("WebApp AuthToken Login [%s] granted.", uid));
+                LOGGER.trace(String.format(
+                        "WebApp AuthToken Login [%s] granted.", uidAuth));
             }
-
-            onUserLoginGranted(getUserData(), session, webAppType, null, uid,
-                    userDb, authTokenObj);
-
             session.setUser(userDb);
 
-            setApiResultOk();
+            this.onUserLoginGranted(getUserData(), session, webAppType, null,
+                    uidAuth, userDb, authTokenObj);
+
+            this.setApiResultOk();
 
         } else {
-
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace(
                         "{} WebApp AuthToken {} Login [{}] denied: "
                                 + "user NOT found.",
-                        webAppType, authtoken, uid);
+                        webAppType, authtoken, uidAuth);
             }
-
-            onLoginFailed(null);
+            this.onLoginFailed(null);
         }
     }
 
@@ -1291,9 +1337,8 @@ public final class ReqLogin extends ApiRequestMixin {
          * INVARIANT: authentication token MUST not be older than 2 times the
          * max time it takes a long poll to finish.
          */
-        if (ServiceContext.getTransactionDate().getTime()
-                - authTokenCliApp.getCreateTime() > 2
-                        * UserEventService.getMaxMonitorMsec()) {
+        if (ServiceContext.getTransactionDate().getTime() - authTokenCliApp
+                .getCreateTime() > 2 * UserEventService.getMaxMonitorMsec()) {
             return false;
         }
 
@@ -1315,10 +1360,10 @@ public final class ReqLogin extends ApiRequestMixin {
             final UserAuthToken authTokenWebApp =
                     reqLoginLazyCreateAuthToken(userId, webAppType);
 
-            onUserLoginGranted(userData, session, webAppType, null, userId,
+            this.onUserLoginGranted(userData, session, webAppType, null, userId,
                     userDb, authTokenWebApp);
 
-            setApiResultOk();
+            this.setApiResultOk();
 
         } else {
 
@@ -1327,7 +1372,7 @@ public final class ReqLogin extends ApiRequestMixin {
                         + "] denied: user NOT found.");
             }
 
-            onLoginFailed(null);
+            this.onLoginFailed(null);
         }
 
         return true;
@@ -1382,6 +1427,31 @@ public final class ReqLogin extends ApiRequestMixin {
     }
 
     /**
+     * Gets the {@link DocLog} user.
+     *
+     * @param webAppType
+     *            The {@link WebAppTypeEnum}.
+     * @param userDbAuth
+     *            The authenticated {@link User}. Is {@code null} in case of
+     *            {@link WebAppTypeEnum#ADMIN} and reserved user id "admin".
+     * @return The {@link DocLog} user, or {@code null} in case of
+     *         {@link WebAppTypeEnum#ADMIN} and reserved user id "admin".
+     */
+    private User resolveDocLogUser(final WebAppTypeEnum webAppType,
+            final User userDbAuth) {
+
+        final User docLogUser;
+
+        if (webAppType == WebAppTypeEnum.MAILTICKETS) {
+            docLogUser = USER_DAO.findActiveUserByUserId(
+                    ConfigManager.getMailPrintTicketOperator());
+        } else {
+            docLogUser = userDbAuth;
+        }
+        return docLogUser;
+    }
+
+    /**
      * Sets the user data for login request and notifies the authenticated user
      * to the Admin WebApp.
      *
@@ -1394,10 +1464,10 @@ public final class ReqLogin extends ApiRequestMixin {
      * @param authMode
      *            The {@link UserAuthModeEnum}. {@code null} when authenticated
      *            by (WebApp or Client) token.
-     * @param uid
-     *            The User ID.
-     * @param userDb
-     *            The {@link User}.
+     * @param uidAuth
+     *            The authenticated User ID.
+     * @param userDbAuth
+     *            The authenticated {@link User}.
      * @param authToken
      *            {@code null} when not available.
      * @throws IOException
@@ -1405,26 +1475,39 @@ public final class ReqLogin extends ApiRequestMixin {
      */
     private void onUserLoginGranted(final Map<String, Object> userData,
             final SpSession session, final WebAppTypeEnum webAppType,
-            final UserAuthModeEnum authMode, final String uid,
-            final User userDb, final UserAuthToken authToken)
+            final UserAuthModeEnum authMode, final String uidAuth,
+            final User userDbAuth, final UserAuthToken authToken)
             throws IOException {
 
-        userData.put("id", uid);
-        userData.put("key_id", userDb.getId());
-        userData.put("fullname", userDb.getFullName());
-        userData.put("admin", userDb.getAdmin());
-        userData.put("internal", userDb.getInternal());
+        final User docLogUser = this.resolveDocLogUser(webAppType, userDbAuth);
+
+        if (webAppType == WebAppTypeEnum.ADMIN
+                || docLogUser.getId().equals(userDbAuth.getId())) {
+            session.setUserIdDtoDocLog(null);
+        } else {
+            session.setUserIdDtoDocLog(UserIdDto.create(docLogUser));
+        }
+
+        userData.put("id", userDbAuth.getUserId());
+        userData.put("key_id", userDbAuth.getId());
+
+        userData.put("doclog_id", docLogUser.getUserId());
+        userData.put("doclog_key_id", docLogUser.getId());
+
+        userData.put("fullname", userDbAuth.getFullName());
+        userData.put("admin", userDbAuth.getAdmin());
+        userData.put("internal", userDbAuth.getInternal());
         userData.put("systime", Long.valueOf(System.currentTimeMillis()));
         userData.put("language", getSession().getLocale().getLanguage());
         userData.put("country", getSession().getLocale().getCountry());
-        userData.put("mail", USER_SERVICE.getPrimaryEmailAddress(userDb));
+        userData.put("mail", USER_SERVICE.getPrimaryEmailAddress(userDbAuth));
 
         userData.put("number", StringUtils
-                .defaultString(USER_SERVICE.getPrimaryIdNumber(userDb)));
+                .defaultString(USER_SERVICE.getPrimaryIdNumber(userDbAuth)));
 
-        if (webAppType == WebAppTypeEnum.USER) {
+        if (webAppType.isUserTypeOrVariant()) {
             userData.put("uuid",
-                    USER_SERVICE.lazyAddUserAttrUuid(userDb).toString());
+                    USER_SERVICE.lazyAddUserAttrUuid(userDbAuth).toString());
         }
 
         if (authToken != null) {
@@ -1442,11 +1525,11 @@ public final class ReqLogin extends ApiRequestMixin {
         userData.put("cometdToken", cometdToken);
 
         WebApp.get().onAuthenticatedUser(webAppType, authMode, session.getId(),
-                this.getClientIP(), uid);
+                this.getClientIP(), uidAuth);
 
-        if (webAppType == WebAppTypeEnum.USER) {
+        if (webAppType.isUserTypeOrVariant()) {
 
-            ApiRequestHelper.addUserStats(userData, userDb,
+            ApiRequestHelper.addUserStats(userData, userDbAuth,
                     this.getSession().getLocale(),
                     SpSession.getAppCurrencySymbol());
 
@@ -1458,8 +1541,8 @@ public final class ReqLogin extends ApiRequestMixin {
              * not exists, there is no point interrupting the long poll, since
              * we know this poll cannot be pending. See Mantis #792.
              */
-            if (UserMsgIndicator.isSafePagesDirPresent(uid)) {
-                ApiRequestHelper.interruptPendingLongPolls(uid,
+            if (UserMsgIndicator.isSafePagesDirPresent(uidAuth)) {
+                ApiRequestHelper.interruptPendingLongPolls(uidAuth,
                         this.getClientIP());
             }
             /*
@@ -1470,12 +1553,12 @@ public final class ReqLogin extends ApiRequestMixin {
                     * DateUtil.DURATION_MSEC_MINUTE;
 
             if (msecJobExpiry > 0) {
-                INBOX_SERVICE.deleteJobs(userDb.getUserId(),
-                        System.currentTimeMillis(), msecJobExpiry);
+                INBOX_SERVICE.deleteJobs(uidAuth, System.currentTimeMillis(),
+                        msecJobExpiry);
             }
 
-            INBOX_SERVICE.pruneOrphanJobs(ConfigManager.getUserHomeDir(uid),
-                    userDb);
+            INBOX_SERVICE.pruneOrphanJobs(uidAuth,
+                    ConfigManager.getUserHomeDir(uidAuth), docLogUser);
         }
     }
 
@@ -1580,7 +1663,7 @@ public final class ReqLogin extends ApiRequestMixin {
                     PubLevelEnum.WARN, msg);
         }
 
-        setApiResult(ApiResultCodeEnum.ERROR, "msg-login-failed");
+        this.setApiResult(ApiResultCodeEnum.ERROR, "msg-login-failed");
     }
 
     /**
@@ -1674,13 +1757,13 @@ public final class ReqLogin extends ApiRequestMixin {
                 token = null;
             }
 
-            onUserLoginGranted(getUserData(), session, webAppType, null,
+            this.onUserLoginGranted(getUserData(), session, webAppType, null,
                     userDb.getUserId(), userDb, token);
 
-            setApiResultOk();
+            this.setApiResultOk();
 
         } else {
-            onLoginFailed(null);
+            this.onLoginFailed(null);
         }
 
         if (LOGGER.isTraceEnabled()) {
@@ -1708,39 +1791,41 @@ public final class ReqLogin extends ApiRequestMixin {
 
         switch (memberCard.getStatus()) {
         case EXCEEDED:
-            setApiResult(ApiResultCodeEnum.INFO,
+            this.setApiResult(ApiResultCodeEnum.INFO,
                     "msg-membership-exceeded-user-limit",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
             break;
         case EXPIRED:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-expired",
+            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-expired",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
 
             break;
         case VISITOR:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-visit",
+            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-visit",
                     daysLeft.toString(),
                     CommunityDictEnum.VISITOR.getWord(getLocale()));
             break;
         case VISITOR_EXPIRED:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-visit-expired",
+            this.setApiResult(ApiResultCodeEnum.INFO,
+                    "msg-membership-visit-expired",
                     CommunityDictEnum.VISITOR.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
             break;
         case WRONG_MODULE:
         case WRONG_COMMUNITY:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-wrong-product",
+            this.setApiResult(ApiResultCodeEnum.INFO,
+                    "msg-membership-wrong-product",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
             break;
         case WRONG_VERSION:
-            setApiResult(ApiResultCodeEnum.INFO, "msg-membership-version",
+            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-version",
                     CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
                     CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
                     CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
@@ -1748,7 +1833,7 @@ public final class ReqLogin extends ApiRequestMixin {
         case VISITOR_EDITION:
         case VALID:
         default:
-            setApiResultOk();
+            this.setApiResultOk();
             break;
         }
     }

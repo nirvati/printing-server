@@ -24,7 +24,10 @@
  */
 package org.savapage.server.helpers;
 
+import java.util.Locale;
+
 import org.savapage.core.jpa.Printer;
+import org.savapage.core.util.LocaleHelper;
 import org.savapage.server.WebApp;
 
 /**
@@ -35,23 +38,38 @@ import org.savapage.server.WebApp;
  */
 public enum HtmlPrinterImgEnum {
 
-    /**  */
+    /**
+     * A Job Ticket Printer.
+     */
     JOBTICKET("printer-jobticket-32x32.png"),
 
-    /**  */
-    TERMINAL_AND_READER("printer-terminal-custom-or-auth-16x16.png"),
+    /**
+     * An unsecured Proxy Printer that no one is allowed to print to.
+     */
+    NON_SECURE("printer-terminal-none-16x16.png"),
 
-    /**  */
-    TERMINAL("printer-terminal-custom-16x16.png"),
+    /**
+     * An unsecured Proxy Printer that <b>anyone</b> can print to.
+     */
+    NON_SECURE_ALLOWED("printer-terminal-any-16x16.png"),
 
-    /**  */
+    /**
+     * A secured Proxy Printer whose jobs needs to be authorized with a NFC Card
+     * swipe on a Network Card Reader.
+     */
     READER("printer-terminal-auth-16x16.png"),
 
-    /**  */
-    SECURE("printer-terminal-none-16x16.png"),
+    /**
+     * A Proxy Printer that can only be used from certain Terminals.
+     */
+    TERMINAL("printer-terminal-custom-16x16.png"),
 
-    /** */
-    NON_SECURE("printer-terminal-any-16x16.png");
+    /**
+     * A Proxy Printer that can only be used from certain Terminals and whose
+     * jobs needs to be authorized with a NFC Card swipe on a Network Card
+     * Reader on other Terminals.
+     */
+    TERMINAL_AND_READER("printer-terminal-custom-or-auth-16x16.png");
 
     /**
      * .
@@ -74,6 +92,15 @@ public enum HtmlPrinterImgEnum {
      */
     public String urlPath() {
         return String.format("%s/%s", WebApp.PATH_IMAGES, this.img);
+    }
+
+    /**
+     * @param locale
+     *            The {@link Locale}.
+     * @return The localized tooltip text.
+     */
+    public String uiToolTip(final Locale locale) {
+        return LocaleHelper.uiText(this, locale);
     }
 
 }

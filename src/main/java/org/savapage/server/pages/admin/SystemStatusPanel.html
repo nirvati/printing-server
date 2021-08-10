@@ -94,6 +94,18 @@ the License, or (at your option) any later version.
 						</th>
 						<td>
 							<span wicket:id="sys-status" />
+							<div>
+								<wicket:enclosure child="btn-setup-currency">
+									<button class="ui-btn ui-mini ui-btn-inline ui-btn-icon-text"
+										wicket:id="btn-setup-currency" id="sp-btn-setup-currency-code"
+										style="margin-left: 0px;" />
+								</wicket:enclosure>
+								<wicket:enclosure child="btn-setup-smtp">
+									<button class="ui-btn ui-mini ui-btn-inline ui-btn-icon-text"
+										wicket:id="btn-setup-smtp" id="sp-btn-setup-smtp"
+										style="margin-left: 0px;" />
+								</wicket:enclosure>
+							</div>
 						</td>
 					</tr>
 
@@ -273,19 +285,6 @@ the License, or (at your option) any later version.
 							</wicket:enclosure>
 						</td>
 					</tr>
-
-					<wicket:enclosure child="gcp-status">
-						<tr>
-							<th style="vertical-align: middle;">Google Cloud Print</th>
-							<td>
-								<input type="checkbox" id="flipswitch-gcp-online"
-									wicket:id="flipswitch-gcp-online" data-mini="true"
-									data-role="flipswitch" data-on-text="On" data-off-text="Off" />
-								<span style="margin-left: 20px; vertical-align: middle;"
-									wicket:id="gcp-status" />
-							</td>
-						</tr>
-					</wicket:enclosure>
 
 					<wicket:enclosure child="mailprint-status">
 						<tr>

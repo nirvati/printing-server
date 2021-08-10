@@ -45,6 +45,7 @@ import org.apache.wicket.request.Request;
 import org.apache.wicket.request.Url;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.util.string.StringValue;
+import org.savapage.core.SpInfo;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
@@ -53,6 +54,7 @@ import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.OneTimeAuthToken;
+import org.savapage.core.dao.UserDao;
 import org.savapage.core.doc.DocContentTypeEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.core.jpa.UserEmail;
@@ -80,7 +82,7 @@ import org.slf4j.LoggerFactory;
  * @author Rijk Ravestein
  *
  */
-public final class WebAppUser extends AbstractWebAppPage {
+public class WebAppUser extends AbstractWebAppPage {
 
     private static final long serialVersionUID = 1L;
 
@@ -115,34 +117,33 @@ public final class WebAppUser extends AbstractWebAppPage {
             ServiceContext.getServiceFactory().getUserService();
 
     @Override
-    protected boolean isJqueryCoreRenderedByWicket() {
+    protected final boolean isJqueryCoreRenderedByWicket() {
         return true;
     }
 
+    /**
+     * Note: this method can be overridden by any subclass.
+     */
     @Override
     protected WebAppTypeEnum getWebAppType() {
         return WebAppTypeEnum.USER;
     }
 
     @Override
-    protected void appendWebAppTypeJsFiles(
+    protected final void appendWebAppTypeJsFiles(
             final List<Pair<String, LibreJsLicenseEnum>> list,
             final String nocache) {
 
-        if (ConfigManager.isPdfOverlayEditorEnabled()) {
-
-            list.add(
-                    new ImmutablePair<>(
-                            this.getJsPathForRender(
-                                    String.format("%s%s", JS_FILE_FABRIC_JS,
-                                            nocache),
-                                    LibreJsLicenseEnum.UNLICENSE),
-                            LibreJsLicenseEnum.UNLICENSE));
-
-            list.add(new ImmutablePair<>(String.format("%s%s",
-                    JS_FILE_JQUERY_SAVAPAGE_CANVAS_EDITOR, nocache),
-                    SAVAPAGE_JS_LICENSE));
-        }
+        list.add(new ImmutablePair<>(
+                this.getJsPathForRender(
+                        String.format("%s%s", JS_FILE_FABRIC_JS, nocache),
+                        LibreJsLicenseEnum.UNLICENSE),
+                LibreJsLicenseEnum.UNLICENSE));
+        list.add(
+                new ImmutablePair<>(
+                        String.format("%s%s",
+                                JS_FILE_JQUERY_SAVAPAGE_CANVAS_EDITOR, nocache),
+                        SAVAPAGE_JS_LICENSE));
 
         list.add(new ImmutablePair<>(
                 String.format("%s%s",
@@ -399,10 +400,8 @@ public final class WebAppUser extends AbstractWebAppPage {
             authUser = userEmail.getUser();
 
         } else if (email == null) {
-            authUser = ServiceContext.getDaoContext().getUserDao()
-                    .findActiveUserByUserId(userid);
+            authUser = this.findOAuthUser(plugin, userid, logPfx);
             if (authUser == null) {
-                LOGGER.warn("{}: user [{}]: not found.", logPfx, userid);
                 return Boolean.FALSE;
             }
         } else {
@@ -427,6 +426,7 @@ public final class WebAppUser extends AbstractWebAppPage {
         }
 
         session.setUser(authUser);
+        session.setUserIdDtoDocLog(null);
 
         /*
          * Pass the WebAppParmEnum.SP_LOGIN_OAUTH.parm() so JavaScript can act
@@ -436,6 +436,64 @@ public final class WebAppUser extends AbstractWebAppPage {
                 oauthProvider);
 
         return Boolean.TRUE;
+    }
+
+    /**
+     * Finds (lazy inserts) user by OAuth provided User ID.
+     *
+     * @param plugin
+     *            OAuth plug-in.
+     * @param userid
+     *            OAuth provided User ID.
+     * @param logPfx
+     *            Log prefix.
+     * @return {@code null} if not found and not lazy inserted.
+     */
+    private User findOAuthUser(final OAuthClientPlugin plugin,
+            final String userid, final String logPfx) {
+
+        final UserDao dao = ServiceContext.getDaoContext().getUserDao();
+
+        // Regular find.
+        User authUser = dao.findActiveUserByUserId(userid);
+
+        if (authUser == null) {
+
+            final ConfigManager cm = ConfigManager.instance();
+
+            if (plugin.isUserSource() && cm.isUserInsertLazyLogin()) {
+
+                final String group =
+                        cm.getConfigValue(Key.USER_SOURCE_GROUP).trim();
+
+                ServiceContext.getDaoContext().beginTransaction();
+
+                try {
+                    authUser = USER_SERVICE.lazyInsertExternalUser(
+                            cm.getUserSource(), userid, group);
+                } finally {
+                    if (authUser == null) {
+                        ServiceContext.getDaoContext().rollback();
+                        LOGGER.warn(
+                                "{}: user [{}] ad hoc create rejected: "
+                                        + "not a member of group [{}]",
+                                logPfx, userid, group);
+                    } else {
+                        ServiceContext.getDaoContext().commit();
+                        SpInfo.instance()
+                                .log(String.format(
+                                        "%s: user [%s] ad hoc created.", logPfx,
+                                        userid));
+                    }
+                }
+
+            } else {
+                LOGGER.warn("{}: user [{}]: not found.", logPfx, userid);
+            }
+        }
+
+        return authUser;
+
     }
 
     /**
@@ -585,7 +643,7 @@ public final class WebAppUser extends AbstractWebAppPage {
 
         add(new Label("app-title", appTitle));
 
-        addZeroPagePanel(WebAppTypeEnum.USER);
+        addZeroPagePanel(this.getWebAppType());
 
         webPrintMarkup();
 
@@ -605,22 +663,22 @@ public final class WebAppUser extends AbstractWebAppPage {
     }
 
     @Override
-    protected String[] getSpecializedCssReqFileNames() {
+    protected final String[] getSpecializedCssReqFileNames() {
         return CSS_REQ_FILENAMES;
     }
 
     @Override
-    protected String getSpecializedCssFileName() {
+    protected final String getSpecializedCssFileName() {
         return "jquery.savapage-user.css";
     }
 
     @Override
-    protected String getSpecializedJsFileName() {
+    protected final String getSpecializedJsFileName() {
         return "jquery.savapage-user.js";
     }
 
     @Override
-    protected Set<JavaScriptLibrary> getJavaScriptToRender() {
+    protected final Set<JavaScriptLibrary> getJavaScriptToRender() {
 
         final EnumSet<JavaScriptLibrary> libs =
                 EnumSet.allOf(JavaScriptLibrary.class);

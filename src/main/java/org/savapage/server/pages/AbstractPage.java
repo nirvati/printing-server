@@ -576,6 +576,20 @@ public abstract class AbstractPage extends WebPage
     }
 
     /**
+     * @param oid
+     *            The OID.
+     * @return {@code true} if session user has {@link ACLPermissionEnum#EDITOR}
+     *         permission.
+     */
+    protected final boolean hasPermissionToEdit(final ACLOidEnum oid) {
+        try {
+            return this.probePermissionToEdit(oid);
+        } catch (RestartResponseException e) {
+            return false;
+        }
+    }
+
+    /**
      * @return The {@link UserAgentHelper}.
      */
     protected final UserAgentHelper createUserAgentHelper() {
@@ -752,9 +766,9 @@ public abstract class AbstractPage extends WebPage
                 }
             } else if (ConfigManager.instance()
                     .isNonSecureProxyPrinter(printer)) {
-                imageSrc = HtmlPrinterImgEnum.NON_SECURE;
+                imageSrc = HtmlPrinterImgEnum.NON_SECURE_ALLOWED;
             } else {
-                imageSrc = HtmlPrinterImgEnum.SECURE;
+                imageSrc = HtmlPrinterImgEnum.NON_SECURE;
             }
 
         }

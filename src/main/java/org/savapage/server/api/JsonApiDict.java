@@ -43,11 +43,13 @@ import org.savapage.server.api.request.ReqDeviceDelete;
 import org.savapage.server.api.request.ReqDeviceGet;
 import org.savapage.server.api.request.ReqDeviceSet;
 import org.savapage.server.api.request.ReqDocLogRefund;
+import org.savapage.server.api.request.ReqDocLogStoreDelete;
 import org.savapage.server.api.request.ReqDocLogTicketReopen;
 import org.savapage.server.api.request.ReqGenerateUserIDNumber;
 import org.savapage.server.api.request.ReqGenerateUuid;
 import org.savapage.server.api.request.ReqI18nCacheClear;
 import org.savapage.server.api.request.ReqInboxClear;
+import org.savapage.server.api.request.ReqInboxRestorePrintIn;
 import org.savapage.server.api.request.ReqJobTicketCancel;
 import org.savapage.server.api.request.ReqJobTicketExec;
 import org.savapage.server.api.request.ReqJobTicketPrintCancel;
@@ -58,6 +60,7 @@ import org.savapage.server.api.request.ReqJobTicketSaveOptions;
 import org.savapage.server.api.request.ReqLogin;
 import org.savapage.server.api.request.ReqLogout;
 import org.savapage.server.api.request.ReqMailTest;
+import org.savapage.server.api.request.ReqMailTicketQuickSearch;
 import org.savapage.server.api.request.ReqOAuthUrl;
 import org.savapage.server.api.request.ReqOutboxCancelAll;
 import org.savapage.server.api.request.ReqOutboxCancelJob;
@@ -99,6 +102,7 @@ import org.savapage.server.api.request.ReqUserGroupSet;
 import org.savapage.server.api.request.ReqUserGroupsAddRemove;
 import org.savapage.server.api.request.ReqUserHomeClean;
 import org.savapage.server.api.request.ReqUserInitInternal;
+import org.savapage.server.api.request.ReqUserNameAliasesRefresh;
 import org.savapage.server.api.request.ReqUserNotifyAccountChange;
 import org.savapage.server.api.request.ReqUserPasswordErase;
 import org.savapage.server.api.request.ReqUserQuickSearch;
@@ -158,14 +162,10 @@ public final class JsonApiDict {
     public static final String REQ_DOCLOG_REFUND = "doclog-refund";
     public static final String REQ_DOCLOG_TICKET_REOPEN =
             "doclog-ticket-reopen";
+    public static final String REQ_DOCLOG_STORE_DELETE = "doclog-store-delete";
 
     public static final String REQ_EXIT_EVENT_MONITOR = "exit-event-monitor";
-    public static final String REQ_GCP_GET_DETAILS = "gcp-get-details";
-    public static final String REQ_GCP_ONLINE = "gcp-online";
-    public static final String REQ_GCP_REGISTER = "gcp-register";
-    public static final String REQ_GCP_SET_DETAILS = "gcp-set-details";
-    public static final String REQ_GCP_SET_NOTIFICATIONS =
-            "gcp-set-notifications";
+
     public static final String REQ_GET_EVENT = "get-event";
 
     public static final String REQ_I18N_CACHE_CLEAR = "i18n-cache-clear";
@@ -178,6 +178,8 @@ public final class JsonApiDict {
     public static final String REQ_INBOX_JOB_DELETE = "inbox-job-delete";
     public static final String REQ_INBOX_JOB_EDIT = "inbox-job-edit";
     public static final String REQ_INBOX_JOB_PAGES = "inbox-job-pages";
+    public static final String REQ_INBOX_RESTORE_PRINTIN =
+            "inbox-restore-printin";
 
     public static final String REQ_INBOX_IS_VANILLA = "inbox-is-vanilla";
     public static final String REQ_JQPLOT = "jqplot";
@@ -198,6 +200,9 @@ public final class JsonApiDict {
 
     public static final String REQ_JOBTICKET_QUICK_SEARCH =
             "jobticket-quick-search";
+
+    public static final String REQ_MAILTICKET_QUICK_SEARCH =
+            "mailticket-quick-search";
 
     public static final String REQ_PAPERCUT_TEST = "papercut-test";
 
@@ -352,6 +357,8 @@ public final class JsonApiDict {
     public static final String REQ_USER_SOURCE_GROUPS = "user-source-groups";
 
     public static final String REQ_USERHOME_CLEAN = "userhome-clean";
+    public static final String REQ_USERNAME_ALIASES_REFRESH =
+            "username-aliases-refresh";
 
     public static final String REQ_USERCARD_QUICK_SEARCH =
             "usercard-quick-search";
@@ -916,21 +923,24 @@ public final class JsonApiDict {
                 allowed = webAppType == WebAppTypeEnum.PRINTSITE;
                 break;
             case JOB_TICKET_CREATOR:
-                allowed = webAppType == WebAppTypeEnum.USER;
+                allowed = webAppType.isUserTypeOrVariant();
                 break;
             case JOB_TICKET_OPERATOR:
                 allowed = EnumSet
                         .of(WebAppTypeEnum.ADMIN, WebAppTypeEnum.JOBTICKETS)
                         .contains(webAppType);
                 break;
+            case MAIL_TICKET_OPERATOR:
+                allowed = webAppType == WebAppTypeEnum.MAILTICKETS;
+                break;
             case PRINT_CREATOR:
-                allowed = webAppType == WebAppTypeEnum.USER;
+                allowed = webAppType.isUserTypeOrVariant();
                 break;
             case PRINT_DELEGATE:
-                allowed = webAppType == WebAppTypeEnum.USER;
+                allowed = webAppType.isUserTypeOrVariant();
                 break;
             case PRINT_DELEGATOR:
-                allowed = webAppType == WebAppTypeEnum.USER;
+                allowed = webAppType.isUserTypeOrVariant();
                 break;
             case WEB_CASHIER:
                 allowed = EnumSet.of(WebAppTypeEnum.ADMIN, WebAppTypeEnum.POS)
@@ -984,12 +994,11 @@ public final class JsonApiDict {
         acl(REQ_DOCLOG_TICKET_REOPEN, ReqDocLogTicketReopen.class, DbClaim.READ,
                 DbAccess.YES, EnumSet.of(ACLRoleEnum.JOB_TICKET_OPERATOR));
 
+        usr(REQ_DOCLOG_STORE_DELETE, ReqDocLogStoreDelete.class, DbClaim.NONE,
+                DbAccess.NO);
+
         usr(REQ_EXIT_EVENT_MONITOR, DbClaim.NONE, DbAccess.NO);
-        adm(REQ_GCP_GET_DETAILS, DbClaim.READ, DbAccess.YES);
-        adm(REQ_GCP_ONLINE, DbClaim.READ, DbAccess.YES);
-        adm(REQ_GCP_REGISTER, DbClaim.READ, DbAccess.YES);
-        adm(REQ_GCP_SET_DETAILS, DbClaim.READ, DbAccess.YES);
-        adm(REQ_GCP_SET_NOTIFICATIONS, DbClaim.READ, DbAccess.YES);
+
         usr(REQ_GET_EVENT, DbClaim.NONE, DbAccess.USER_LOCK);
 
         adm(REQ_IMAP_TEST, DbClaim.NONE, DbAccess.NO);
@@ -1002,6 +1011,8 @@ public final class JsonApiDict {
 
         usr(REQ_INBOX_CLEAR, ReqInboxClear.class, DbClaim.NONE,
                 DbAccess.USER_LOCK);
+        usr(REQ_INBOX_RESTORE_PRINTIN, ReqInboxRestorePrintIn.class,
+                DbClaim.NONE, DbAccess.USER_LOCK);
 
         usr(REQ_INBOX_JOB_DELETE, DbClaim.NONE, DbAccess.USER_LOCK);
         usr(REQ_INBOX_JOB_EDIT, DbClaim.NONE, DbAccess.USER_LOCK);
@@ -1031,6 +1042,9 @@ public final class JsonApiDict {
 
         put(REQ_JOBTICKET_QUICK_SEARCH, ReqJobTicketQuickSearch.class,
                 AuthReq.NONE, DbClaim.NONE, DbAccess.NO);
+
+        put(REQ_MAILTICKET_QUICK_SEARCH, ReqMailTicketQuickSearch.class,
+                AuthReq.USER, DbClaim.READ, DbAccess.YES);
 
         usr(REQ_JQPLOT, DbClaim.NONE, DbAccess.YES);
         non(REQ_LANGUAGE);
@@ -1223,6 +1237,8 @@ public final class JsonApiDict {
         adm(REQ_USER_SET, ReqUserSet.class, DbClaim.READ, DbAccess.YES);
         adm(REQ_USERHOME_CLEAN, ReqUserHomeClean.class, DbClaim.NONE,
                 DbAccess.NO);
+        adm(REQ_USERNAME_ALIASES_REFRESH, ReqUserNameAliasesRefresh.class,
+                DbClaim.NONE, DbAccess.NO);
 
         adm(REQ_USER_SOURCE_GROUPS, DbClaim.NONE, DbAccess.NO);
         adm(REQ_USER_SYNC, DbClaim.NONE, DbAccess.NO);

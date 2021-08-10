@@ -55,6 +55,7 @@ import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.enums.ReservedIppQueueEnum;
+import org.savapage.core.dao.helpers.IppQueueHelper;
 import org.savapage.core.ipp.IppProcessingException;
 import org.savapage.core.ipp.IppProcessingException.StateEnum;
 import org.savapage.core.ipp.operation.AbstractIppOperation;
@@ -264,7 +265,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
                         String.format(
                                 "Queue [%s] is not accessible"
                                         + " from the Internet.",
-                                queue.getUrlPath()));
+                                IppQueueHelper.uiPath(queue)));
             } else {
 
                 if (!QUEUE_SERVICE.hasClientIpAccessToQueue(queue,
@@ -272,7 +273,7 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
                     throw new IppProcessingException(StateEnum.UNAVAILABLE,
                             String.format(
                                     "Queue [%s] is not allowed for IP address.",
-                                    queue.getUrlPath()));
+                                    IppQueueHelper.uiPath(queue)));
                 }
             }
 
@@ -325,9 +326,18 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
             ippOperationContext
                     .setIppRoutingListener(WebApp.get().getPluginManager());
 
-            final IppOperationId ippOperationId = AbstractIppOperation.handle(
-                    queue, request.getInputStream(), bos, authUser,
-                    isAuthUserIppRequester, ippOperationContext);
+            final InputStream istr;
+            if ("chunked".equals(request.getHeader("Transfer-Encoding"))) {
+                // TODO use IppChunkedInputStream like this?
+                // istr = new IppChunkedInputStream(request.getInputStream());
+                istr = request.getInputStream();
+            } else {
+                istr = request.getInputStream();
+            }
+
+            final IppOperationId ippOperationId =
+                    AbstractIppOperation.handle(queue, istr, bos, authUser,
+                            isAuthUserIppRequester, ippOperationContext);
 
             if (ippOperationId != null
                     && ippOperationId == IppOperationId.VALIDATE_JOB) {
@@ -411,7 +421,12 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
                     httpStatus = HttpServletResponse.SC_NOT_ACCEPTABLE;
                     break;
                 case UNAUTHORIZED:
-                    httpStatus = HttpServletResponse.SC_UNAUTHORIZED;
+                    /*
+                     * Do NOT use HttpServletResponse.SC_UNAUTHORIZED, because
+                     * this will make the IPP client try endlessly. SC_OK
+                     * produces an end-state. Mantis #1181.
+                     */
+                    httpStatus = HttpServletResponse.SC_OK;
                     break;
                 case UNAVAILABLE:
                     httpStatus = HttpServletResponse.SC_SERVICE_UNAVAILABLE;
@@ -491,10 +506,15 @@ public class IppPrintServer extends WebPage implements ServiceEntryPoint {
 
         final StringBuilder log = new StringBuilder();
 
-        log.append("\nRequest [").append(request.getRequestURL().toString())
-                .append("] From [").append(WebAppHelper.getClientIP(request))
-                .append("] Bytes [").append(request.getContentLength())
-                .append("]\n");
+        final String bar = "\n+-------------------------------------"
+                + "-------------------------------------------+";
+
+        log.append(bar);
+        log.append("\n| Request [").append(request.getRequestURL().toString())
+                .append("]\n|    From [")
+                .append(WebAppHelper.getClientIP(request)).append("] Bytes [")
+                .append(request.getContentLength()).append("]");
+        log.append(bar).append("\n");
 
         final Enumeration<String> headerNames = request.getHeaderNames();
 

@@ -64,8 +64,10 @@ public enum HtmlButtonEnum {
     CLOSE,
     /** */
     CONTINUE,
-    /** */
+    /** copy, paste, cut. */
     COPY,
+    /** copy, paste, cut. */
+    CUT,
     /** */
     DEFAULT,
     /** */
@@ -91,17 +93,25 @@ public enum HtmlButtonEnum {
     /** */
     LOGOUT,
     /** */
+    MORE,
+    /** */
+    NEW,
+    /** */
     NEXT,
     /** As opposite of {@link #YES}. */
     NO,
     /** */
     OK,
+    /** copy, paste, cut. */
+    PASTE,
     /** */
     PREVIEW,
     /** */
     PREVIOUS,
     /** */
     PRINT,
+    /** */
+    RASTERIZE,
     /** */
     REFRESH,
     /** */
@@ -118,6 +128,12 @@ public enum HtmlButtonEnum {
     RESTORE,
     /** */
     RETRY,
+    /** */
+    REVERSE,
+    /** */
+    ROLLBACK,
+    /** */
+    ROTATE,
     /** */
     SAVE,
     /** */
@@ -145,11 +161,17 @@ public enum HtmlButtonEnum {
     /** */
     UNDO,
     /** */
+    UNSELECT_ALL,
+    /** */
     UPLOAD,
     /** */
     VERIFY,
     /** As opposite of {@link #NO}. */
-    YES;
+    YES,
+    /** */
+    ZOOM_IN,
+    /** */
+    ZOOM_OUT;
 
     /**
      * Dotted suffix for localized text.

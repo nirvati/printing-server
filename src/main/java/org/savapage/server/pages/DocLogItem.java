@@ -35,11 +35,14 @@ import java.util.Map;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 
+import org.apache.commons.collections4.map.HashedMap;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.crypto.CryptoUser;
+import org.savapage.core.dao.DocInOutDao;
 import org.savapage.core.dao.DocLogDao;
 import org.savapage.core.dao.PrintOutDao;
 import org.savapage.core.dao.enums.DaoEnumHelper;
@@ -64,6 +67,9 @@ import org.savapage.core.jpa.PrintOut;
 import org.savapage.core.services.DocStoreService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.MailPrintData;
+import org.savapage.core.services.helpers.PrintSupplierData;
+import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.JsonHelper;
 import org.savapage.core.util.NumberUtil;
@@ -79,6 +85,7 @@ public final class DocLogItem {
     private Long docLogId;
     private ExternalSupplierEnum extSupplier;
     private ExternalSupplierStatusEnum extSupplierStatus;
+    private PrintSupplierData printSupplierData;
     private String extId;
     private String extData;
     private String mimeType;
@@ -113,6 +120,8 @@ public final class DocLogItem {
     private Integer numberUp;
     private Boolean grayscale;
 
+    private String printOutPrinterName;
+
     private boolean pageRotate180;
     private boolean finishingPunch;
     private boolean finishingStaple;
@@ -139,6 +148,7 @@ public final class DocLogItem {
 
     private Boolean printInPrinted;
     private PrintInDeniedReasonEnum printInDeniedReason;
+    private ReservedIppQueueEnum printInReservedQueue;
 
     private String author;
     private String subject;
@@ -147,6 +157,9 @@ public final class DocLogItem {
     private Boolean ownerPw;
 
     private List<AccountTrx> transactions;
+
+    private List<PrintOut> printOutOfDocIn;
+    private Map<String, MailPrintData> mailPrintInData;
 
     public Long getDocLogId() {
         return docLogId;
@@ -164,6 +177,13 @@ public final class DocLogItem {
         this.extSupplier = extSupplier;
     }
 
+    /**
+     * @return {@code true} if external supplier is present.
+     */
+    public boolean isExtSupplierPresent() {
+        return this.extSupplier != null;
+    }
+
     public ExternalSupplierStatusEnum getExtSupplierStatus() {
         return extSupplierStatus;
     }
@@ -171,6 +191,24 @@ public final class DocLogItem {
     public void
             setExtSupplierStatus(ExternalSupplierStatusEnum extSupplierStatus) {
         this.extSupplierStatus = extSupplierStatus;
+    }
+
+    /**
+     * @return {@code null} if not present.
+     */
+    public ThirdPartyEnum getExtPrintManager() {
+        if (this.printSupplierData == null) {
+            return null;
+        }
+        return this.printSupplierData.getClient();
+    }
+
+    public PrintSupplierData getPrintSupplierData() {
+        return printSupplierData;
+    }
+
+    public void setPrintSupplierData(PrintSupplierData printSupplierData) {
+        this.printSupplierData = printSupplierData;
     }
 
     public String getExtId() {
@@ -203,6 +241,22 @@ public final class DocLogItem {
 
     public void setTransactions(List<AccountTrx> transactions) {
         this.transactions = transactions;
+    }
+
+    public List<PrintOut> getPrintOutOfDocIn() {
+        return printOutOfDocIn;
+    }
+
+    public void setPrintOutOfDocIn(List<PrintOut> printOutOfDocIn) {
+        this.printOutOfDocIn = printOutOfDocIn;
+    }
+
+    public Map<String, MailPrintData> getMailPrintInData() {
+        return mailPrintInData;
+    }
+
+    public void setMailPrintInData(Map<String, MailPrintData> mailPrintInData) {
+        this.mailPrintInData = mailPrintInData;
     }
 
     public String getHeader() {
@@ -275,7 +329,33 @@ public final class DocLogItem {
      */
     public static abstract class AbstractQuery {
 
-        protected abstract String getExtraWhere(DocLogPagerReq req);
+        protected static final String QPARM_SIGNATURE = "signature";
+        protected static final String QPARM_DESTINATION = "destination";
+        protected static final String QPARM_LETTERHEAD = "letterhead";
+        protected static final String QPARM_USERID = "userId";
+        protected static final String QPARM_ACCOUNT_ID = "accountId";
+        protected static final String QPARM_DAY_FROM = "dayFrom";
+        protected static final String QPARM_DAY_TO = "dayTo";
+        protected static final String QPARM_TITLE_TEXT = "titleText";
+        protected static final String QPARM_TICKET_NUMBER_MAIL =
+                "ticketNumberMail";
+
+        protected static final String QPARM_QUEUE_ID = "queue_id";
+
+        protected static final String QPARM_AUTHOR = "author";
+        protected static final String QPARM_SUBJECT = "subject";
+        protected static final String QPARM_KEYWORDS = "keywords";
+        protected static final String QPARM_USERPW = "userpw";
+        protected static final String QPARM_OWNERPW = "ownerpw";
+        protected static final String QPARM_ENCRYPTED = "encrypted";
+
+        protected static final String QPARM_PRINTER_ID = "printer_id";
+        protected static final String QPARM_DUPLEX = "duplex";
+        protected static final String QPARM_PRINTMODES = "printModes";
+
+        protected static final String QPARM_EXTERNAL_ID_TEXT = "externalIdText";
+
+        protected abstract String getExtraWhereAnd(DocLogPagerReq req);
 
         protected abstract String getExtraJoin();
 
@@ -303,21 +383,24 @@ public final class DocLogItem {
                 jpql.append(" ").append(join);
             }
 
+            int nWhere = 0;
             //
             final String whereCommon = getWhereCommon(userId, req);
             if (whereCommon != null) {
                 jpql.append(" WHERE ").append(whereCommon);
+                nWhere++;
             }
 
             //
-            final String where = getExtraWhere(req);
+            final String where = getExtraWhereAnd(req);
             if (where != null) {
-                if (whereCommon == null) {
+                if (nWhere == 0) {
                     jpql.append(" WHERE ");
                 } else {
                     jpql.append(" AND ");
                 }
                 jpql.append(where);
+                nWhere++;
             }
 
             return jpql.toString();
@@ -340,9 +423,13 @@ public final class DocLogItem {
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
             final String titleText = req.getSelect().getDocName();
+            final String ticketNumberMail =
+                    req.getSelect().getTicketNumberMail();
+
             final Long accountId = req.getSelect().getAccountId();
 
-            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText);
+            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText,
+                    ticketNumberMail);
             setExtraParms(query, req);
 
             final Number countResult = (Number) query.getSingleResult();
@@ -377,9 +464,6 @@ public final class DocLogItem {
 
             jpql.append(getSelectString(em, false, userId, req));
 
-            /*
-             *
-             */
             final DocLogDao.FieldEnum orderBy = req.getSort().getSortField();
             final boolean sortAscending = req.getSort().getAscending();
 
@@ -413,9 +497,13 @@ public final class DocLogItem {
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
             final String titleText = req.getSelect().getDocName();
+            final String ticketNumberMail =
+                    req.getSelect().getTicketNumberMail();
+
             final Long accountId = req.getSelect().getAccountId();
 
-            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText);
+            setParmsCommon(query, userId, accountId, dayFrom, dayTo, titleText,
+                    ticketNumberMail);
             setExtraParms(query, req);
 
             Integer startPosition = req.calcStartPosition();
@@ -434,13 +522,22 @@ public final class DocLogItem {
             final DocStoreService docStoreService =
                     ServiceContext.getServiceFactory().getDocStoreService();
 
+            final DocInOutDao docInOutDao =
+                    ServiceContext.getDaoContext().getDocInOutDao();
+
             final List<DocLogItem> list = new ArrayList<>();
 
-            final boolean isArchiveEnabled = docStoreService.isEnabled(
+            final boolean isPrintOutArchiveEnabled = docStoreService.isEnabled(
                     DocStoreTypeEnum.ARCHIVE, DocStoreBranchEnum.OUT_PRINT);
 
-            final boolean isJournalEnabled = docStoreService.isEnabled(
+            final boolean isPrintOutJournalEnabled = docStoreService.isEnabled(
                     DocStoreTypeEnum.JOURNAL, DocStoreBranchEnum.OUT_PRINT);
+
+            final boolean isPrintInArchiveEnabled = docStoreService.isEnabled(
+                    DocStoreTypeEnum.ARCHIVE, DocStoreBranchEnum.IN_PRINT);
+
+            final boolean isPrintInJournalEnabled = docStoreService.isEnabled(
+                    DocStoreTypeEnum.JOURNAL, DocStoreBranchEnum.IN_PRINT);
 
             for (final DocLog docLog : ((List<DocLog>) query.getResultList())) {
 
@@ -530,9 +627,30 @@ public final class DocLogItem {
 
                         log.setPaperSize(printIn.getPaperSize());
 
+                        log.setPrintInReservedQueue(reservedQueue);
                         log.setPrintInPrinted(printIn.getPrinted());
                         log.setPrintInDeniedReason(PrintInDeniedReasonEnum
                                 .parseDbValue(printIn.getDeniedReason()));
+
+                        log.setPrintArchive(isPrintInArchiveEnabled
+                                && docStoreService.isDocPresent(
+                                        DocStoreTypeEnum.ARCHIVE,
+                                        DocStoreBranchEnum.IN_PRINT, docLog));
+
+                        if (!log.isPrintArchive()) {
+                            log.setPrintJournal(isPrintInJournalEnabled
+                                    && docStoreService.isDocPresent(
+                                            DocStoreTypeEnum.JOURNAL,
+                                            DocStoreBranchEnum.IN_PRINT,
+                                            docLog));
+                        }
+
+                        if (reservedQueue == ReservedIppQueueEnum.MAILPRINT
+                                && StringUtils
+                                        .isNotBlank(docLog.getExternalId())) {
+                            log.setPrintOutOfDocIn(docInOutDao
+                                    .getPrintOutOfDocIn(docIn.getId()));
+                        }
 
                     } else {
                         log.setHeader("???");
@@ -557,6 +675,14 @@ public final class DocLogItem {
 
                         log.setDocType(DocLogDao.Type.PRINT);
                         log.setHeader(printOut.getPrinter().getDisplayName());
+
+                        log.setPrintOutPrinterName(
+                                printOut.getPrinter().getPrinterName());
+
+                        if (docLog.getExternalData() != null) {
+                            log.setPrintSupplierData(PrintSupplierData
+                                    .createFromData(docLog.getExternalData()));
+                        }
 
                         log.setDuplex(printOut.getDuplex());
                         log.setGrayscale(printOut.getGrayscale());
@@ -604,16 +730,23 @@ public final class DocLogItem {
                                     optionMap.hasFinishingStaple());
                         }
 
-                        log.setPrintArchive(isArchiveEnabled && docStoreService
-                                .isDocPresent(DocStoreTypeEnum.ARCHIVE,
+                        log.setPrintArchive(isPrintOutArchiveEnabled
+                                && docStoreService.isDocPresent(
+                                        DocStoreTypeEnum.ARCHIVE,
                                         DocStoreBranchEnum.OUT_PRINT, docLog));
 
                         if (!log.isPrintArchive()) {
-                            log.setPrintJournal(isJournalEnabled
+                            log.setPrintJournal(isPrintOutJournalEnabled
                                     && docStoreService.isDocPresent(
                                             DocStoreTypeEnum.JOURNAL,
                                             DocStoreBranchEnum.OUT_PRINT,
                                             docLog));
+                        }
+
+                        if (BooleanUtils
+                                .isTrue(req.getTicketNumberMailView())) {
+                            log.setMailPrintInData(this
+                                    .getMailPrintInData(docInOutDao, printOut));
                         }
 
                     } else if (pdfOut != null) {
@@ -641,7 +774,49 @@ public final class DocLogItem {
                 list.add(log);
             }
             return list;
+        }
 
+        /**
+         * {@link MailPrintData} by Ticket (key) related to {@link PrintOut}.
+         *
+         * @param docInOutDao
+         *            DAO.
+         * @param printOut
+         *            {@link PrintOut}.
+         * @return {@link MailPrintData} map by Ticket key.
+         */
+        private Map<String, MailPrintData> getMailPrintInData(
+                final DocInOutDao docInOutDao, final PrintOut printOut) {
+
+            final QueueService svc =
+                    ServiceContext.getServiceFactory().getQueueService();
+
+            final Map<String, MailPrintData> map = new HashedMap<>();
+
+            for (final DocIn docIn : docInOutDao
+                    .getDocInOfDocOut(printOut.getDocOut().getId())) {
+
+                final DocLog docLog = docIn.getDocLog();
+
+                if (StringUtils.isBlank(docLog.getExternalId())
+                        || StringUtils.isBlank(docLog.getExternalData())
+                        || docIn.getPrintIn() == null) {
+                    continue;
+                }
+
+                if (svc.getReservedQueue(docIn.getPrintIn().getQueue()
+                        .getUrlPath()) != ReservedIppQueueEnum.MAILPRINT) {
+                    continue;
+                }
+
+                final MailPrintData obj =
+                        MailPrintData.createFromData(docLog.getExternalData());
+
+                if (obj != null) {
+                    map.put(docLog.getExternalId(), obj);
+                }
+            }
+            return map;
         }
 
         /**
@@ -682,6 +857,8 @@ public final class DocLogItem {
             final Date dayFrom = req.getSelect().dateFrom();
             final Date dayTo = req.getSelect().dateTo();
             final String titleText = req.getSelect().getDocName();
+            final String ticketNumberMail =
+                    req.getSelect().getTicketNumberMail();
 
             int nWhere = 0;
 
@@ -692,7 +869,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("TRX.id = :accountId");
+                where.append("TRX.id = :").append(QPARM_ACCOUNT_ID);
             }
 
             if (userId != null) {
@@ -700,7 +877,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("U.id = :userId");
+                where.append("U.id = :").append(QPARM_USERID);
             }
 
             if (dayFrom != null) {
@@ -708,7 +885,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("D.createdDay >= :dayFrom");
+                where.append("D.createdDay >= :").append(QPARM_DAY_FROM);
             }
 
             if (dayTo != null) {
@@ -716,7 +893,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("D.createdDay <= :dayTo");
+                where.append("D.createdDay <= :").append(QPARM_DAY_TO);
             }
 
             if (titleText != null) {
@@ -724,7 +901,24 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(D.title) like :titleText");
+                where.append("lower(D.title) like :").append(QPARM_TITLE_TEXT);
+            }
+
+            if (ticketNumberMail != null) {
+                if (nWhere > 0) {
+                    where.append(" AND (");
+                }
+                nWhere++;
+
+                where.append("lower(D.externalId) like :")
+                        .append(QPARM_TICKET_NUMBER_MAIL);
+
+                where.append(" OR (");
+                where.append("SELECT COUNT(XIO.docIn.docLog.id) "
+                        + "FROM DocInOut XIO WHERE XIO.docOut = D.docOut "
+                        + "AND lower(XIO.docIn.docLog.externalId) like :");
+                where.append(QPARM_TICKET_NUMBER_MAIL).append(") > 0");
+                where.append(")");
             }
 
             if (nWhere == 0) {
@@ -742,26 +936,32 @@ public final class DocLogItem {
          * @param dayFrom
          * @param dayTo
          * @param titleText
+         * @param ticketNumberMail
          */
         protected final void setParmsCommon(final Query query,
                 final Long userId, final Long accountId, final Date dayFrom,
-                final Date dayTo, final String titleText) {
+                final Date dayTo, final String titleText,
+                final String ticketNumberMail) {
 
             if (userId != null) {
-                query.setParameter("userId", userId);
+                query.setParameter(QPARM_USERID, userId);
             }
             if (accountId != null) {
-                query.setParameter("accountId", accountId);
+                query.setParameter(QPARM_ACCOUNT_ID, accountId);
             }
             if (dayFrom != null) {
-                query.setParameter("dayFrom", dayFrom);
+                query.setParameter(QPARM_DAY_FROM, dayFrom);
             }
             if (dayTo != null) {
-                query.setParameter("dayTo", dayTo);
+                query.setParameter(QPARM_DAY_TO, dayTo);
             }
             if (titleText != null) {
-                query.setParameter("titleText",
+                query.setParameter(QPARM_TITLE_TEXT,
                         String.format("%%%s%%", titleText.toLowerCase()));
+            }
+            if (ticketNumberMail != null) {
+                query.setParameter(QPARM_TICKET_NUMBER_MAIL, String
+                        .format("%%%s%%", ticketNumberMail.toLowerCase()));
             }
         }
     }
@@ -778,7 +978,7 @@ public final class DocLogItem {
         }
 
         @Override
-        public final String getExtraWhere(final DocLogPagerReq req) {
+        public final String getExtraWhereAnd(final DocLogPagerReq req) {
             return null;
         }
 
@@ -800,11 +1000,11 @@ public final class DocLogItem {
     private static class QIn extends AbstractQuery {
 
         @Override
-        protected String getExtraWhere(final DocLogPagerReq req) {
+        protected String getExtraWhereAnd(final DocLogPagerReq req) {
             String jpql = null;
             Long id = req.getSelect().getQueueId();
             if (id != null && id > 0) {
-                jpql = "Q.id = :queue_id";
+                jpql = "Q.id = :".concat(QPARM_QUEUE_ID);
             }
             return jpql;
         }
@@ -819,7 +1019,7 @@ public final class DocLogItem {
                 final DocLogPagerReq req) {
             Long id = req.getSelect().getQueueId();
             if (id != null && id > 0) {
-                query.setParameter("queue_id", id);
+                query.setParameter(QPARM_QUEUE_ID, id);
             }
         }
 
@@ -840,7 +1040,7 @@ public final class DocLogItem {
     private static class QOut extends AbstractQuery {
 
         @Override
-        protected String getExtraWhere(final DocLogPagerReq req) {
+        protected String getExtraWhereAnd(final DocLogPagerReq req) {
 
             final String selSignature = req.getSelect().getSignature();
             final String selDestination = req.getSelect().getDestination();
@@ -854,7 +1054,8 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(O.signature) like :signature");
+                where.append("lower(O.signature) like :")
+                        .append(QPARM_SIGNATURE);
             }
 
             if (selDestination != null) {
@@ -862,7 +1063,8 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(O.destination) like :destination");
+                where.append("lower(O.destination) like :")
+                        .append(QPARM_DESTINATION);
             }
 
             if (selLetterhead != null) {
@@ -870,7 +1072,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("O.letterhead = :letterhead");
+                where.append("O.letterhead = :").append(QPARM_LETTERHEAD);
             }
 
             if (nWhere == 0) {
@@ -894,15 +1096,15 @@ public final class DocLogItem {
             final Boolean selLetterhead = req.getSelect().getLetterhead();
 
             if (selSignature != null) {
-                query.setParameter("signature",
+                query.setParameter(QPARM_SIGNATURE,
                         String.format("%%%s%%", selSignature.toLowerCase()));
             }
             if (selDestination != null) {
-                query.setParameter("destination",
+                query.setParameter(QPARM_DESTINATION,
                         String.format("%%%s%%", selDestination.toLowerCase()));
             }
             if (selLetterhead != null) {
-                query.setParameter("letterhead", selLetterhead);
+                query.setParameter(QPARM_LETTERHEAD, selLetterhead);
             }
         }
 
@@ -917,14 +1119,14 @@ public final class DocLogItem {
      */
     private static class QPdf extends QOut {
         @Override
-        protected String getExtraWhere(final DocLogPagerReq req) {
+        protected String getExtraWhereAnd(final DocLogPagerReq req) {
 
             int nWhere = 0;
 
             final StringBuilder where = new StringBuilder();
 
             //
-            final String extraWhere = super.getExtraWhere(req);
+            final String extraWhere = super.getExtraWhereAnd(req);
             if (extraWhere != null) {
                 where.append(extraWhere);
                 nWhere++;
@@ -943,42 +1145,42 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(F.author) like :author");
+                where.append("lower(F.author) like :").append(QPARM_AUTHOR);
             }
             if (selSubject != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(F.subject) like :subject");
+                where.append("lower(F.subject) like :").append(QPARM_SUBJECT);
             }
             if (selKeywords != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("lower(F.keywords) like :keywords");
+                where.append("lower(F.keywords) like :").append(QPARM_KEYWORDS);
             }
             if (selUserpw != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("F.passwordUser = :userpw");
+                where.append("F.passwordUser = :").append(QPARM_USERPW);
             }
             if (selOwnerpw != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("F.passwordOwner = :ownerpw");
+                where.append("F.passwordOwner = :").append(QPARM_OWNERPW);
             }
             if (selEncrypted != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("F.encrypted = :encrypted");
+                where.append("F.encrypted = :").append(QPARM_ENCRYPTED);
             }
 
             if (nWhere == 0) {
@@ -1006,25 +1208,26 @@ public final class DocLogItem {
             final Boolean selEncrypted = req.getSelect().getEncrypted();
 
             if (selAuthor != null) {
-                query.setParameter("author",
+                query.setParameter(QPARM_AUTHOR,
                         String.format("%%%s%%", selAuthor.toLowerCase()));
             }
             if (selSubject != null) {
-                query.setParameter("subject",
+                query.setParameter(QPARM_SUBJECT,
                         String.format("%%%s%%", selSubject.toLowerCase()));
             }
             if (selKeywords != null) {
-                query.setParameter("keywords",
+                query.setParameter(QPARM_KEYWORDS,
                         String.format("%%%s%%", selKeywords.toLowerCase()));
             }
             if (selUserpw != null) {
-                query.setParameter("userpw", CryptoUser.encrypt(selUserpw));
+                query.setParameter(QPARM_USERPW, CryptoUser.encrypt(selUserpw));
             }
             if (selOwnerpw != null) {
-                query.setParameter("ownerpw", CryptoUser.encrypt(selOwnerpw));
+                query.setParameter(QPARM_OWNERPW,
+                        CryptoUser.encrypt(selOwnerpw));
             }
             if (selEncrypted != null) {
-                query.setParameter("encrypted", selEncrypted);
+                query.setParameter(QPARM_ENCRYPTED, selEncrypted);
             }
         }
 
@@ -1040,14 +1243,14 @@ public final class DocLogItem {
     private static class QPrint extends QOut {
 
         @Override
-        protected String getExtraWhere(final DocLogPagerReq req) {
+        protected String getExtraWhereAnd(final DocLogPagerReq req) {
 
             int nWhere = 0;
 
             final StringBuilder where = new StringBuilder();
 
             //
-            String extraWhere = super.getExtraWhere(req);
+            String extraWhere = super.getExtraWhereAnd(req);
             if (extraWhere != null) {
                 where.append(extraWhere);
                 nWhere++;
@@ -1064,7 +1267,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("S.id = :printer_id");
+                where.append("S.id = :").append(QPARM_PRINTER_ID);
             }
 
             if (selDuplex != null) {
@@ -1072,7 +1275,7 @@ public final class DocLogItem {
                     where.append(" AND ");
                 }
                 nWhere++;
-                where.append("P.duplex = :duplex");
+                where.append("P.duplex = :").append(QPARM_DUPLEX);
             }
 
             //
@@ -1153,11 +1356,11 @@ public final class DocLogItem {
             final Boolean selDuplex = req.getSelect().getDuplex();
 
             if (selId != null && selId > 0) {
-                query.setParameter("printer_id", selId);
+                query.setParameter(QPARM_PRINTER_ID, selId);
             }
 
             if (selDuplex != null) {
-                query.setParameter("duplex", selDuplex);
+                query.setParameter(QPARM_DUPLEX, selDuplex);
             }
         }
 
@@ -1178,14 +1381,14 @@ public final class DocLogItem {
     private static class QTicket extends QPrint {
 
         @Override
-        protected String getExtraWhere(final DocLogPagerReq req) {
+        protected String getExtraWhereAnd(final DocLogPagerReq req) {
 
             int nWhere = 0;
 
             final StringBuilder where = new StringBuilder();
 
             //
-            final String extraWhere = super.getExtraWhere(req);
+            final String extraWhere = super.getExtraWhereAnd(req);
             if (extraWhere != null) {
                 where.append(extraWhere);
                 nWhere++;
@@ -1197,17 +1400,18 @@ public final class DocLogItem {
             }
             nWhere++;
 
-            where.append("P.printMode IN (:printModes)");
+            where.append("P.printMode IN (:").append(QPARM_PRINTMODES)
+                    .append(")");
 
-            //
-            if (req.getSelect().getTicketNumber() != null) {
+            if (req.getSelect().getTicketNumberMail() == null
+                    && req.getSelect().getTicketNumber() != null) {
                 if (nWhere > 0) {
                     where.append(" AND ");
                 }
                 nWhere++;
 
-                where.append(
-                        "lower(D.externalId) like :containingExternalIdText");
+                where.append("lower(D.externalId) like :")
+                        .append(QPARM_EXTERNAL_ID_TEXT);
             }
             //
             return where.toString();
@@ -1223,14 +1427,19 @@ public final class DocLogItem {
                     PrintModeEnum.TICKET_C.toString(),
                     PrintModeEnum.TICKET_E.toString());
 
-            query.setParameter("printModes", names);
+            query.setParameter(QPARM_PRINTMODES, names);
 
-            final String ticket = req.getSelect().getTicketNumber();
-            if (ticket != null) {
-                query.setParameter("containingExternalIdText",
-                        String.format("%%%s%%", ticket.toLowerCase()));
+            final String ticketNumberMail =
+                    req.getSelect().getTicketNumberMail();
+            if (ticketNumberMail == null) {
+                final String ticketNumber = req.getSelect().getTicketNumber();
+                if (ticketNumber != null) {
+                    query.setParameter(QPARM_EXTERNAL_ID_TEXT, String
+                            .format("%%%s%%", ticketNumber.toLowerCase()));
+                }
             }
         }
+
     }
 
     /** */
@@ -1295,6 +1504,14 @@ public final class DocLogItem {
 
     public void setEncrypted(Boolean encrypted) {
         this.encrypted = encrypted;
+    }
+
+    public String getPrintOutPrinterName() {
+        return printOutPrinterName;
+    }
+
+    public void setPrintOutPrinterName(String printOutPrinterName) {
+        this.printOutPrinterName = printOutPrinterName;
     }
 
     public Boolean getDuplex() {
@@ -1521,6 +1738,15 @@ public final class DocLogItem {
         this.docInOriginatorIp = docInOriginatorIp;
     }
 
+    public ReservedIppQueueEnum getPrintInReservedQueue() {
+        return printInReservedQueue;
+    }
+
+    public void
+            setPrintInReservedQueue(ReservedIppQueueEnum printInReservedQueue) {
+        this.printInReservedQueue = printInReservedQueue;
+    }
+
     public PrintInDeniedReasonEnum getPrintInDeniedReason() {
         return printInDeniedReason;
     }
@@ -1563,9 +1789,30 @@ public final class DocLogItem {
     }
 
     public boolean isJobTicket() {
-        return this.printMode != null && (this.printMode == PrintModeEnum.TICKET
-                || this.printMode == PrintModeEnum.TICKET_C
-                || this.printMode == PrintModeEnum.TICKET_E);
+        return this.printMode != null && this.printMode.isJobTicket();
+    }
+
+    /**
+     * @return {@code true} if object is a successful PrintIn with a doc store
+     *         journal.
+     */
+    public boolean hasQueueJournal() {
+        return this.getDocType() == DocLogDao.Type.IN && this.isPrintJournal()
+                && BooleanUtils.isTrue(this.getPrintInPrinted());
+    }
+
+    /**
+     * @return {@code true} is no cost is charged (optionally after a refund).
+     */
+    public boolean isZeroCost() {
+        return this.getCost().compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    /**
+     * @return {@code true} is no original cost is charged.
+     */
+    public boolean isZeroCostOriginal() {
+        return this.getCostOriginal().compareTo(BigDecimal.ZERO) == 0;
     }
 
     public String getCurrencyCode() {

@@ -27,6 +27,8 @@ package org.savapage.server.pages.admin;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.IppRoutingEnum;
+import org.savapage.core.i18n.AdverbEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.server.pages.MarkupHelper;
 
 /**
@@ -49,6 +51,9 @@ public final class PageQueue extends AbstractAdminPage {
         super(parameters, ACLOidEnum.A_QUEUES, RequiredPermission.EDIT);
 
         final MarkupHelper helper = new MarkupHelper(this);
+
+        helper.addLabel("queue-journal", NounEnum.JOURNAL);
+        helper.addLabel("journal-disabled", AdverbEnum.DISABLED);
 
         helper.addLabel("ipp-routing-prompt", "IPP Routing Options");
 

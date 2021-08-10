@@ -52,6 +52,7 @@ import org.savapage.core.dao.enums.PrintModeEnum;
 import org.savapage.core.dao.helpers.AccountTrxPagerReq;
 import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PrintOutNounEnum;
+import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.jpa.Account.AccountTypeEnum;
 import org.savapage.core.jpa.AccountTrx;
 import org.savapage.core.jpa.DocLog;
@@ -61,6 +62,7 @@ import org.savapage.core.jpa.UserAccount;
 import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.PrintSupplierData;
+import org.savapage.core.services.helpers.ThirdPartyEnum;
 import org.savapage.core.services.helpers.account.UserAccountContextFactory;
 import org.savapage.core.util.BigDecimalUtil;
 import org.savapage.core.util.BitcoinUtil;
@@ -220,7 +222,7 @@ public final class AccountTrxPage extends AbstractListPage {
             }
 
             helper.encloseLabel("amount-refund",
-                    NounEnum.REFUND.uiText(getLocale()).toLowerCase(),
+                    NounEnum.REFUND.uiText(getLocale()),
                     printOut != null && accountTrx.getAmount()
                             .compareTo(BigDecimal.ZERO) > 0);
 
@@ -256,6 +258,14 @@ public final class AccountTrxPage extends AbstractListPage {
             }
 
             //
+            final PrintSupplierData printSupplierData;
+            if (trxType == AccountTrxTypeEnum.PRINT_OUT
+                    && docLog.getExternalData() != null) {
+                printSupplierData = PrintSupplierData
+                        .createFromData(docLog.getExternalData());
+            } else {
+                printSupplierData = null;
+            }
             //
             final boolean showDocLogTitle = ConfigManager.instance()
                     .isConfigValue(Key.WEBAPP_DOCLOG_SHOW_DOC_TITLE);
@@ -391,13 +401,10 @@ public final class AccountTrxPage extends AbstractListPage {
 
                     final String operator;
 
-                    if (docLog.getExternalData() == null) {
+                    if (printSupplierData == null) {
                         operator = null;
-
                     } else {
-                        final PrintSupplierData supplierData = PrintSupplierData
-                                .createFromData(docLog.getExternalData());
-                        operator = supplierData.getOperator();
+                        operator = printSupplierData.getOperator();
                     }
                     jobticket = String.format("%s %s (%s)",
                             printMode.uiText(getLocale()),
@@ -407,6 +414,7 @@ public final class AccountTrxPage extends AbstractListPage {
                 } else if (StringUtils.isNotBlank(docLog.getExternalId())) {
                     jobticket = docLog.getExternalId();
                 }
+
                 break;
 
             case INITIAL:
@@ -419,6 +427,33 @@ public final class AccountTrxPage extends AbstractListPage {
             default:
                 throw new SpException(
                         "TrxType [" + trxType + "] unknown: not handled");
+            }
+
+            final boolean isPrintOutCupsJob =
+                    trxType == AccountTrxTypeEnum.PRINT_OUT
+                            && printOut.getCupsJobId() > 0;
+
+            helper.encloseLabel("cupsJobPrompt",
+                    PrintOutNounEnum.JOB.uiText(getLocale()),
+                    isPrintOutCupsJob);
+
+            if (isPrintOutCupsJob) {
+                helper.addLabel("cupsJobId",
+                        printOut.getCupsJobId().toString());
+                final IppJobStateEnum state =
+                        IppJobStateEnum.asEnum(printOut.getCupsJobState());
+                final String cssClass;
+                if (state.isFailure()) {
+                    cssClass = MarkupHelper.CSS_TXT_ERROR;
+                } else if (state.isFinished()) {
+                    cssClass = MarkupHelper.CSS_TXT_VALID;
+                } else {
+                    cssClass = MarkupHelper.CSS_TXT_WARN;
+                }
+                MarkupHelper.modifyLabelAttr(
+                        helper.addLabel("cupsJobState",
+                                state.uiText(getLocale())),
+                        MarkupHelper.ATTR_CLASS, cssClass);
             }
 
             //
@@ -447,16 +482,6 @@ public final class AccountTrxPage extends AbstractListPage {
             final ExternalSupplierStatusEnum extSupplierStatus =
                     DaoEnumHelper.getExtSupplierStatus(docLog);
 
-            if (StringUtils.isBlank(imageSrc)) {
-                helper.discloseLabel("trxImage");
-            } else {
-                labelWrk =
-                        MarkupHelper.createEncloseLabel("trxImage", "", true);
-                labelWrk.add(
-                        new AttributeModifier(MarkupHelper.ATTR_SRC, imageSrc));
-                item.add(labelWrk);
-            }
-
             //
             final boolean isGatewayPaymentMethodInHeader =
                     trxType == AccountTrxTypeEnum.GATEWAY
@@ -470,16 +495,43 @@ public final class AccountTrxPage extends AbstractListPage {
             }
 
             //
-            helper.encloseLabel("extSupplier", extSupplier,
-                    extSupplier != null);
+            helper.encloseLabel("extSupplier", extSupplier, extSupplier != null
+                    && extSupplierEnum != ExternalSupplierEnum.SAVAPAGE);
 
-            if (extSupplierStatus == null) {
+            final String extStatusImg;
+
+            if (printSupplierData == null) {
+                extStatusImg = null;
+            } else {
+                final ThirdPartyEnum tp = printSupplierData.getClient();
+                if (tp != null) {
+                    extStatusImg = WebApp.getThirdPartyEnumImgUrl(tp);
+                } else {
+                    extStatusImg = null;
+                }
+            }
+
+            if (extSupplierStatus == null || extStatusImg == null) {
                 helper.discloseLabel("extStatus");
             } else {
+                // imageSrc = extStatusImg;
+                helper.addAppendLabelAttr("extStatusImg", "",
+                        MarkupHelper.ATTR_SRC, extStatusImg);
                 helper.encloseLabel("extStatus",
                         extSupplierStatus.uiText(getLocale()), true)
-                        .add(new AttributeAppender("class", MarkupHelper
-                                .getCssTxtClass(extSupplierStatus)));
+                        .add(new AttributeAppender(MarkupHelper.ATTR_CLASS,
+                                MarkupHelper
+                                        .getCssTxtClass(extSupplierStatus)));
+            }
+
+            if (StringUtils.isBlank(imageSrc)) {
+                helper.discloseLabel("trxImage");
+            } else {
+                labelWrk =
+                        MarkupHelper.createEncloseLabel("trxImage", "", true);
+                labelWrk.add(
+                        new AttributeModifier(MarkupHelper.ATTR_SRC, imageSrc));
+                item.add(labelWrk);
             }
 
             //

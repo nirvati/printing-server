@@ -42,8 +42,16 @@ import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.ACLRoleEnum;
+import org.savapage.core.dao.enums.ReservedIppQueueEnum;
 import org.savapage.core.dao.helpers.DocLogPagerReq;
+import org.savapage.core.dao.helpers.IppQueueHelper;
 import org.savapage.core.dto.UserIdDto;
+import org.savapage.core.i18n.AdjectiveEnum;
+import org.savapage.core.i18n.JobTicketNounEnum;
+import org.savapage.core.i18n.NounEnum;
+import org.savapage.core.i18n.PhraseEnum;
+import org.savapage.core.i18n.PrepositionEnum;
+import org.savapage.core.i18n.PrintOutNounEnum;
 import org.savapage.core.jpa.Account;
 import org.savapage.core.jpa.IppQueue;
 import org.savapage.core.jpa.Printer;
@@ -52,6 +60,7 @@ import org.savapage.core.services.AccessControlService;
 import org.savapage.core.services.QueueService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.DocLogScopeEnum;
+import org.savapage.server.helpers.HtmlButtonEnum;
 import org.savapage.server.session.SpSession;
 
 /**
@@ -99,6 +108,14 @@ public final class DocLogBase extends AbstractAuthPage {
             if (!ACCESS_CONTROL_SERVICE.hasAccess(
                     SpSession.get().getUserIdDto(),
                     ACLRoleEnum.JOB_TICKET_OPERATOR)) {
+                throw new RestartResponseException(NotAuthorized.class);
+            }
+
+        } else if (webAppType == WebAppTypeEnum.MAILTICKETS) {
+
+            if (!ACCESS_CONTROL_SERVICE.hasAccess(
+                    SpSession.get().getUserIdDto(),
+                    ACLRoleEnum.MAIL_TICKET_OPERATOR)) {
                 throw new RestartResponseException(NotAuthorized.class);
             }
 
@@ -150,7 +167,7 @@ public final class DocLogBase extends AbstractAuthPage {
              * If we are called in a User WebApp context we ALWAYS use the user
              * of the current session.
              */
-            userId = SpSession.get().getUserDbKey();
+            userId = SpSession.get().getUserDbKeyDocLog();
             userNameVisible = false;
             accountNameVisible = false;
         }
@@ -159,38 +176,101 @@ public final class DocLogBase extends AbstractAuthPage {
         String userName = null;
         String accountName = null;
 
+        final String userNameCheck;
+
         if (userNameVisible) {
+
             final User user = ServiceContext.getDaoContext().getUserDao()
                     .findById(userId);
             userName = user.getUserId();
+            userNameCheck = userName;
+
         } else if (accountNameVisible) {
+
             final Account account = ServiceContext.getDaoContext()
                     .getAccountDao().findById(accountId);
             accountName = account.getName();
+            userNameCheck = null;
+
+        } else {
+            userNameCheck = SpSession.get().getUserIdDocLog();
         }
+
+        final boolean isMailPrintTicketOperator = userNameCheck != null
+                && ConfigManager.isMailPrintTicketOperator(userNameCheck);
 
         //
         Label hiddenLabel = new Label("hidden-user-id");
-        String hiddenValue = "";
-
-        if (userId != null) {
-            hiddenValue = userId.toString();
+        final String hiddenUserId;
+        if (userId == null) {
+            hiddenUserId = "";
+        } else {
+            hiddenUserId = userId.toString();
         }
-        hiddenLabel.add(new AttributeModifier("value", hiddenValue));
+        hiddenLabel.add(
+                new AttributeModifier(MarkupHelper.ATTR_VALUE, hiddenUserId));
         add(hiddenLabel);
 
         //
         hiddenLabel = new Label("hidden-account-id");
-        hiddenValue = "";
-
-        if (accountId != null) {
-            hiddenValue = accountId.toString();
+        final String hiddenAccountId;
+        if (accountId == null) {
+            hiddenAccountId = "";
+        } else {
+            hiddenAccountId = accountId.toString();
         }
-        hiddenLabel.add(new AttributeModifier("value", hiddenValue));
+        hiddenLabel.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                hiddenAccountId));
         add(hiddenLabel);
 
         //
         final MarkupHelper helper = new MarkupHelper(this);
+
+        helper.addLabel("select-and-sort", PhraseEnum.SELECT_AND_SORT);
+
+        helper.addLabel("prompt-type", NounEnum.TYPE);
+        helper.addLabel("prompt-document-name", NounEnum.DOCUMENT);
+
+        helper.encloseLabel("prompt-ticket-number-mail",
+                JobTicketNounEnum.TICKET.uiText(getLocale()),
+                isMailPrintTicketOperator);
+
+        helper.addLabel("prompt-period", NounEnum.PERIOD);
+        helper.addLabel("prompt-period-from", PrepositionEnum.FROM_TIME);
+        helper.addLabel("prompt-period-to", PrepositionEnum.TO_TIME);
+
+        helper.addLabel("prompt-author", NounEnum.AUTHOR);
+        helper.addLabel("prompt-subject", NounEnum.SUBJECT);
+        helper.addLabel("prompt-keywords",
+                NounEnum.KEYWORD.uiText(getLocale(), true));
+        helper.addLabel("prompt-encryption", NounEnum.ENCRYPTION);
+        helper.addLabel("prompt-layout", NounEnum.LAYOUT);
+
+        helper.addLabel("encryp-option-yes",
+                HtmlButtonEnum.YES.uiText(getLocale()));
+        helper.addLabel("encryp-option-no",
+                HtmlButtonEnum.NO.uiText(getLocale()));
+
+        helper.addLabel("cat-queue", NounEnum.QUEUE);
+
+        helper.encloseLabel("prompt-destination",
+                NounEnum.DESTINATION.uiText(getLocale()),
+                !isMailPrintTicketOperator
+                        && (webAppType == WebAppTypeEnum.ADMIN
+                                || webAppType == WebAppTypeEnum.PRINTSITE));
+
+        helper.addLabel("option-simplex", PrintOutNounEnum.SIMPLEX);
+        helper.addLabel("option-duplex", PrintOutNounEnum.DUPLEX);
+
+        helper.addLabel("prompt-sort-by", NounEnum.SORTING);
+        helper.addLabel("sort-by-name", NounEnum.NAME);
+        helper.addLabel("sort-by-date", NounEnum.DATE);
+
+        helper.addLabel("sort-asc", AdjectiveEnum.ASCENDING);
+        helper.addLabel("sort-desc", AdjectiveEnum.DESCENDING);
+
+        helper.addButton("button-apply", HtmlButtonEnum.APPLY);
+        helper.addButton("button-default", HtmlButtonEnum.DEFAULT);
 
         //
         final boolean btnVisiblePdf;
@@ -200,14 +280,18 @@ public final class DocLogBase extends AbstractAuthPage {
 
         DocLogScopeEnum defaultScope = DocLogScopeEnum.ALL;
 
+        if (isMailPrintTicketOperator) {
+            defaultScope = DocLogScopeEnum.IN;
+        }
+
         final List<Printer> printerList = getPrinterList(webAppType);
 
         if (webAppType == WebAppTypeEnum.ADMIN) {
 
-            btnVisiblePdf = true;
+            btnVisiblePdf = !isMailPrintTicketOperator;
             btnVisiblePrint = true;
-            btnVisibleTicket = true;
-            visibleLetterhead = true;
+            btnVisibleTicket = !isMailPrintTicketOperator;
+            visibleLetterhead = !isMailPrintTicketOperator;
 
         } else if (webAppType == WebAppTypeEnum.JOBTICKETS) {
 
@@ -256,6 +340,7 @@ public final class DocLogBase extends AbstractAuthPage {
                             Key.WEBAPP_USER_DOCLOG_SELECT_TYPE_DEFAULT_ORDER);
 
             DocLogScopeEnum scopeSecondChoice = null;
+
             for (final DocLogScopeEnum scope : typeDefaultOrder) {
                 if ((scope == DocLogScopeEnum.PDF && btnVisiblePdf)
                         || (scope == DocLogScopeEnum.PRINT && btnVisiblePrint)
@@ -287,10 +372,14 @@ public final class DocLogBase extends AbstractAuthPage {
             selectTypeToCheck = labelWlk;
         }
 
-        labelWlk = helper.addModifyLabelAttr("select-type-out",
-                MarkupHelper.ATTR_VALUE, DocLogDao.Type.OUT.toString());
-        if (defaultScope == DocLogScopeEnum.OUT) {
-            selectTypeToCheck = labelWlk;
+        if (isMailPrintTicketOperator) {
+            helper.discloseLabel("select-type-out");
+        } else {
+            labelWlk = helper.addModifyLabelAttr("select-type-out",
+                    MarkupHelper.ATTR_VALUE, DocLogDao.Type.OUT.toString());
+            if (defaultScope == DocLogScopeEnum.OUT) {
+                selectTypeToCheck = labelWlk;
+            }
         }
 
         if (btnVisiblePdf) {
@@ -328,36 +417,63 @@ public final class DocLogBase extends AbstractAuthPage {
 
         //
         helper.encloseLabel(WICKET_ID_PROMPT_LETTERHEAD,
-                localized("prompt-letterhead"), visibleLetterhead);
+                NounEnum.LETTERHEAD.uiText(getLocale()), visibleLetterhead);
+
+        if (visibleLetterhead) {
+            helper.addLabel("lh-option-yes",
+                    HtmlButtonEnum.YES.uiText(getLocale()));
+            helper.addLabel("lh-option-no",
+                    HtmlButtonEnum.NO.uiText(getLocale()));
+        }
 
         //
         helper.encloseLabel(WICKET_ID_SELECT_AND_SORT_USER, userName,
                 userNameVisible);
+        if (userNameVisible) {
+            helper.addLabel("select-and-sort-user-prompt", NounEnum.USER);
+        }
+
         helper.encloseLabel(WICKET_ID_SELECT_AND_SORT_ACCOUNT, accountName,
                 accountNameVisible);
+        if (accountNameVisible) {
+            helper.addLabel("select-and-sort-account-prompt",
+                    PrintOutNounEnum.ACCOUNT.uiText(getLocale()));
+        }
 
         /*
          * Option list: Queues
          */
-        add(new PropertyListView<IppQueue>("option-list-queues",
-                getQueueList(webAppType)) {
+        final List<IppQueue> queueList =
+                getQueueList(webAppType, isMailPrintTicketOperator);
+
+        helper.encloseLabel("option-queue-all", localized("option-all"),
+                queueList.size() > 1);
+        helper.encloseLabel("sort-by-queue", NounEnum.QUEUE.uiText(getLocale()),
+                queueList.size() > 1);
+
+        add(new PropertyListView<IppQueue>("option-list-queues", queueList) {
 
             private static final long serialVersionUID = 1L;
 
             @Override
             protected void populateItem(final ListItem<IppQueue> item) {
                 final IppQueue queue = item.getModel().getObject();
-                final Label label = new Label("option-queue",
-                        String.format("/%s", queue.getUrlPath()));
-                label.add(new AttributeModifier("value", queue.getId()));
+                final Label label =
+                        new Label("option-queue", IppQueueHelper.uiPath(queue));
+                label.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                        queue.getId()));
                 item.add(label);
             }
-
         });
 
         /*
          * Option list: Printers
          */
+        helper.encloseLabel("option-printer-all", localized("option-all"),
+                printerList.size() > 1);
+        helper.encloseLabel("sort-by-printer",
+                NounEnum.PRINTER.uiText(getLocale()), printerList.size() > 1);
+
         add(new PropertyListView<Printer>("option-list-printers", printerList) {
 
             private static final long serialVersionUID = 1L;
@@ -367,10 +483,10 @@ public final class DocLogBase extends AbstractAuthPage {
                 final Printer printer = item.getModel().getObject();
                 final Label label =
                         new Label("option-printer", printer.getDisplayName());
-                label.add(new AttributeModifier("value", printer.getId()));
+                label.add(new AttributeModifier(MarkupHelper.ATTR_VALUE,
+                        printer.getId()));
                 item.add(label);
             }
-
         });
 
         /*
@@ -396,10 +512,12 @@ public final class DocLogBase extends AbstractAuthPage {
      *
      * @param webAppType
      *            The Web App Type.
+     * @param isMailPrintTicketOperator
+     *            {{@code true} if list is for Mail Print Ticket Operator.
      * @return The list.
      */
-    private static List<IppQueue>
-            getQueueList(final WebAppTypeEnum webAppType) {
+    private static List<IppQueue> getQueueList(final WebAppTypeEnum webAppType,
+            final boolean isMailPrintTicketOperator) {
 
         final IppQueueDao dao = ServiceContext.getDaoContext().getIppQueueDao();
 
@@ -409,6 +527,10 @@ public final class DocLogBase extends AbstractAuthPage {
                 || webAppType == WebAppTypeEnum.PRINTSITE) {
             filter.setDeleted(Boolean.FALSE);
             filter.setDisabled(Boolean.FALSE);
+        }
+        if (isMailPrintTicketOperator) {
+            filter.setContainingText(
+                    ReservedIppQueueEnum.MAILPRINT.getUrlPath());
         }
 
         final List<IppQueue> list = dao.getListChunk(filter, null, null,
