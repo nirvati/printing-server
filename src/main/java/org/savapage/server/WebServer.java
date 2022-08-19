@@ -46,7 +46,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.security.LoginService;
 import org.eclipse.jetty.server.ForwardedRequestCustomizer;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
@@ -803,9 +805,6 @@ public final class WebServer {
 
             InputStream istr;
 
-            /**
-             *
-             */
             final Properties propsPw = new Properties();
 
             istr = new java.io.FileInputStream(
@@ -815,9 +814,6 @@ public final class WebServer {
             ksPassword = propsPw.getProperty("password");
             istr.close();
 
-            /**
-             *
-             */
             ksLocation = serverHome + "/data/default-ssl-keystore";
 
             istr = new java.io.FileInputStream(ksLocation);
@@ -825,11 +821,8 @@ public final class WebServer {
             ks.load(istr, ksPassword.toCharArray());
             istr.close();
 
-            /**
-             *
-             */
             sslContextFactory.setKeyStore(ks);
-            sslContextFactory.setKeyManagerPassword(ksPassword);
+            sslContextFactory.setKeyStorePassword(ksPassword);
 
         } else {
 
@@ -839,13 +832,19 @@ public final class WebServer {
             ksPassword = propsServer.getProperty(PROP_KEY_SSL_KEYSTORE_PW);
 
             final Resource keystore = Resource.newResource(ksLocation);
-
             sslContextFactory.setKeyStoreResource(keystore);
 
+            // Step 1: KeyStore password.
             sslContextFactory.setKeyStorePassword(ksPassword);
 
-            sslContextFactory.setKeyManagerPassword(
-                    propsServer.getProperty(PROP_KEY_SSL_KEY_PW));
+            // Step 2: KeyManager password.
+            final String kmPassword =
+                    propsServer.getProperty(PROP_KEY_SSL_KEY_PW);
+
+            if (StringUtils.isNoneBlank(kmPassword)
+                    && !StringUtils.equals(ksPassword, kmPassword)) {
+                sslContextFactory.setKeyManagerPassword(kmPassword);
+            }
         }
 
         ConfigManager.setSslCertInfo(createSslCertInfo(ksLocation, ksPassword));
@@ -952,9 +951,18 @@ public final class WebServer {
          * BASIC Authentication for Atom Feed and PaperCut User Syn/Auth
          * Interface.
          */
-        server.addBean(new BasicAuthLoginService(
+        final LoginService basicAuthLoginService = new BasicAuthLoginService(
                 new String[] { AtomFeedServlet.ROLE_ALLOWED,
-                        ExtPaperCutSyncServlet.ROLE_ALLOWED }));
+                        ExtPaperCutSyncServlet.ROLE_ALLOWED });
+
+        server.addBean(basicAuthLoginService);
+
+        /*
+         * See web.xml:
+         * <login-config><auth-method>BASIC</auth-method></login-config>
+         */
+        webAppContext.getSecurityHandler()
+                .setLoginService(basicAuthLoginService);
 
         // Add RESTfull servlet.
         initRESTful(webAppContext);

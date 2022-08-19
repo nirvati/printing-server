@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.Session;
@@ -78,7 +79,10 @@ import org.savapage.core.util.DateUtil;
 import org.savapage.core.util.LocaleHelper;
 import org.savapage.core.util.Messages;
 import org.savapage.ext.oauth.OAuthProviderEnum;
+import org.savapage.ext.payment.PaymentGateway;
+import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentMethodEnum;
+import org.savapage.ext.payment.bitcoin.BitcoinGateway;
 import org.savapage.lib.pgp.pdf.PdfPgpVerifyUrl;
 import org.savapage.server.api.JsonApiServer;
 import org.savapage.server.cometd.AbstractEventService;
@@ -103,6 +107,7 @@ import org.savapage.server.webapp.WebAppAdmin;
 import org.savapage.server.webapp.WebAppHelper;
 import org.savapage.server.webapp.WebAppJobTickets;
 import org.savapage.server.webapp.WebAppMailTickets;
+import org.savapage.server.webapp.WebAppPayment;
 import org.savapage.server.webapp.WebAppPdfPgp;
 import org.savapage.server.webapp.WebAppPos;
 import org.savapage.server.webapp.WebAppPrintSite;
@@ -121,6 +126,11 @@ import de.agilecoders.wicket.webjars.request.resource.WebjarsJavaScriptResourceR
  *
  */
 public final class WebApp extends WebApplication implements ServiceEntryPoint {
+
+    /**
+     * Count of all sessions authenticated or not.
+     */
+    private static AtomicLong sessionCount = new AtomicLong();
 
     /**
      * Native mount path of Apache Wicket.
@@ -170,6 +180,11 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      * Used in this class to set mountPage().
      */
     public static final String MOUNT_PATH_WEBAPP_USER = "/user";
+
+    /**
+     * Used in this class to set mountPage().
+     */
+    public static final String MOUNT_PATH_WEBAPP_PAYMENT = "/payment";
 
     /**
      * The URL path for "printers" as used in {@link #MOUNT_PATH_WEBAPP_OAUTH}
@@ -323,6 +338,13 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             new HashMap<>();
 
     /**
+     * Map of active authenticated User (key) Payment Web App session count
+     * (value).
+     */
+    private static Map<String, Integer> theMapUsers2WebAppPaymentCount =
+            new HashMap<>();
+
+    /**
      * Last time the session dictionaries were pruned.
      */
     private static long theDictLastPruneTime;
@@ -386,6 +408,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             return WebApp.MOUNT_PATH_WEBAPP_JOBTICKETS;
         case MAILTICKETS:
             return WebApp.MOUNT_PATH_WEBAPP_MAILTICKETS;
+        case PAYMENT:
+            return WebApp.MOUNT_PATH_WEBAPP_PAYMENT;
         case POS:
             return WebApp.MOUNT_PATH_WEBAPP_POS;
         case USER:
@@ -534,6 +558,18 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     }
 
     /**
+     * Gets count of all sessions authenticated or not.
+     *
+     * NOTE: increment/decrement of this counter is not balanced so it can even
+     * turn negative.
+     *
+     * @return Number of sessions.
+     */
+    public static long getSessionCount() {
+        return sessionCount.get();
+    }
+
+    /**
      * Gets the number of authenticated WebApp sessions.
      *
      * @return the number of sessions.
@@ -612,8 +648,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             if (newIP && LOGGER.isDebugEnabled()) {
 
                 LOGGER.debug(
-                        "IP Recent User [{}] [{}] [{}] added."
-                                + " Total [{}]",
+                        "IP Recent User [{}] [{}] [{}] added." + " Total [{}]",
                         ipAddr, user, sessionId,
                         theMapIpAddr2RecentUser.size());
             }
@@ -652,6 +687,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
                 final Map<String, Integer> mapWrk;
                 if (webAppType == WebAppTypeEnum.MAILTICKETS) {
                     mapWrk = theMapUsers2WebAppMailTicketsCount;
+                } else if (webAppType == WebAppTypeEnum.PAYMENT) {
+                    mapWrk = theMapUsers2WebAppPaymentCount;
                 } else {
                     mapWrk = theMapUsers2WebAppUserCount;
                 }
@@ -686,6 +723,42 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
      */
     public ServerPluginManager getPluginManager() {
         return this.pluginManager;
+    }
+
+    /**
+     * @return {@code true} if Bitcoin gateway is online.
+     */
+    public boolean isBitcoinGatewayOnline() {
+
+        final BitcoinGateway plugin =
+                this.getPluginManager().getBitcoinGateway();
+
+        return plugin != null && plugin.isOnline() && plugin
+                .isCurrencySupported(ConfigManager.getAppCurrencyCode());
+    }
+
+    /**
+     * @return {@code true} if Payment gateway is online.
+     */
+    public boolean isPaymentGatewayOnline() {
+
+        int paymentMethods = 0;
+
+        try {
+            final PaymentGateway plugin =
+                    this.getPluginManager().getExternalPaymentGateway();
+
+            if (plugin != null && plugin.isOnline() && plugin
+                    .isCurrencySupported(ConfigManager.getAppCurrencyCode())) {
+                paymentMethods +=
+                        plugin.getExternalPaymentMethods().values().size();
+            }
+
+        } catch (PaymentGatewayException e) {
+            paymentMethods = 0;
+        }
+
+        return paymentMethods > 0;
     }
 
     /**
@@ -863,6 +936,7 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             mountPage(MOUNT_PATH_WEBAPP_PDFPGP, WebAppPdfPgp.class);
 
             mountPage(MOUNT_PATH_WEBAPP_USER, WebAppUser.class);
+            mountPage(MOUNT_PATH_WEBAPP_PAYMENT, WebAppPayment.class);
 
             mountPage(MOUNT_PATH_WEBAPP_OAUTH, OAuthRedirectPage.class);
             mountPage(MOUNT_PATH_WEBAPP_USER_OAUTH, OAuthRedirectPage.class);
@@ -1134,8 +1208,14 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
             } else {
                 wrappedURL.append("/");
             }
-            wrappedURL.append(
-                    StringUtils.removeStart(orgStringSrc, PATH_PARENT_SLASH));
+
+            String strippedStringSrc = orgStringSrc;
+            while (StringUtils.startsWith(strippedStringSrc,
+                    PATH_PARENT_SLASH)) {
+                strippedStringSrc = StringUtils.removeStart(strippedStringSrc,
+                        PATH_PARENT_SLASH);
+            }
+            wrappedURL.append(strippedStringSrc);
 
             newStringSrc = wrappedURL.toString();
 
@@ -1317,6 +1397,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
     @Override
     public Session newSession(final Request request, final Response response) {
 
+        sessionCount.incrementAndGet();
+
         final String remoteAddr = WebAppHelper.getClientIP(request);
         final String urlPath = request.getUrl().getPath();
 
@@ -1393,12 +1475,14 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
         super.sessionUnbound(sessionId);
 
+        sessionCount.decrementAndGet();
+
         synchronized (MUTEX_DICT) {
 
             final WebAppTypeEnum webAppType =
                     theMapSession2WebAppType.remove(sessionId);
 
-            if (webAppType.isUserTypeOrVariant()) {
+            if (webAppType != null && webAppType.isUserTypeOrVariant()) {
 
                 final String userId =
                         theMapSession2User4WebApp.remove(sessionId);
@@ -1408,6 +1492,8 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
                 if (webAppType == WebAppTypeEnum.MAILTICKETS) {
                     mapWrk = theMapUsers2WebAppMailTicketsCount;
+                } else if (webAppType == WebAppTypeEnum.PAYMENT) {
+                    mapWrk = theMapUsers2WebAppPaymentCount;
                 } else {
                     mapWrk = theMapUsers2WebAppUserCount;
                 }
@@ -1423,10 +1509,12 @@ public final class WebApp extends WebApplication implements ServiceEntryPoint {
 
             if (ipAddr == null) {
 
-                LOGGER.warn(
-                        "IP User Session [?.?.?.?] [{}] unbound. "
-                                + "Sessions [{}]",
-                        sessionId, theMapIpAddr2RecentUser.size());
+                if (webAppType != null) {
+                    LOGGER.warn(
+                            "IP User Session [?.?.?.?] [{}] unbound. "
+                                    + "Sessions [{}]",
+                            sessionId, theMapIpAddr2RecentUser.size());
+                }
 
             } else {
 

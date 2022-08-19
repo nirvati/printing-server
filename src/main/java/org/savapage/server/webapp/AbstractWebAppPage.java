@@ -310,7 +310,7 @@ public abstract class AbstractWebAppPage extends AbstractPage
         final boolean isZeroPanel =
                 !parameters.get(WebAppParmEnum.SP_ZERO.parm()).isEmpty();
 
-        return !isZeroPanel && SpSession.get().getAuthWebAppCount() > 0;
+        return !isZeroPanel && SpSession.get().getAuthWebAppCount() > 1;
     }
 
     /**
@@ -578,6 +578,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
         case USER:
             configKey = Key.WEBAPP_THEME_USER;
             break;
+        case PAYMENT:
+            configKey = Key.WEBAPP_THEME_PAYMENT;
+            break;
         default:
             configKey = null;
             break;
@@ -622,6 +625,9 @@ public abstract class AbstractWebAppPage extends AbstractPage
             break;
         case USER:
             configKey = Key.WEBAPP_CUSTOM_USER;
+            break;
+        case PAYMENT:
+            configKey = Key.WEBAPP_CUSTOM_PAYMENT;
             break;
         default:
             configKey = null;

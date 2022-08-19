@@ -783,7 +783,9 @@
             _PROXY_PRINT_AUTH_MODE = 'proxy-print.auth-mode',
             _WEBAPP_USER_IDLE_SECS = 'webapp.user.max-idle-secs',
             // boolean authentication attributes
-            _AUTH_ATTR_BOOLS = ['.name', '.yubikey', '.id', '.id.pin-required', '.id.is-masked', '.card-local', '.card-ip', '.card.pin-required', '.card.self-association'],
+            _AUTH_ATTR_BOOLS = ['.name', '.email', '.yubikey',
+                '.id', '.id.pin-required', '.id.is-masked',
+                '.card-local', '.card-ip', '.card.pin-required', '.card.self-association'],
             // string authentication attributes
             _AUTH_ATTR_STRINGS = [],
             _CARD_FORMAT_ATTR = ['.format', '.first-byte'],
@@ -799,6 +801,7 @@
 
         _onAuthModeEnabled = function() {
             var authUser = _view.isCbChecked($("#auth-mode\\.name")),
+                authEmail = _view.isCbChecked($("#auth-mode\\.email")),
                 authId = _view.isCbChecked($("#auth-mode\\.id")),
                 authCardLocal = _view.isCbChecked($("#auth-mode\\.card-local")),
                 authCardIp = _view.isCbChecked($("#auth-mode\\.card-ip")),
@@ -807,12 +810,17 @@
                 nMode = 0;
 
             $('#auth-mode-default-user').checkboxradio(authUser ? 'enable' : 'disable');
+            $('#auth-mode-default-email').checkboxradio(authEmail ? 'enable' : 'disable');
             $('#auth-mode-default-id').checkboxradio(authId ? 'enable' : 'disable');
             $('#auth-mode-default-card-local').checkboxradio(authCardLocal ? 'enable' : 'disable');
             $('#auth-mode-default-card-network').checkboxradio(authCardIp ? 'enable' : 'disable');
             $('#auth-mode-default-yubikey').checkboxradio(authYubikey ? 'enable' : 'disable');
 
             if (authUser) {
+                nMode++;
+            }
+
+            if (authEmail) {
                 nMode++;
             }
 
@@ -1219,10 +1227,13 @@
 
         var _page = new _ns.Page(_i18n, _view, '#page-printer', 'admin/PagePrinter'),
             _self = _ns.derive(_page),
-            _onChangeJobTicket,
-            _onChangeChargeType,
-            _onBrowsePPDE,
+            _onChangeJobTicket, _onChangeChargeType, _onBrowsePPDE, _onChangePPDE,
             _showAllMediaRows;
+
+        _onChangePPDE = function(selPPDE) {
+            var val = selPPDE.val();
+            _view.visible($('#printer-ppd-ext-file-btn'), val && val.length > 0);
+        };
 
         _onChangeChargeType = function(chargeType) {
             var isSimple = (chargeType === 'SIMPLE');
@@ -1334,11 +1345,12 @@
                 return false;
             });
 
+            $(this).on('change', "#printer-ppd-ext-file", null, function(e) {
+                _onChangePPDE($(this));
+            });
+
         }).on("pagebeforeshow", function(event, ui) {
-            var accounting,
-                mediaSource,
-                ppdExtFile,
-                data;
+            var accounting, mediaSource, ppdExtFile, data;
 
             if (ui.prevPage.attr('id') === 'page-ppde-file-browser') {
                 return;
@@ -1363,6 +1375,10 @@
             _view.visible($('#printer-journal-disabled-li'), _model.editPrinter.journalDisabled != null);
             _view.checkCb('#printer-journal-disabled', _model.editPrinter.journalDisabled);
 
+            // check null && undefined
+            _view.visible($('#printer-papercut-front-end-enabled-li'), _model.editPrinter.papercutFrontEnd != null);
+            _view.checkCb('#printer-papercut-front-end-enabled', _model.editPrinter.papercutFrontEnd);
+
             _view.checkCb('#printer-internal', _model.editPrinter.internal);
             _view.checkCb('#printer-deleted', _model.editPrinter.deleted);
 
@@ -1382,6 +1398,7 @@
             // PPD ext file
             ppdExtFile.html(_view.getAdminPageHtml('PPDExtFileOptionsAddin', data)).enhanceWithin();
             _view.setSelectedValue(ppdExtFile, _model.editPrinter.ppdExtFile);
+            _onChangePPDE(ppdExtFile);
 
             /*
              * Accounting.
@@ -1924,6 +1941,9 @@
             $(this).on('click', ".sp-download-receipt", null, function() {
                 _self.onDownload("pos-receipt-download", null, $(this).attr('data-savapage'));
                 return false;
+            }).on('click', ".sp-download-invoice", null, function() {
+                _api.download("pos-invoice-download-user", null, $(this).attr('data-savapage'));
+                return false;
             });
 
             /*
@@ -2428,7 +2448,13 @@
             });
 
             $(this).on('change', "input:checkbox[id='papercut.enable']", null, function(e) {
-                _panel.Options.onPaperCutEnabled($(this).is(':checked'));
+                var isEnabled = $(this).is(':checked');
+                _panel.Options.onPaperCutEnabled(isEnabled);
+                _panel.Options.onPaperCutDbEnabled(isEnabled &&
+                    _view.isCbChecked($('#papercut\\.db\\.enable')));
+            });
+            $(this).on('change', "input:checkbox[id='papercut.db.enable']", null, function(e) {
+                _panel.Options.onPaperCutDbEnabled($(this).is(':checked'));
             });
 
             $(this).on('change', "input:checkbox[id='webapp.user.proxy-print.clear-inbox.enable']", null, function(e) {
@@ -2459,7 +2485,8 @@
             });
 
             $(this).on('click', '#apply-papercut', null, function() {
-                _self.onApplyPaperCut(_view.isCbChecked($('#papercut\\.enable')));
+                _self.onApplyPaperCut(_view.isCbChecked($('#papercut\\.enable')),
+                    _view.isCbChecked($('#papercut\\.db\\.enable')));
                 return false;
             });
 

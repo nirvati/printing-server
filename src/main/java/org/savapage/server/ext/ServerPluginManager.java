@@ -43,6 +43,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -72,6 +73,8 @@ import org.savapage.core.msg.UserMsgIndicator;
 import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
 import org.savapage.core.services.helpers.AccountingException;
+import org.savapage.core.services.helpers.account.UserAccountContextEnum;
+import org.savapage.core.services.helpers.account.UserAccountContextFactory;
 import org.savapage.core.util.AppLogHelper;
 import org.savapage.core.util.BitcoinUtil;
 import org.savapage.core.util.CurrencyUtil;
@@ -87,6 +90,8 @@ import org.savapage.ext.notification.NotificationListener;
 import org.savapage.ext.notification.NotificationPlugin;
 import org.savapage.ext.oauth.OAuthClientPlugin;
 import org.savapage.ext.oauth.OAuthProviderEnum;
+import org.savapage.ext.papercut.PaperCutException;
+import org.savapage.ext.papercut.PaperCutServerProxy;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentGatewayListener;
@@ -607,6 +612,24 @@ public final class ServerPluginManager
     }
 
     /**
+     * @return {@code true} if PaperCut Personal Account is used in Payment
+     *         Gateway.
+     */
+    public static boolean isPaperCutPaymentGateway() {
+
+        if (UserAccountContextFactory.hasContextPaperCut()) {
+
+            final Set<UserAccountContextEnum> accountContextSet = ConfigManager
+                    .instance().getConfigEnumSet(UserAccountContextEnum.class,
+                            Key.FINANCIAL_PAYMENT_GATEWAY_ACCOUNTS);
+
+            return accountContextSet.isEmpty() || accountContextSet
+                    .contains(UserAccountContextEnum.PAPERCUT);
+        }
+        return false;
+    }
+
+    /**
      * Gets the first {@link BitcoinGateway}.
      *
      * @return The {@link BitcoinGateway}, or {@code null} when not found.
@@ -760,6 +783,8 @@ public final class ServerPluginManager
      *            The {@link PaymentGatewayTrx} received.
      * @param status
      *            The status text.
+     * @param userId
+     *            User ID.
      */
     private void logPaymentTrxReceived(final BitcoinGatewayTrx trx,
             final String status, final String userId) {
@@ -880,11 +905,10 @@ public final class ServerPluginManager
             onPaymentExpired(final PaymentGatewayTrx trx) {
 
         publishPaymentEvent(PubLevelEnum.WARN,
-                localize("payment-expired", trx.getGatewayId(),
-                        String.format("%s %.2f", CurrencyUtil.getCurrencySymbol(
-                                trx.getCurrencyCode(), Locale.getDefault()),
-                                trx.getAmount()),
-                        trx.getUserId()));
+                localize("payment-expired", String.format("%s %.2f",
+                        CurrencyUtil.getCurrencySymbol(trx.getCurrencyCode(),
+                                Locale.getDefault()),
+                        trx.getAmount()), trx.getGatewayId(), trx.getUserId()));
 
         logPaymentTrxReceived(trx, STAT_EXPIRED);
 
@@ -1286,10 +1310,24 @@ public final class ServerPluginManager
          * Note: orphanedPaymentAccount is irrelevant since at this point User
          * is known.
          */
-        service.acceptFundsFromGateway(lockedUser, dto, null);
+        final String msgConcat;
 
-        publishPaymentEvent(PubLevelEnum.CLEAR, localize("payment-acknowledged",
-                formattedAmount, trx.getGatewayId(), trx.getUserId()));
+        if (isPaperCutPaymentGateway()) {
+            try {
+                service.acceptFundsFromGateway(PaperCutServerProxy
+                        .create(ConfigManager.instance(), true), dto);
+            } catch (PaperCutException e) {
+                throw new PaymentGatewayException(e.getMessage(), e);
+            }
+            msgConcat = " [PaperCut]";
+        } else {
+            service.acceptFundsFromGateway(lockedUser, dto, null);
+            msgConcat = "";
+        }
+
+        publishPaymentEvent(PubLevelEnum.CLEAR,
+                localize("payment-acknowledged", formattedAmount,
+                        trx.getGatewayId(), trx.getUserId()).concat(msgConcat));
 
         PaymentGatewayLogger.instance().onPaymentAcknowledged(trx);
 
@@ -1469,12 +1507,14 @@ public final class ServerPluginManager
      *
      * @param dfaultUrl
      *            De default URL.
+     * @param urlParms
+     *            URL parameters.
      * @return The {@link URL}.
      * @throws MalformedURLException
      *             When format of the URL is invalid.
      */
-    public static URL getRedirectUrl(final String dfaultUrl)
-            throws MalformedURLException {
+    public static URL getRedirectUrl(final String dfaultUrl,
+            final Map<String, String> urlParms) throws MalformedURLException {
 
         String urlValue = ConfigManager.instance().getConfigValue(
                 IConfigProp.Key.EXT_WEBAPI_REDIRECT_URL_WEBAPP_USER);
@@ -1483,7 +1523,17 @@ public final class ServerPluginManager
             urlValue = dfaultUrl;
         }
 
-        return new URL(urlValue);
+        final StringBuilder parms = new StringBuilder();
+        for (final Entry<String, String> entry : urlParms.entrySet()) {
+            if (parms.length() == 0 && !urlValue.contains("?")) {
+                parms.append("?");
+            } else {
+                parms.append("&");
+            }
+            parms.append(entry.getKey()).append("=").append(entry.getValue());
+        }
+
+        return new URL(urlValue.concat(parms.toString()));
     }
 
     /**

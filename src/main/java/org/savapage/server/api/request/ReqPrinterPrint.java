@@ -189,7 +189,6 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             this.calcCostMode = calcCostMode;
         }
 
-        @SuppressWarnings("unused")
         public String getUser() {
             return user;
         }
@@ -221,7 +220,6 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             return jobName;
         }
 
-        @SuppressWarnings("unused")
         public void setJobName(String jobName) {
             this.jobName = jobName;
         }
@@ -242,6 +240,7 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
             return landscapeView;
         }
 
+        @SuppressWarnings("unused")
         public void setLandscapeView(Boolean landscapeView) {
             this.landscapeView = landscapeView;
         }
@@ -884,7 +883,8 @@ public final class ReqPrinterPrint extends ApiRequestMixin {
 
             PrintScalingEnum printScaling = dtoReq.getPageScaling();
             if (printScaling == null) {
-                printScaling = PrintScalingEnum.NONE;
+                printScaling = cm.getConfigEnum(PrintScalingEnum.class,
+                        Key.WEBAPP_USER_PROXY_PRINT_SCALING_MEDIA_MATCH_DEFAULT);
             }
             printReq.setPrintScalingOption(printScaling);
 

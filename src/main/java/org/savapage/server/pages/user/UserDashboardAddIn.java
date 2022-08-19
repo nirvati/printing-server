@@ -24,7 +24,6 @@
  */
 package org.savapage.server.pages.user;
 
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,12 +36,16 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.SpException;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
+import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.dao.enums.ACLOidEnum;
 import org.savapage.core.dao.enums.ACLPermissionEnum;
 import org.savapage.core.dao.enums.AppLogLevelEnum;
 import org.savapage.core.dto.AccountDisplayInfoDto;
 import org.savapage.core.services.AccessControlService;
+import org.savapage.core.services.AccountingService;
 import org.savapage.core.services.ServiceContext;
+import org.savapage.core.services.helpers.ThirdPartyEnum;
+import org.savapage.ext.papercut.PaperCutServerProxy;
 import org.savapage.ext.payment.PaymentGateway;
 import org.savapage.ext.payment.PaymentGatewayException;
 import org.savapage.ext.payment.PaymentMethodEnum;
@@ -71,10 +74,27 @@ public final class UserDashboardAddIn extends AbstractUserPage {
             ServiceContext.getServiceFactory().getAccessControlService();
 
     /** */
+    private static final AccountingService ACCOUNTING_SERVICE =
+            ServiceContext.getServiceFactory().getAccountingService();
+
+    /** */
     private static final String WID_ENV_IMPACT = "environmental-impact";
 
+    /** */
+    private static final String WID_PAGOMETER = "pagometer";
+
+    /** */
+    private static final String WID_BALANCE = "balance";
+
+    /** */
+    private static final String WID_BALANCE_IMG = "balance-img";
+
+    /** */
+    private static final String WID_CREDIT_LIMIT = "credit-limit";
+
     /**
-     *
+     * @param parameters
+     *            Page parameters.
      */
     public UserDashboardAddIn(final PageParameters parameters) {
 
@@ -84,8 +104,6 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
     /**
      *
-     * @param em
-     * @throws ParseException
      */
     private void handlePage() {
 
@@ -96,18 +114,25 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
-        /*
-         * Page Totals.
-         */
-        final StatsPageTotalPanel pageTotalPanel =
-                new StatsPageTotalPanel("stats-pages-total");
-        add(pageTotalPanel);
-        pageTotalPanel.populate();
+        final boolean isWebAppPayment =
+                this.getSessionWebAppType() == WebAppTypeEnum.PAYMENT;
 
+        /*
+         * Pagometer.
+         */
+        if (!isWebAppPayment && ConfigManager.instance()
+                .isConfigValue(Key.WEBAPP_USER_SHOW_PAGOMETER)) {
+            final StatsPageTotalPanel pageTotalPanel =
+                    new StatsPageTotalPanel(WID_PAGOMETER);
+            add(pageTotalPanel);
+            pageTotalPanel.populate();
+        } else {
+            helper.discloseLabel(WID_PAGOMETER);
+        }
         /*
          * Environmental Impact.
          */
-        if (ConfigManager.instance()
+        if (!isWebAppPayment && ConfigManager.instance()
                 .isConfigValue(Key.WEBAPP_USER_SHOW_ENV_INFO)) {
 
             final Double esu = (double) (user.getNumberOfPrintOutEsu() / 100);
@@ -123,7 +148,6 @@ public final class UserDashboardAddIn extends AbstractUserPage {
         /*
          * Financial.
          */
-
         final String keyTitleFinancial = "title-financial";
 
         final Integer financialPriv = ACCESS_CONTROL_SERVICE.getPrivileges(
@@ -131,9 +155,10 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
         if (financialPriv == null
                 || ACLPermissionEnum.READER.isPresent(financialPriv)) {
-            helper.addLabel(keyTitleFinancial, localized(keyTitleFinancial));
-            showFinancialDetails(helper, user, financialPriv == null
-                    || ACLPermissionEnum.EDITOR.isPresent(financialPriv));
+            helper.addLabel(keyTitleFinancial, localized("sp-title-financial"));
+            this.showFinancialDetails(helper, user, financialPriv == null
+                    || ACLPermissionEnum.EDITOR.isPresent(financialPriv),
+                    isWebAppPayment);
         } else {
             helper.discloseLabel(keyTitleFinancial);
         }
@@ -148,26 +173,43 @@ public final class UserDashboardAddIn extends AbstractUserPage {
      *            The requesting user.
      * @param allowFinancialTrx
      *            {@code true} when financial transactions are allowed.
+     * @param isWebAppPayment
+     *            Payment Web All if {@code true}.
      */
     private void showFinancialDetails(final MarkupHelper helper,
             final org.savapage.core.jpa.User user,
-            final boolean allowFinancialTrx) {
+            final boolean allowFinancialTrx, final boolean isWebAppPayment) {
 
         final ConfigManager cm = ConfigManager.instance();
 
-        final AccountDisplayInfoDto dto =
-                ServiceContext.getServiceFactory().getAccountingService()
-                        .getAccountDisplayInfo(user, ServiceContext.getLocale(),
-                                SpSession.getAppCurrencySymbol());
+        final boolean isPaperCutAccount =
+                ServerPluginManager.isPaperCutPaymentGateway();
+
+        final AccountDisplayInfoDto dto;
 
         // ------------------
-        String creditLimit = dto.getCreditLimit();
+        if (isPaperCutAccount) {
 
-        if (StringUtils.isBlank(creditLimit)) {
-            creditLimit = helper.localized("credit-limit-none");
+            helper.discloseLabel(WID_CREDIT_LIMIT);
+
+            dto = ACCOUNTING_SERVICE.getAccountDisplayInfo(
+                    PaperCutServerProxy.create(cm, false), user,
+                    ServiceContext.getLocale(),
+                    SpSession.getAppCurrencySymbol());
+
+        } else {
+            dto = ACCOUNTING_SERVICE.getAccountDisplayInfo(user,
+                    ServiceContext.getLocale(),
+                    SpSession.getAppCurrencySymbol());
+
+            String creditLimit = dto.getCreditLimit();
+
+            if (StringUtils.isBlank(creditLimit)) {
+                creditLimit = helper.localized("credit-limit-none");
+            }
+            helper.addModifyLabelAttr(WID_CREDIT_LIMIT, creditLimit,
+                    MarkupHelper.ATTR_CLASS, MarkupHelper.CSS_TXT_INFO);
         }
-        helper.addModifyLabelAttr("credit-limit", creditLimit, "class",
-                MarkupHelper.CSS_TXT_INFO);
 
         // ------------------
         final String clazzBalance;
@@ -187,17 +229,25 @@ public final class UserDashboardAddIn extends AbstractUserPage {
                     "Status [" + dto.getStatus() + "] not handled.");
         }
 
-        helper.addModifyLabelAttr("balance", dto.getBalance(), "class",
-                clazzBalance);
+        helper.addModifyLabelAttr(WID_BALANCE, dto.getBalance(),
+                MarkupHelper.ATTR_CLASS, clazzBalance);
+
+        if (isPaperCutAccount) {
+            helper.addModifyLabelAttr(WID_BALANCE_IMG, "",
+                    MarkupHelper.ATTR_SRC,
+                    WebApp.getThirdPartyEnumImgUrl(ThirdPartyEnum.PAPERCUT));
+        } else {
+            helper.discloseLabel(WID_BALANCE_IMG);
+        }
 
         // Redeem voucher?
         final Label labelVoucherRedeem = MarkupHelper.createEncloseLabel(
                 "button-voucher-redeem", localized("button-voucher"),
-                allowFinancialTrx && cm
+                allowFinancialTrx && !isWebAppPayment && cm
                         .isConfigValue(Key.FINANCIAL_USER_VOUCHERS_ENABLE));
 
-        add(MarkupHelper.appendLabelAttr(labelVoucherRedeem, "title",
-                localized("button-title-voucher")));
+        add(MarkupHelper.appendLabelAttr(labelVoucherRedeem,
+                MarkupHelper.ATTR_TITLE, localized("button-title-voucher")));
 
         // Credit transfer?
         final boolean enableTransferCredit = allowFinancialTrx
@@ -206,9 +256,10 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
         final Label labelTransferCredit = MarkupHelper.createEncloseLabel(
                 "button-transfer-credit", localized("button-transfer-to-user"),
-                enableTransferCredit);
+                !isWebAppPayment && enableTransferCredit);
 
-        add(MarkupHelper.appendLabelAttr(labelTransferCredit, "title",
+        add(MarkupHelper.appendLabelAttr(labelTransferCredit,
+                MarkupHelper.ATTR_TITLE,
                 localized("button-title-transfer-to-user")));
 
         /*
@@ -267,7 +318,6 @@ public final class UserDashboardAddIn extends AbstractUserPage {
                 list.addAll(
                         externalPlugin.getExternalPaymentMethods().values());
             }
-
         } catch (PaymentGatewayException e) {
             setResponsePage(
                     new MessageContent(AppLogLevelEnum.ERROR, e.getMessage()));
@@ -306,8 +356,7 @@ public final class UserDashboardAddIn extends AbstractUserPage {
 
         });
 
-        helper.encloseLabel("header-gateway", localized("header-gateway"),
+        helper.encloseLabel("header-gateway", localized("sp-header-gateway"),
                 methodCount > 0);
-
     }
 }

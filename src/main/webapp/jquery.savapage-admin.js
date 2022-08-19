@@ -219,7 +219,10 @@
             _model.maxIdleSeconds = res.maxIdleSeconds;
 
             // NOTE: authCardSelfAssoc is DISABLED
-            _view.pages.login.setAuthMode(res.authName, res.authId, res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, null, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+            _view.pages.login.setAuthMode(res.authName, res.authEmail, res.authId,
+                res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault,
+                res.authCardPinReq, null, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs,
+                res.cardAssocMaxSecs);
 
             // Configures CometD (without starting it)
             _cometd.configure(res.cometdMaxNetworkDelay);
@@ -419,6 +422,8 @@
                 _fillConfigPropsText(props, ['auth.ldap.host', 'auth.ldap.port', 'auth.ldap.basedn', 'auth.ldap.admin-dn', 'auth.ldap.admin-password', 'ldap.schema.user-id-number-field', 'ldap.schema.user-card-number-field']);
                 _fillConfigPropsYN(props, ['auth.ldap.use-ssl', 'auth.ldap.use-ssl.trust-self-signed']);
                 _fillConfigPropsRadio(props, ['ldap.user-card-number.first-byte', 'ldap.user-card-number.format']);
+            } else if (method === 'custom') {
+                _fillConfigPropsText(props, ['auth.custom.user-sync', 'auth.custom.user-auth']);
             }
             _saveConfigProps(props);
         };
@@ -586,10 +591,11 @@
             _saveConfigProps(_fillConfigPropsText({}, ['ipp.internet-printer.uri-base']));
         };
 
-        _view.pages.admin.onApplyPaperCut = function(enable) {
+        _view.pages.admin.onApplyPaperCut = function(enable, enableDb) {
             var props = {};
 
             props['papercut.enable'] = enable ? 'Y' : 'N';
+            props['papercut.db.enable'] = enableDb ? 'Y' : 'N';
 
             if (enable) {
                 _fillConfigPropsText(props, ['papercut.server.host', 'papercut.server.port', 'papercut.webservices.auth-token', 'papercut.db.jdbc-driver', 'papercut.db.jdbc-url', 'papercut.db.user', 'papercut.db.password']);
@@ -729,15 +735,11 @@
         _view.pages.admin.onApplyUserAuthModeLocal = function() {
             var props = {};
             _fillConfigPropsYN(props, ['web-login.authtoken.enable',
-                //
                 'auth-mode.name', 'auth-mode.name.show',
-                //
+                'auth-mode.email', 'auth-mode.email.show',
                 'auth-mode.id', 'auth-mode.id.show', 'auth-mode.id.is-masked', 'auth-mode.id.pin-required',
-                //
                 'auth-mode.card-local', 'auth-mode.card-local.show', 'auth-mode.card.pin-required', 'auth-mode.card.self-association',
-                //
                 'auth-mode.yubikey', 'auth-mode.yubikey.show', 'user.totp.enable',
-                //
                 'user.can-change-pin', 'webapp.user.auth.trust-cliapp-auth']);
 
             _fillConfigPropsRadio(props, ['auth-mode-default', 'card.number.format', 'card.number.first-byte']);
@@ -1349,8 +1351,7 @@
         };
 
         _view.pages.printer.onSavePrinter = function() {
-            var sel,
-                res;
+            var sel, res;
 
             _model.editPrinter.displayName = $('#printer-displayname').val();
             _model.editPrinter.location = $('#printer-location').val();
@@ -1359,6 +1360,7 @@
             _model.editPrinter.disabled = $('#printer-disabled').is(':checked');
             _model.editPrinter.archiveDisabled = $('#printer-archive-disabled').is(':checked');
             _model.editPrinter.journalDisabled = $('#printer-journal-disabled').is(':checked');
+            _model.editPrinter.papercutFrontEnd = $('#printer-papercut-front-end-enabled').is(':checked');
             _model.editPrinter.internal = $('#printer-internal').is(':checked');
             _model.editPrinter.deleted = $('#printer-deleted').is(':checked');
             _model.editPrinter.jobTicket = $('#printer-jobticket').is(':checked');

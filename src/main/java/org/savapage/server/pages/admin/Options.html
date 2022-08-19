@@ -36,8 +36,20 @@ the License, or (at your option) any later version.
 								<input type="radio" name="" id="" wicket:id="auth-method-unix" />
 								<label for="" wicket:id="auth-method-ldap-label" />
 								<input type="radio" name="" id="" wicket:id="auth-method-ldap" />
+								<label for="" wicket:id="auth-method-custom-label" />
+								<input type="radio" name="" id="" wicket:id="auth-method-custom" />
 							</fieldset>
 						</div>
+					</li>
+					<li class="custom-auth-parms">
+						<label for="custom-auth-user-program"
+							wicket:id="custom-user-sync-label" />
+						<input type="text" id="custom-auth-user-program"
+							wicket:id="custom-user-sync" />
+						<label for="custom-auth-user-auth-program"
+							wicket:id="custom-user-auth-label" />
+						<input type="text" id="custom-auth-user-auth-program"
+							wicket:id="custom-user-auth" />
 					</li>
 					<li class="ldap-parms">
 						<select tabindex="-1" id="sp-ldap-schema-type"
@@ -366,6 +378,10 @@ the License, or (at your option) any later version.
 						<input type="checkbox" id="" value="0"
 							wicket:id="user-auth-mode-name-pw" />
 
+						<label for="" wicket:id="user-auth-mode-email-pw-label" />
+						<input type="checkbox" id="" value="0"
+							wicket:id="user-auth-mode-email-pw" />
+
 						<label for="" wicket:id="user-auth-mode-id-number-label" />
 						<input type="checkbox" id="" value="0"
 							wicket:id="user-auth-mode-id-number" />
@@ -388,6 +404,15 @@ the License, or (at your option) any later version.
 							<label for="" wicket:id="user-auth-mode-name-pw-dialog-label" />
 							<input type="checkbox" id="" value="0"
 								wicket:id="user-auth-mode-name-pw-dialog" />
+						</fieldset>
+					</div>
+					<div id="group-user-auth-mode-email-pw">
+						<br />
+						<h3 wicket:id="user-auth-mode-email-pw-prompt" />
+						<fieldset data-role="controlgroup" data-type="vertical">
+							<label for="" wicket:id="user-auth-mode-email-pw-dialog-label" />
+							<input type="checkbox" id="" value="0"
+								wicket:id="user-auth-mode-email-pw-dialog" />
 						</fieldset>
 					</div>
 					<div id="group-user-auth-mode-id-number">
@@ -459,9 +484,14 @@ the License, or (at your option) any later version.
 						<div class="ui-field-contain">
 							<fieldset data-role="controlgroup" data-type="vertical"
 								class="sp-jqm-fieldset-radio">
+
 								<label for="" wicket:id="user-auth-mode-default-user-label" />
 								<input type="radio" name="" id=""
 									wicket:id="user-auth-mode-default-user" />
+
+								<label for="" wicket:id="user-auth-mode-default-email-label" />
+								<input type="radio" name="" id=""
+									wicket:id="user-auth-mode-default-email" />
 
 								<label for="" wicket:id="user-auth-mode-default-number-label" />
 								<input type="radio" name="" id=""
@@ -1089,8 +1119,9 @@ the License, or (at your option) any later version.
 					<label for="papercut-enable" wicket:id="papercut-enable-label" />
 					<input type="checkbox" id="papercut-enable" value="0"
 						wicket:id="papercut-enable" />
-					<div class="papercut-enabled">
-						<div data-role="collapsible" data-collapsed="true">
+					<div class="papercut-enabled" style="margin-left: 30px;">
+						<div data-role="collapsible" data-collapsed="true"
+							data-mini="true">
 							<h3>
 								<wicket:message key="papercut-server-text" />
 							</h3>
@@ -1107,7 +1138,15 @@ the License, or (at your option) any later version.
 								autocomplete="off" autocorrect="off" autocapitalize="off"
 								spellcheck="false" />
 						</div>
-						<div data-role="collapsible" data-collapsed="true">
+
+						<label for="papercut-db-enable"
+							wicket:id="papercut-db-enable-label" />
+						<input type="checkbox" id="papercut-db-enable" value="0"
+							wicket:id="papercut-db-enable" />
+
+						<div data-role="collapsible" data-collapsed="true"
+							data-mini="true" class="papercut-db-enabled"
+							style="margin-left: 30px;">
 							<h3>
 								<wicket:message key="papercut-db-text" />
 							</h3>
@@ -1141,7 +1180,7 @@ the License, or (at your option) any later version.
 						</div>
 					</wicket:enclosure>
 				</li>
-				<li class="papercut-enabled">
+				<li class="papercut-enabled papercut-db-enabled">
 					<div class="sp-proxyprint-delegate-enable-enabled">
 						<label for="proxyprint-delegate-papercut-enable"
 							wicket:id="proxyprint-delegate-papercut-enable-label" />

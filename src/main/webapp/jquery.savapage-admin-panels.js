@@ -868,6 +868,7 @@
                 this.input.userGroups = null;
             }
 
+            this.input.groupBy = _view.getRadioValue('sp-reports-user-printout-tot-group-by');
             this.input.aspect = _view.getRadioValue('sp-reports-user-printout-tot-aspect');
             this.input.pages = _view.getRadioValue('sp-reports-user-printout-tot-aspect-pages');
         },
@@ -878,7 +879,8 @@
             timeTo: null,
             userGroups: null,
             aspect: 'PAGES',
-            pages: 'SENT'
+            pages: 'SENT',
+            groupBy: 'USER'
         },
 
         onOutput: function(output) {
@@ -895,9 +897,11 @@
 
         onAuthMethodSelect: function(method) {
             var _view = _ns.PanelCommon.view,
-                isLdapMethod = method === 'ldap';
+                isLdapMethod = method === 'ldap',
+                isCustomMethod = method === 'custom';
 
             _view.visible($('.ldap-parms'), isLdapMethod);
+            _view.visible($('.custom-auth-parms'), isCustomMethod);
 
             if (method === 'none') {
                 $('.user-source-group-s').hide();
@@ -931,18 +935,25 @@
         onAuthModeLocalEnabled: function() {
             var _view = _ns.PanelCommon.view,
                 userPw = _view.isCbChecked($("#auth-mode\\.name")),
+                emailPw = _view.isCbChecked($("#auth-mode\\.email")),
                 idNumber = _view.isCbChecked($("#auth-mode\\.id")),
                 cardNumber = _view.isCbChecked($("#auth-mode\\.card-local")),
                 yubikey = _view.isCbChecked($("#auth-mode\\.yubikey")),
                 nMode = 0;
 
             $('#auth-mode-default-user').checkboxradio(userPw ? 'enable' : 'disable');
+            $('#auth-mode-default-email').checkboxradio(emailPw ? 'enable' : 'disable');
             $('#auth-mode-default-number').checkboxradio(idNumber ? 'enable' : 'disable');
             $('#auth-mode-default-card').checkboxradio(cardNumber ? 'enable' : 'disable');
             $('#auth-mode-default-yubikey').checkboxradio(yubikey ? 'enable' : 'disable');
 
             _view.visible($('#group-user-auth-mode-name-pw'), userPw);
             if (userPw) {
+                nMode++;
+            }
+
+            _view.visible($('#group-user-auth-mode-email-pw'), emailPw);
+            if (emailPw) {
                 nMode++;
             }
 
@@ -1004,6 +1015,13 @@
         onPaperCutEnabled: function(enabled) {
             var _view = _ns.PanelCommon.view;
             _view.visible($('.papercut-enabled'), enabled);
+            _view.visible($('.papercut-db-enabled'), enabled &&
+                _view.isCbChecked($('#papercut\\.db\\.enable')));
+        },
+
+        onPaperCutDbEnabled: function(enabled) {
+            var _view = _ns.PanelCommon.view;
+            _view.visible($('.papercut-db-enabled'), enabled);
         },
 
         onFinancialUserTransfersEnabled: function(enabled) {
@@ -1012,7 +1030,8 @@
         },
 
         onOutput: function(output) {
-            var _view = _ns.PanelCommon.view;
+            var _view = _ns.PanelCommon.view,
+                paperCutDbEnabled = _view.isCbChecked($('#papercut\\.db\\.enable'));
 
             this.onAuthMethodSelect($("input:radio[name='auth.method']:checked").val());
 
@@ -1426,7 +1445,8 @@
             _view.checkRadioValue('sp-user-select-deleted', val === null ? "" : (val ? "1" : "0"));
 
             //
-            id = (this.input.sort.field === 'id' ? 'sp-user-sort-by-id' : 'sp-user-sort-by-email');
+            id = (this.input.sort.field === 'id' ? 'sp-user-sort-by-id' :
+                (this.input.sort.field === 'email' ? 'sp-user-sort-by-email' : 'sp-user-sort-by-activity'));
             _view.checkRadio('sp-user-sort-by', id);
 
             //

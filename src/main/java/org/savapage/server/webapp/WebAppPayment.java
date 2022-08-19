@@ -24,32 +24,41 @@
  */
 package org.savapage.server.webapp;
 
+import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.WebAppTypeEnum;
+import org.savapage.core.dao.enums.AppLogLevelEnum;
+import org.savapage.server.WebApp;
+import org.savapage.server.pages.MessageContent;
 
-public final class WebAppMailTickets extends WebAppUser {
+public final class WebAppPayment extends WebAppUser {
 
     /** */
-    private static final long serialVersionUID = 5608503008706484277L;
+    private static final long serialVersionUID = -4054764972856050822L;
 
     /**
      *
      * @param parameters
      *            The {@link PageParameters}.
      */
-    public WebAppMailTickets(final PageParameters parameters) {
+    public WebAppPayment(final PageParameters parameters) {
         super(parameters);
+
+        if (!WebApp.get().isPaymentGatewayOnline()) {
+            throw new RestartResponseException(new MessageContent(
+                    AppLogLevelEnum.ERROR, "No payment gateway available."));
+        }
     }
 
     @Override
     protected IConfigProp.Key getInternetEnableKey() {
-        return IConfigProp.Key.WEBAPP_INTERNET_MAILTICKETS_ENABLE;
+        return IConfigProp.Key.WEBAPP_INTERNET_PAYMENT_ENABLE;
     }
 
     @Override
     public WebAppTypeEnum getWebAppType() {
-        return WebAppTypeEnum.MAILTICKETS;
+        return WebAppTypeEnum.PAYMENT;
     }
 
 }

@@ -49,6 +49,7 @@ import org.savapage.core.dao.enums.ACLRoleEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
 import org.savapage.core.dao.enums.ExternalSupplierEnum;
 import org.savapage.core.i18n.LabelEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.jpa.Device;
 import org.savapage.core.services.ServiceContext;
@@ -94,6 +95,9 @@ public final class Login extends AbstractPage {
 
         helper.encloseLabel("button-lang", getString("button-lang"),
                 availableLocales.size() > 1);
+
+        helper.addLabel("label-email-1", NounEnum.EMAIL);
+        helper.addLabel("label-email-2", NounEnum.EMAIL);
 
         //
         helper.addLabel("header-2-step", LabelEnum.TWO_STEP_VERIFICATION);
@@ -161,6 +165,9 @@ public final class Login extends AbstractPage {
             case POS:
                 loginDescript = localized("login-descript-role",
                         ACLRoleEnum.WEB_CASHIER.uiText(getLocale()));
+                break;
+            case PAYMENT:
+                loginDescript = localized("login-descript-user-payment");
                 break;
             default:
                 loginDescript = localized("login-descript-user");
@@ -264,6 +271,7 @@ public final class Login extends AbstractPage {
 
                 final OAuthClientPlugin plugin = item.getModelObject();
 
+                @SuppressWarnings("unused")
                 final ExternalSupplierEnum supplier =
                         ServerPluginHelper.getEnum(plugin.getProvider());
 

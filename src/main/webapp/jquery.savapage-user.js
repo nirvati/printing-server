@@ -430,7 +430,9 @@
          * between clients).
          * </p>
          */
-        this.poll = function(userid, useridDocLog, pagecount, uniqueUrlVal, prevMsgTime, language, country, base64) {
+        this.poll = function(userid, useridDocLog, pagecount, uniqueUrlVal,
+            prevMsgTime, language, country, base64,
+            userInternal, userDocLogInternal) {
 
             if (!_longPollStartTime && userid && _cometd.isOn()) {
 
@@ -443,7 +445,9 @@
                 try {
                     $.cometd.publish('/service/user', {
                         user: userid,
+                        userInternal: userInternal,
                         userDocLog: useridDocLog,
+                        userDocLogInternal: userDocLogInternal,
                         'page-offset': pagecount,
                         'unique-url-value': uniqueUrlVal,
                         'msg-prev-time': prevMsgTime,
@@ -1456,6 +1460,9 @@
             $(this).on('click', ".sp-download-receipt", null, function() {
                 _api.download("pos-receipt-download-user", null, $(this).attr('data-savapage'));
                 return false;
+            }).on('click', ".sp-download-invoice", null, function() {
+                _api.download("pos-invoice-download-user", null, $(this).attr('data-savapage'));
+                return false;
             });
 
         }).on("pagebeforeshow", function(event, ui) {
@@ -2271,13 +2278,15 @@
             }
 
             $(window).resize(function() {
-                var sel = $('#dashboard-piechart'),
+                var sel = _view.getSelPresent($('#dashboard-piechart')), width;
+                if (sel) {
                     width = sel.parent().width();
-                sel.width(width);
-                try {
-                    _model.dashboardPiechart.replot({});
-                } catch (ignore) {
-                    // replot() get throw error: no code intended.
+                    sel.width(width);
+                    try {
+                        _model.dashboardPiechart.replot({});
+                    } catch (ignore) {
+                        // replot() get throw error: no code intended.
+                    }
                 }
             });
 
@@ -2452,8 +2461,21 @@
                 return false;
             });
 
-            $(this).on('change', '#sp-webprint-upload-file', function() {
+            $(this).on('input', '#sp-webprint-upload-file', function() {
                 var show = $(this).val();
+
+                if (_ns.logger.isDebugEnabled()) {
+                    (function logFiles(show, files) {
+                        var file, i, msg = '';
+                        for (i = 0; i < files.length; i++) {
+                            file = files[i];
+                            msg += file.name + ' (' + file.size + ') | ';
+                        }
+                        _ns.logger.debug('onInput #sp-webprint-upload-file: show = '
+                            + (show ? 'true' : 'false') + ' | ' + msg);
+                    })(show, document.getElementById('sp-webprint-upload-file').files);
+                }
+
                 _showUploadButton(show);
                 _showResetButton(show);
                 _setUploadFeedbackDefault(_DROPZONE);
@@ -2641,10 +2663,8 @@
          */
         this.showUserStats = function() {
             var stats = _model.user.stats,
-                outbox,
-                pages = 0,
-                status,
-                selBalance;
+                outbox, pages = 0,
+                accInfo, status, selBalance;
 
             _setThumbnailExpiry();
 
@@ -2654,10 +2674,18 @@
                     enableTagOptions: true
                 });
 
-                status = stats.accountInfo.status;
                 selBalance = $('#mini-user-balance');
-                if (selBalance) {
-                    selBalance.html(stats.accountInfo.balance).attr("class", status === "CREDIT" ? "sp-txt-warn" : (status === "DEBIT" ? "sp-txt-valid" : "sp-txt-error"));
+                accInfo = stats.accountInfo;
+                if (selBalance && accInfo) {
+                    status = accInfo.status;
+                    selBalance.html(accInfo.balance).attr("class", status === "CREDIT" ? "sp-txt-warn" : (status === "DEBIT" ? "sp-txt-valid" : "sp-txt-error"));
+                }
+
+                selBalance = $('#mini-user-balance-papercut');
+                accInfo = stats.accountInfoPaperCut;
+                if (selBalance && accInfo) {
+                    status = accInfo.status;
+                    selBalance.html(accInfo.balance).attr("class", status === "CREDIT" ? "sp-txt-warn" : (status === "DEBIT" ? "sp-txt-valid" : "sp-txt-error"));
                 }
 
                 outbox = _model.user.stats.outbox;
@@ -3406,9 +3434,7 @@
             });
 
             $('.sp-button-user-details').click(function() {
-                var html,
-                    xydata,
-                    piedata,
+                var html, xydata, piedata,
                     pageId = '#page-dashboard';
 
                 _view.showUserPage(pageId, 'UserDashboard');
@@ -3431,8 +3457,10 @@
                     $('#dashboard-list').listview('refresh');
 
                     //----
-                    xydata = _view.jqPlotData('dashboard-xychart', false);
-                    piedata = _view.jqPlotData('dashboard-piechart', false);
+                    if (_view.getSelPresent($('#dashboard-piechart'))) {
+                        xydata = _view.jqPlotData('dashboard-xychart', false);
+                        piedata = _view.jqPlotData('dashboard-piechart', false);
+                    }
 
                     if (!xydata || !piedata) {
                         return;
@@ -3745,6 +3773,14 @@
              * written to response!
              */
             _this.onShow();
+
+            // Show initial user view.
+            if (_this.initialView === _ns.URL_PARM_SHOW_USER) {
+                var sel = _view.getSelPresent($('#mini-user-balance-papercut'))
+                    || _view.getSelPresent($('#mini-user-balance'));
+                sel.click();
+                _this.initialView = null;
+            }
 
         }).on('pagebeforehide', function(event, ui) {
             _this.onHide();
@@ -4986,6 +5022,12 @@
             _LOC_LANG = 'sp.mailtickets.language';
             _LOC_COUNTRY = 'sp.mailtickets.country';
         };
+        this.setPaymentLocalStorageParms = function() {
+            _LOC_AUTH_NAME = 'sp.auth.payment.name';
+            _LOC_AUTH_TOKEN = 'sp.auth.payment.token';
+            _LOC_LANG = 'sp.payment.language';
+            _LOC_COUNTRY = 'sp.payment.country';
+        };
         /**
          * Creates a string with page range format from the cut pages.
          *
@@ -5776,11 +5818,13 @@
 
             _model.user.key_id = loginRes.key_id;
             _model.user.id = loginRes.id;
+            _model.user.id_internal = loginRes.id_internal;
             _model.user.uuid = loginRes.uuid;
             _model.user.number = loginRes.number;
 
             _model.user.doclog.key_id = loginRes.doclog_key_id;
             _model.user.doclog.id = loginRes.doclog_id;
+            _model.user.doclog.id_internal = loginRes.doclog_id_internal;
 
             _model.user.fullname = loginRes.fullname;
 
@@ -5977,7 +6021,10 @@
 
             _model.prevMsgTime = res.systime;
 
-            _view.pages.login.setAuthMode(res.authName, res.authId, res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault, res.authCardPinReq, res.authCardSelfAssoc, res.yubikeyMaxMsecs, res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
+            _view.pages.login.setAuthMode(res.authName, res.authEmail, res.authId,
+                res.authYubiKey, res.authCardLocal, res.authCardIp, res.authModeDefault,
+                res.authCardPinReq, res.authCardSelfAssoc, res.yubikeyMaxMsecs,
+                res.cardLocalMaxMsecs, res.cardAssocMaxSecs);
 
             // ProxyPrint
             _model.PRINT_SCALING_MATCH_DFLT = res.printScalingMatch;
@@ -6669,9 +6716,11 @@
         };
 
         _userEvent.onPollInvitation = function() {
-            _userEvent.poll(_model.user.id, _model.user.doclog.id, _model.getPageCount(),
+            _userEvent.poll(_model.user.id, _model.user.doclog.id,
+                _model.getPageCount(),
                 _model.uniqueImgUrlValue, _model.prevMsgTime,
-                _model.language, _model.country, _view.imgBase64);
+                _model.language, _model.country, _view.imgBase64,
+                _model.user.id_internal, _model.user.doclog.id_internal);
         };
 
         /*
@@ -7897,6 +7946,9 @@
             if (window.location.pathname === '/mailtickets') {
                 _model.setMailTicketsLocalStorageParms();
                 _ns.initWebApp('MAILTICKETS');
+            } else if (window.location.pathname === '/payment') {
+                _model.setPaymentLocalStorageParms();
+                _ns.initWebApp('PAYMENT');
             } else {
                 _ns.initWebApp('USER');
             }

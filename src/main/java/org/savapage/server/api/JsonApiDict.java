@@ -24,6 +24,7 @@
  */
 package org.savapage.server.api;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -70,6 +71,7 @@ import org.savapage.server.api.request.ReqPageOverlayGet;
 import org.savapage.server.api.request.ReqPageOverlaySet;
 import org.savapage.server.api.request.ReqPdfPropsSetValidate;
 import org.savapage.server.api.request.ReqPosDepositQuickSearch;
+import org.savapage.server.api.request.ReqPosSales;
 import org.savapage.server.api.request.ReqPrintSiteUserSet;
 import org.savapage.server.api.request.ReqPrinterGet;
 import org.savapage.server.api.request.ReqPrinterGroupQuickSearch;
@@ -270,11 +272,19 @@ public final class JsonApiDict {
     public static final String REQ_BITCOIN_WALLET_REFRESH =
             "bitcoin-wallet-refresh";
 
+    public static final String REQ_POS_SALES = "pos-sales";
+
     public static final String REQ_POS_DEPOSIT = "pos-deposit";
+
     public static final String REQ_POS_RECEIPT_DOWNLOAD =
             "pos-receipt-download";
     public static final String REQ_POS_RECEIPT_DOWNLOAD_USER =
             "pos-receipt-download-user";
+
+    public static final String REQ_POS_INVOICE_DOWNLOAD =
+            "pos-invoice-download";
+    public static final String REQ_POS_INVOICE_DOWNLOAD_USER =
+            "pos-invoice-download-user";
 
     /**
      * An administrator sending email to a POS Receipt.
@@ -827,6 +837,8 @@ public final class JsonApiDict {
         case REQ_PAPERCUT_DELEGATOR_COST_CSV:
         case REQ_POS_RECEIPT_DOWNLOAD:
         case REQ_POS_RECEIPT_DOWNLOAD_USER:
+        case REQ_POS_INVOICE_DOWNLOAD:
+        case REQ_POS_INVOICE_DOWNLOAD_USER:
         case REQ_PRINTER_PPD_DOWNLOAD:
         case REQ_PRINTER_PPDE_DOWNLOAD:
         case REQ_PRINTER_OPT_DOWNLOAD:
@@ -1125,13 +1137,19 @@ public final class JsonApiDict {
 
         adm(REQ_BITCOIN_WALLET_REFRESH, DbClaim.NONE, DbAccess.NO);
 
+        acl(REQ_POS_SALES, ReqPosSales.class, DbClaim.NONE, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.WEB_CASHIER));
+
         acl(REQ_POS_DEPOSIT, DbClaim.NONE, DbAccess.YES,
                 EnumSet.of(ACLRoleEnum.WEB_CASHIER));
 
         acl(REQ_POS_RECEIPT_DOWNLOAD, DbClaim.READ, DbAccess.YES,
                 EnumSet.of(ACLRoleEnum.WEB_CASHIER));
-
         usr(REQ_POS_RECEIPT_DOWNLOAD_USER, DbClaim.READ, DbAccess.YES);
+
+        acl(REQ_POS_INVOICE_DOWNLOAD, DbClaim.READ, DbAccess.YES,
+                EnumSet.of(ACLRoleEnum.WEB_CASHIER));
+        usr(REQ_POS_INVOICE_DOWNLOAD_USER, DbClaim.READ, DbAccess.YES);
 
         acl(REQ_POS_RECEIPT_SENDMAIL, DbClaim.READ, DbAccess.YES,
                 EnumSet.of(ACLRoleEnum.WEB_CASHIER));
@@ -1304,8 +1322,10 @@ public final class JsonApiDict {
         }
 
         try {
-            return req.handler.newInstance();
-        } catch (InstantiationException | IllegalAccessException e) {
+            return req.handler.getDeclaredConstructor().newInstance();
+        } catch (InstantiationException | IllegalAccessException
+                | IllegalArgumentException | InvocationTargetException
+                | NoSuchMethodException | SecurityException e) {
             throw new SpException(e.getMessage(), e);
         }
     }

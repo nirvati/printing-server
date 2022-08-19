@@ -76,6 +76,7 @@ import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.config.OnOffEnum;
+import org.savapage.core.config.ServerBasePath;
 import org.savapage.core.config.WebAppTypeEnum;
 import org.savapage.core.crypto.CryptoUser;
 import org.savapage.core.dao.AccountTrxDao;
@@ -83,6 +84,7 @@ import org.savapage.core.dao.DaoContext;
 import org.savapage.core.dao.PrinterDao;
 import org.savapage.core.dao.UserAccountDao;
 import org.savapage.core.dao.UserDao;
+import org.savapage.core.dao.enums.AccountTrxTypeEnum;
 import org.savapage.core.dao.enums.DeviceAttrEnum;
 import org.savapage.core.dao.enums.DeviceTypeEnum;
 import org.savapage.core.dao.enums.DocLogProtocolEnum;
@@ -103,6 +105,7 @@ import org.savapage.core.dto.QuickSearchUserGroupMemberFilterDto;
 import org.savapage.core.dto.UserCreditTransferDto;
 import org.savapage.core.dto.VoucherBatchPrintDto;
 import org.savapage.core.fonts.InternalFontFamilyEnum;
+import org.savapage.core.i18n.NounEnum;
 import org.savapage.core.i18n.PhraseEnum;
 import org.savapage.core.i18n.SystemModeEnum;
 import org.savapage.core.imaging.EcoPrintPdfTask;
@@ -169,6 +172,7 @@ import org.savapage.ext.payment.PaymentGatewayTrx;
 import org.savapage.lib.pgp.PGPBaseException;
 import org.savapage.lib.pgp.pdf.PdfPgpVerifyUrl;
 import org.savapage.server.WebApp;
+import org.savapage.server.WebAppParmEnum;
 import org.savapage.server.api.request.ApiRequestHandler;
 import org.savapage.server.api.request.ApiRequestHelper;
 import org.savapage.server.api.request.ApiRequestMixin;
@@ -430,6 +434,10 @@ public final class JsonApiServer extends AbstractPage {
                     // no break intended
                 case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
                     // no break intended
+                case JsonApiDict.REQ_POS_INVOICE_DOWNLOAD:
+                    // no break intended
+                case JsonApiDict.REQ_POS_INVOICE_DOWNLOAD_USER:
+                    // no break intended
                 case JsonApiDict.REQ_REPORT:
                     // no break intended
                 case JsonApiDict.REQ_REPORT_USER:
@@ -643,10 +651,20 @@ public final class JsonApiServer extends AbstractPage {
 
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD:
             case JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD_USER:
-                requestHandler = exportPosPurchaseReceipt(tempExportFile,
+                requestHandler = this.exportPosPurchaseDocument(
+                        AccountTrxTypeEnum.DEPOSIT, tempExportFile,
                         parameters.get(JsonApiDict.PARM_REQ_SUB).toLongObject(),
                         requestingUser,
                         request.equals(JsonApiDict.REQ_POS_RECEIPT_DOWNLOAD));
+                break;
+
+            case JsonApiDict.REQ_POS_INVOICE_DOWNLOAD:
+            case JsonApiDict.REQ_POS_INVOICE_DOWNLOAD_USER:
+                requestHandler = this.exportPosPurchaseDocument(
+                        AccountTrxTypeEnum.PURCHASE, tempExportFile,
+                        parameters.get(JsonApiDict.PARM_REQ_SUB).toLongObject(),
+                        requestingUser,
+                        request.equals(JsonApiDict.REQ_POS_INVOICE_DOWNLOAD));
                 break;
 
             case JsonApiDict.REQ_REPORT:
@@ -734,6 +752,8 @@ public final class JsonApiServer extends AbstractPage {
      * requested receipt MUST be for the requesting user.
      * </p>
      *
+     * @param accountTrxType
+     *            Trx type.
      * @param pdfFile
      *            The PDF file to create.
      * @param accountTrxDbId
@@ -747,15 +767,25 @@ public final class JsonApiServer extends AbstractPage {
      * @throws JRException
      *             When JasperReport error
      */
-    private PosDepositReceiptDto createPosPurchaseReceipt(final File pdfFile,
+    private PosDepositReceiptDto createPosPurchaseDto(
+            final AccountTrxTypeEnum accountTrxType, final File pdfFile,
             final Long accountTrxDbId, final String requestingUser,
             final boolean requestingUserAdmin) throws JRException {
 
-        final Locale reportLocale = ConfigManager.getDefaultLocale();
+        final Locale reportLocale = SpSession.get().getLocale();
 
-        final PosDepositReceiptDto receipt =
-                ACCOUNTING_SERVICE.createPosDepositReceiptDto(accountTrxDbId);
+        final PosDepositReceiptDto receipt;
 
+        if (accountTrxType == AccountTrxTypeEnum.DEPOSIT) {
+            receipt = ACCOUNTING_SERVICE
+                    .createPosDepositReceiptDto(accountTrxDbId);
+        } else if (accountTrxType == AccountTrxTypeEnum.PURCHASE) {
+            receipt = ACCOUNTING_SERVICE
+                    .createPosDepositInvoiceDto(accountTrxDbId);
+        } else {
+            throw new SpException("Unhandled AccountTrxTypeEnum "
+                    .concat(accountTrxType.name()));
+        }
         /*
          * INVARIANT: A user can only create his own receipts.
          */
@@ -819,9 +849,9 @@ public final class JsonApiServer extends AbstractPage {
                 .createUniqueTempPdfName(requestingUser, "deposit-receipt"));
         try {
 
-            final PosDepositReceiptDto receipt =
-                    createPosPurchaseReceipt(tempPdfFile, accountTrxDbId,
-                            requestingUser, isAdminRequest);
+            final PosDepositReceiptDto receipt = this.createPosPurchaseDto(
+                    AccountTrxTypeEnum.DEPOSIT, tempPdfFile, accountTrxDbId,
+                    requestingUser, isAdminRequest);
 
             final String subject = localize("msg-deposit-email-subject",
                     receipt.getReceiptNumber());
@@ -855,21 +885,23 @@ public final class JsonApiServer extends AbstractPage {
     }
 
     /**
-     *
+     * @param accountTrxType
      * @param tempFile
      * @param accountTrxDbId
      * @param requestingUser
      * @param requestingUserAdmin
      *            {@code true} if requesting user is an administrator.
-     * @return
+     * @return Request handler.
      * @throws JRException
      */
-    private IRequestHandler exportPosPurchaseReceipt(final File tempFile,
+    private IRequestHandler exportPosPurchaseDocument(
+            final AccountTrxTypeEnum accountTrxType, final File tempFile,
             final Long accountTrxDbId, final String requestingUser,
             final boolean requestingUserAdmin) throws JRException {
 
-        final PosDepositReceiptDto receipt = createPosPurchaseReceipt(tempFile,
-                accountTrxDbId, requestingUser, requestingUserAdmin);
+        final PosDepositReceiptDto receipt =
+                this.createPosPurchaseDto(accountTrxType, tempFile,
+                        accountTrxDbId, requestingUser, requestingUserAdmin);
 
         final ResourceStreamRequestHandler handler =
                 new DownloadRequestHandler(tempFile);
@@ -2655,19 +2687,50 @@ public final class JsonApiServer extends AbstractPage {
 
         final ConfigManager cm = ConfigManager.instance();
 
-        String error = PaperCutServerProxy.create(cm, false).testConnection();
+        final StringBuilder msg = new StringBuilder();
+        final ApiResultCodeEnum resultCode;
+        String msgKey = "msg-papercut-test-failed";
 
-        if (error == null) {
-            error = new PaperCutDbProxy(cm, false).testConnection();
-        }
+        if (cm.isConfigValue(Key.PAPERCUT_ENABLE)) {
 
-        if (error == null) {
-            setApiResult(userData, ApiResultCodeEnum.INFO,
-                    "msg-papercut-test-passed");
+            int nTestsPassed = 0;
+
+            String error =
+                    PaperCutServerProxy.create(cm, false).testConnection();
+
+            if (error == null) {
+                nTestsPassed++;
+                if (ConfigManager.isPaperCutPrintEnabled()) {
+                    error = new PaperCutDbProxy(cm, false).testConnection();
+                    if (error == null) {
+                        nTestsPassed++;
+                    }
+                }
+            }
+
+            if (error == null) {
+                msg.append("API");
+                if (nTestsPassed > 1) {
+                    msg.append(" + ")
+                            .append(NounEnum.DATABASE.uiText(getLocale()));
+                }
+                resultCode = ApiResultCodeEnum.INFO;
+                msgKey = "msg-papercut-test-passed";
+            } else {
+                if (nTestsPassed == 0) {
+                    msg.append("API");
+                } else {
+                    msg.append(NounEnum.DATABASE.uiText(getLocale()));
+                }
+                msg.append(" | ").append(error);
+                resultCode = ApiResultCodeEnum.ERROR;
+            }
         } else {
-            setApiResult(userData, ApiResultCodeEnum.ERROR,
-                    "msg-papercut-test-failed", error);
+            resultCode = ApiResultCodeEnum.WARN;
+            msg.append(HtmlButtonEnum.APPLY.uiText(getLocale()));
+
         }
+        setApiResult(userData, resultCode, msgKey, msg.toString());
 
         return userData;
     }
@@ -3260,14 +3323,24 @@ public final class JsonApiServer extends AbstractPage {
                     dto.getMethod().toString());
         }
 
+        String errMsg = null;
+
         try {
             final String comment = localize("msg-payment-gateway-comment",
                     CommunityDictEnum.SAVAPAGE.getWord(), requestingUser);
 
             final URL callbackUrl = ServerPluginManager.getCallBackUrl(plugin);
 
-            final URL redirectUrl =
-                    ServerPluginManager.getRedirectUrl(dto.getSenderUrl());
+            final Map<String, String> urlParms = new HashMap<>();
+
+            urlParms.put(WebAppParmEnum.SP_SHOW.parm(),
+                    WebAppParmEnum.URL_PARM_SHOW_USER);
+
+            // Decrement so the redirect is not blocked.
+            SpSession.get().decrementAuthWebAppCount();
+
+            final URL redirectUrl = ServerPluginManager
+                    .getRedirectUrl(dto.getSenderUrl(), urlParms);
 
             final PaymentRequest req = new PaymentRequest();
 
@@ -3288,12 +3361,17 @@ public final class JsonApiServer extends AbstractPage {
 
             final StringBuilder err = new StringBuilder();
             err.append("Communication error: ").append(e.getMessage());
-            createApiResult(userData, ApiResultCodeEnum.ERROR, "",
-                    err.toString());
+            errMsg = err.toString();
+            createApiResult(userData, ApiResultCodeEnum.ERROR, "", errMsg);
 
         } catch (PaymentGatewayException e) {
-            createApiResult(userData, ApiResultCodeEnum.ERROR, "",
-                    e.getMessage());
+            errMsg = e.getMessage();
+            createApiResult(userData, ApiResultCodeEnum.ERROR, "", errMsg);
+        }
+
+        if (errMsg != null) {
+            LOGGER.error("[{}/{}] User \"{}\": {}", dto.getGatewayId(),
+                    dto.getMethod().toString(), requestingUser, errMsg);
         }
 
         return userData;
@@ -3912,6 +3990,7 @@ public final class JsonApiServer extends AbstractPage {
                 webAppType, InetUtils.isPublicAddress(remoteAddr));
 
         userData.put("authName", userAuth.isVisibleAuthName());
+        userData.put("authEmail", userAuth.isVisibleAuthEmail());
         userData.put("authId", userAuth.isVisibleAuthId());
         userData.put("authCardLocal", userAuth.isVisibleAuthCardLocal());
         userData.put("authCardIp", userAuth.isVisibleAuthCardIp());
@@ -3954,8 +4033,14 @@ public final class JsonApiServer extends AbstractPage {
         userData.put("systime", Long.valueOf(System.currentTimeMillis()));
 
         //
-        userData.put("showNavButtonTxt", cm.getConfigEnum(OnOffEnum.class,
-                Key.WEBAPP_USER_MAIN_NAV_BUTTON_TEXT));
+        final Key keyNavText;
+        if (webAppType == WebAppTypeEnum.PAYMENT) {
+            keyNavText = Key.WEBAPP_PAYMENT_MAIN_NAV_BUTTON_TEXT;
+        } else {
+            keyNavText = Key.WEBAPP_USER_MAIN_NAV_BUTTON_TEXT;
+        }
+        userData.put("showNavButtonTxt",
+                cm.getConfigEnum(OnOffEnum.class, keyNavText));
 
         //
         userData.put("jobticketCopierEnable",
@@ -4081,6 +4166,19 @@ public final class JsonApiServer extends AbstractPage {
             userData.put("printScalingClash", scaling);
         }
 
+        if (webAppType == WebAppTypeEnum.POS) {
+            final Map<String, Object> sounds = new HashMap<>();
+            final String urlPath = ServerBasePath.CUSTOM_WEB.concat("/");
+            String sound = cm.getConfigValue(Key.WEBAPP_POS_SOUND_SUCCESS);
+            if (StringUtils.isNotBlank(sound)) {
+                sounds.put("success", urlPath.concat(sound));
+            }
+            sound = cm.getConfigValue(Key.WEBAPP_POS_SOUND_FAILURE);
+            if (StringUtils.isNotBlank(sound)) {
+                sounds.put("failure", urlPath.concat(sound));
+            }
+            userData.put("sounds", sounds);
+        }
         //
         return userData;
     }
@@ -4155,7 +4253,9 @@ public final class JsonApiServer extends AbstractPage {
             locale = Locale.US;
         }
 
-        SpSession.get().setLocale(locale);
+        final SpSession session = SpSession.get();
+        session.setLocale(locale);
+        session.setHumanDetected(true);
 
         /*
          *

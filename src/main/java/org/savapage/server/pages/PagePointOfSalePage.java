@@ -1,9 +1,9 @@
 /*
  * This file is part of the SavaPage project <https://www.savapage.org>.
- * Copyright (c) 2020 Datraverse B.V.
+ * Copyright (c) 2021 Datraverse B.V.
  * Author: Rijk Ravestein.
  *
- * SPDX-FileCopyrightText: © 2020 Datraverse B.V. <info@datraverse.com>
+ * SPDX-FileCopyrightText: © 2021 Datraverse B.V. <info@datraverse.com>
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,34 +22,32 @@
  * For more information, please contact Datraverse B.V. at this
  * address: info@datraverse.com
  */
-package org.savapage.server.webapp;
+package org.savapage.server.pages;
 
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.savapage.core.config.IConfigProp;
-import org.savapage.core.config.WebAppTypeEnum;
+import org.savapage.server.helpers.HtmlButtonEnum;
 
-public final class WebAppMailTickets extends WebAppUser {
-
-    /** */
-    private static final long serialVersionUID = 5608503008706484277L;
+/**
+ * @author Rijk Ravestein
+ */
+public final class PagePointOfSalePage extends PagePointOfSale {
 
     /**
-     *
-     * @param parameters
-     *            The {@link PageParameters}.
+     * Version for serialization.
      */
-    public WebAppMailTickets(final PageParameters parameters) {
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * @param parameters
+     *            Page parameters.
+     */
+    public PagePointOfSalePage(final PageParameters parameters) {
         super(parameters);
     }
 
     @Override
-    protected IConfigProp.Key getInternetEnableKey() {
-        return IConfigProp.Key.WEBAPP_INTERNET_MAILTICKETS_ENABLE;
-    }
-
-    @Override
-    public WebAppTypeEnum getWebAppType() {
-        return WebAppTypeEnum.MAILTICKETS;
+    protected HtmlButtonEnum buttonBack() {
+        return HtmlButtonEnum.CANCEL;
     }
 
 }

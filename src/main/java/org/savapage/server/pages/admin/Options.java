@@ -152,6 +152,15 @@ public final class Options extends AbstractAdminPage {
                 IConfigProp.AUTH_METHOD_V_UNIX);
         labelledRadio("auth-method", "-ldap", IConfigProp.Key.AUTH_METHOD,
                 IConfigProp.AUTH_METHOD_V_LDAP);
+        labelledRadio("auth-method", "-custom", IConfigProp.Key.AUTH_METHOD,
+                IConfigProp.AUTH_METHOD_V_CUSTOM);
+
+        //
+        helper.addLabel("custom-user-sync-label", NounEnum.SYNCHRONIZATION);
+        helper.addLabel("custom-user-auth-label", NounEnum.AUTHENTICATION);
+
+        tagInput("custom-user-sync", Key.AUTH_CUSTOM_USER_SYNC);
+        tagInput("custom-user-auth", Key.AUTH_CUSTOM_USER_AUTH);
 
         //
         final String configLdapTypeName = ConfigManager.instance()
@@ -271,6 +280,8 @@ public final class Options extends AbstractAdminPage {
          */
         labelledCheckbox("user-auth-mode-name-pw",
                 IConfigProp.Key.AUTH_MODE_NAME);
+        labelledCheckbox("user-auth-mode-email-pw",
+                IConfigProp.Key.AUTH_MODE_EMAIL);
         labelledCheckbox("user-auth-mode-id-number",
                 IConfigProp.Key.AUTH_MODE_ID);
         labelledCheckbox("user-auth-mode-card-local",
@@ -281,6 +292,11 @@ public final class Options extends AbstractAdminPage {
         //
         labelledCheckbox("user-auth-mode-name-pw-dialog",
                 IConfigProp.Key.AUTH_MODE_NAME_SHOW);
+        //
+        add(new Label("user-auth-mode-email-pw-prompt",
+                NounEnum.EMAIL.uiText(getLocale())));
+        labelledCheckbox("user-auth-mode-email-pw-dialog",
+                IConfigProp.Key.AUTH_MODE_EMAIL_SHOW);
         //
         labelledCheckbox("user-auth-mode-yubikey-dialog",
                 IConfigProp.Key.AUTH_MODE_YUBIKEY_SHOW);
@@ -332,6 +348,10 @@ public final class Options extends AbstractAdminPage {
         labelledRadio("user-auth-mode-default", "-user",
                 IConfigProp.Key.AUTH_MODE_DEFAULT,
                 IConfigProp.AUTH_MODE_V_NAME);
+
+        labelledRadio("user-auth-mode-default", "-email",
+                IConfigProp.Key.AUTH_MODE_DEFAULT,
+                IConfigProp.AUTH_MODE_V_EMAIL);
 
         labelledRadio("user-auth-mode-default", "-number",
                 IConfigProp.Key.AUTH_MODE_DEFAULT, IConfigProp.AUTH_MODE_V_ID);
@@ -390,6 +410,8 @@ public final class Options extends AbstractAdminPage {
          * PaperCut Integration.
          */
         labelledCheckbox("papercut-enable", IConfigProp.Key.PAPERCUT_ENABLE);
+        labelledCheckbox("papercut-db-enable",
+                IConfigProp.Key.PAPERCUT_DB_ENABLE);
 
         labelledInput("papercut-host", IConfigProp.Key.PAPERCUT_SERVER_HOST);
         labelledInput("papercut-port", IConfigProp.Key.PAPERCUT_SERVER_PORT);
@@ -959,6 +981,7 @@ public final class Options extends AbstractAdminPage {
      *            {@code true} when HTML value must me obfuscated.
      * @return The added {@link Label}.
      */
+    @SuppressWarnings("unused")
     private Label tagPassword(final String id, final IConfigProp.Key key,
             final boolean obfuscate) {
         if (obfuscate) {
@@ -1006,6 +1029,7 @@ public final class Options extends AbstractAdminPage {
     /**
      *
      */
+    @SuppressWarnings("unused")
     private void addCheckbox(final String wicketId, boolean checked) {
         Label labelWrk = new Label(wicketId);
         if (checked) {
