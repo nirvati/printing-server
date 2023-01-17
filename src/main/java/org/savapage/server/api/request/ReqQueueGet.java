@@ -81,6 +81,7 @@ public final class ReqQueueGet extends ApiRequestMixin {
         private boolean ippRoutingEnabled;
         private IppRoutingEnum ippRouting;
         private String ippOptions;
+        private String ippRoutingTarget;
 
         public Long getId() {
             return id;
@@ -186,6 +187,14 @@ public final class ReqQueueGet extends ApiRequestMixin {
             this.ippOptions = ippOptions;
         }
 
+
+        public String getIppRoutingTarget() {
+            return ippOptions;
+        }
+
+        public void setIppRoutingTarget(String ippRoutingTarget) {
+            this.ippRoutingTarget = ippRoutingTarget;
+        }
     }
 
     @Override
@@ -286,6 +295,8 @@ public final class ReqQueueGet extends ApiRequestMixin {
         dtoRsp.setIppRouting(ippRouting);
         dtoRsp.setIppOptions(QUEUE_SERVICE.getAttrValue(queue,
                 IppQueueAttrEnum.IPP_ROUTING_OPTIONS));
+        dtoRsp.setIppRoutingTarget(QUEUE_SERVICE.getAttrValue(queue,
+                IppQueueAttrEnum.IPP_ROUTING_TARGET));
     }
 
     /**
