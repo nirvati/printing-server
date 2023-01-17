@@ -196,6 +196,10 @@ public final class ReqQueueSet extends ApiRequestMixin {
                 QUEUE_SERVICE.setQueueAttrValue(jpaQueue,
                         IppQueueAttrEnum.IPP_ROUTING_OPTIONS,
                         StringUtils.defaultString(dtoReq.getIppOptions()));
+
+                QUEUE_SERVICE.setQueueAttrValue(jpaQueue,
+                        IppQueueAttrEnum.IPP_ROUTING_TARGET,
+                        StringUtils.defaultString(dtoReq.getIppRoutingTarget()));
             }
         }
 
