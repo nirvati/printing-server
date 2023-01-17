@@ -66,6 +66,11 @@ public final class PageQueue extends AbstractAdminPage {
                 IppRoutingEnum.TERMINAL.uiText(getLocale()));
         helper.addModifyLabelAttr("ipp-routing-type-terminal", "",
                 MarkupHelper.ATTR_VALUE, IppRoutingEnum.TERMINAL.toString());
+
+        helper.addLabel("label-ipp-routing-type-printer",
+                IppRoutingEnum.PRINTER.uiText(getLocale()));
+        helper.addModifyLabelAttr("ipp-routing-type-printer", "",
+                MarkupHelper.ATTR_VALUE, IppRoutingEnum.PRINTER.toString());
     }
 
 }

@@ -1163,6 +1163,7 @@
             //
             ,
             _onChangeRoutingType = function(routing) {
+                _view.visible($('#queue-ipp-routing-printer'), routing === "PRINTER");
                 _view.visible($('#queue-ipp-routing-options'), routing !== "NONE");
             };
 
@@ -1179,6 +1180,7 @@
 
         }).on("pagebeforeshow", function(event, ui) {
             var reserved = _model.editQueue.reserved,
+                selIppPrinter = $('#queue-ipp-routing-printer'),
                 selIppOpt = $('#queue-ipp-routing-options'),
                 sect = $('#queue_reserved_section');
 
@@ -1205,7 +1207,8 @@
             if (selIppOpt.length > 0) {
                 _view.checkRadioValue('queue-ipp-routing-type', _model.editQueue.ippRouting);
                 selIppOpt.val(_model.editQueue.ippOptions);
-                _onChangeRoutingType(_model.editQueue.ippRouting);
+                selIppPrinter.val(_model.editQueue.ippPrinter);
+                _onChangeRoutingType(_model.editQueue.);
             }
 
             $('#queue-header').text(_model.editQueue.uiText);
