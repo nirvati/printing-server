@@ -1208,7 +1208,7 @@
                 _view.checkRadioValue('queue-ipp-routing-type', _model.editQueue.ippRouting);
                 selIppOpt.val(_model.editQueue.ippOptions);
                 selIppPrinter.val(_model.editQueue.ippPrinter);
-                _onChangeRoutingType(_model.editQueue.);
+                _onChangeRoutingType(_model.editQueue.ippRouting);
             }
 
             $('#queue-header').text(_model.editQueue.uiText);
