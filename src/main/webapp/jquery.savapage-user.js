@@ -49,10 +49,6 @@
     _ns.CSS_CLASS_THUMBNAIL_PNG_SELECTED = 'main_selected';
     _ns.CSS_CLASS_PRELOAD_SPINNER = 'sp-preload-spinner';
     _ns.CSS_CLASS_THUMBNAIL_SUBSCRIPT = 'sp-thumbnail-subscript';
-    /*
-     * The JSON object is defined in json2.js (which is part of the CometD
-     * jquery package)
-     */
 
     /*
      * See Mantis #320.

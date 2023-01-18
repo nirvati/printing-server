@@ -826,11 +826,6 @@ public abstract class AbstractWebAppPage extends AbstractPage
             }
         }
 
-        list.add(new ImmutablePair<>(
-                this.getJsPathForRender("jquery/json2.js",
-                        LibreJsLicenseEnum.CC0_1_0),
-                LibreJsLicenseEnum.CC0_1_0));
-
         if (jsToRender.contains(JavaScriptLibrary.COMETD)) {
 
             // Use nocache, to prevent loading of old browser cached .js files,
