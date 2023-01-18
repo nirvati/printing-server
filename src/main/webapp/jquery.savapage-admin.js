@@ -1181,7 +1181,7 @@
 
         _view.pages.queue.onSaveQueue = function() {
             var res,
-                sel;
+                sel, targetInput;
 
             _model.editQueue.urlpath = $('#queue-url-path').val();
             _model.editQueue.ipallowed = $('#queue-ip-allowed').val();
@@ -1191,9 +1191,11 @@
             _model.editQueue.trusted = $('#queue-trusted').is(':checked');
 
             sel = $('#queue-ipp-routing-options');
+            targetInput = $('#queue-ipp-routing-target');
             if (sel.length > 0) {
                 _model.editQueue.ippRouting = _view.getRadioValue('queue-ipp-routing-type');
                 _model.editQueue.ippOptions = sel.val();
+                _model.editQueue.ippRoutingTarget = sel.val();
             }
 
             res = _api.call({

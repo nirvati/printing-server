@@ -1207,7 +1207,7 @@
             if (selIppOpt.length > 0) {
                 _view.checkRadioValue('queue-ipp-routing-type', _model.editQueue.ippRouting);
                 selIppOpt.val(_model.editQueue.ippOptions);
-                selIppPrinter.val(_model.editQueue.ippPrinter);
+                selIppPrinter.val(_model.editQueue.ippRoutingTarget);
                 _onChangeRoutingType(_model.editQueue.ippRouting);
             }
 
