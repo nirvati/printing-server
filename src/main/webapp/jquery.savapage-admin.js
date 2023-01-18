@@ -1195,7 +1195,7 @@
             if (sel.length > 0) {
                 _model.editQueue.ippRouting = _view.getRadioValue('queue-ipp-routing-type');
                 _model.editQueue.ippOptions = sel.val();
-                _model.editQueue.ippRoutingTarget = sel.val();
+                _model.editQueue.ippRoutingTarget = targetInput.val();
             }
 
             res = _api.call({
