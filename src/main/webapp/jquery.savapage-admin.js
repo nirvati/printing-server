@@ -1191,7 +1191,7 @@
             _model.editQueue.trusted = $('#queue-trusted').is(':checked');
 
             sel = $('#queue-ipp-routing-options');
-            targetInput = $('#queue-ipp-routing-target');
+            targetInput = $('#queue-ipp-routing-printer');
             if (sel.length > 0) {
                 _model.editQueue.ippRouting = _view.getRadioValue('queue-ipp-routing-type');
                 _model.editQueue.ippOptions = sel.val();
