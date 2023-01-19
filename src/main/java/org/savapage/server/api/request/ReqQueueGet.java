@@ -189,7 +189,7 @@ public final class ReqQueueGet extends ApiRequestMixin {
 
 
         public String getIppRoutingTarget() {
-            return ippOptions;
+            return ippRoutingTarget;
         }
 
         public void setIppRoutingTarget(String ippRoutingTarget) {
