@@ -49,7 +49,6 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.request.resource.UrlResourceReference;
 import org.savapage.core.VersionInfo;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
@@ -198,12 +197,12 @@ public abstract class AbstractWebAppPage extends AbstractPage
 
         title.append(CommunityDictEnum.SAVAPAGE.getWord());
 
-        final String organisation =
+        /*final String organisation =
                 MemberCard.instance().getMemberOrganisation();
 
         if (StringUtils.isNotBlank(organisation)) {
             title.append(" :: ").append(organisation);
-        }
+        }*/
 
         if (StringUtils.isNotBlank(suffix)) {
             title.append(" :: ").append(suffix);

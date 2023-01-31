@@ -1782,7 +1782,6 @@
             login: new _ns.PageLogin(_i18n, _view, _api),
             sharedAccount: new _ns.PageSharedAccount(_i18n, _view, _model),
             admin: new _ns.PageAdmin(_i18n, _view, _model, _api),
-            membercard_upload: new _ns.PageMemberCardUpload(_i18n, _view, _model),
             user: new _ns.PageUser(_i18n, _view, _model),
             userGroup: new _ns.PageUserGroup(_i18n, _view, _model),
             userGroupsAddRemove: new _ns.PageUserGroupsAddRemove(_i18n, _view, _model),

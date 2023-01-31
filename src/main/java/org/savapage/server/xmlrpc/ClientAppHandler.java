@@ -38,7 +38,6 @@ import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.CometdClientMixin;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.jpa.User;
@@ -96,13 +95,14 @@ public final class ClientAppHandler {
      */
     private static boolean isApiKeyValid(final String apiId,
             final String apiKey) {
-        boolean isValid = true;
+        /*boolean isValid = true;
         try {
             MemberCard.instance().validateContent(apiId, apiKey);
         } catch (Exception e) {
             isValid = false;
         }
-        return isValid;
+        return isValid;*/
+        return false;
     }
 
     /**

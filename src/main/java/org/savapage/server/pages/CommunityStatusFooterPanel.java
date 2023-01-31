@@ -27,7 +27,6 @@ package org.savapage.server.pages;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.panel.Panel;
-import org.savapage.core.community.MemberCard;
 import org.savapage.server.helpers.CssClassEnum;
 import org.savapage.server.session.SpSession;
 
@@ -56,26 +55,6 @@ public final class CommunityStatusFooterPanel extends Panel {
 
         final MarkupHelper helper = new MarkupHelper(this);
 
-        //
-        final MemberCard card = MemberCard.instance();
-        final String memberStatus = card.getStatusUserText(getLocale());
-        final boolean cardDesirable = card.isMembershipDesirable();
-
-        final Label labelOrg;
-
-        if (card.isVisitorCard()) {
-            labelOrg = helper.encloseLabel("membership-org", memberStatus,
-                    !cardDesirable);
-        } else {
-            labelOrg = helper.encloseLabel("membership-org",
-                    card.getMemberOrganisation(),
-                    StringUtils.isNotBlank(card.getMemberOrganisation()));
-        }
-        MarkupHelper.appendLabelAttr(labelOrg, MarkupHelper.ATTR_CLASS,
-                CssClassEnum.SP_BTN_ABOUT_ORG.clazz());
-        //
-        helper.encloseLabel("membership-status", memberStatus, cardDesirable);
-        //
         final Label labelUserId = helper.encloseLabel("user-id",
                 SpSession.get().getUserId(), showUserId);
 

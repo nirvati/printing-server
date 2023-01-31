@@ -28,7 +28,6 @@ import java.io.IOException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.dao.enums.UserAttrEnum;
 import org.savapage.core.jpa.User;
 import org.savapage.ext.telegram.TelegramHelper;
@@ -66,11 +65,7 @@ public final class ReqUserTestTelegramID extends ApiRequestMixin {
             return;
         }
 
-        if (TelegramHelper.sendMessage(telegramID, String.format(
-                "%s : %s [%s]", CommunityDictEnum.SAVAPAGE.getWord(),
-                StringUtils.defaultString(
-                        MemberCard.instance().getMemberOrganisation(), "-"),
-                MemberCard.instance().getStatusUserText(getLocale())))) {
+        if (TelegramHelper.sendMessage(telegramID, CommunityDictEnum.SAVAPAGE.getWord())) {
             this.setApiResult(ApiResultCodeEnum.OK, "msg-apply-ok");
         } else {
             this.setApiResult(ApiResultCodeEnum.ERROR, "msg-action-failed");

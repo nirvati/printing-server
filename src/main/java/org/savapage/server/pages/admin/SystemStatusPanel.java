@@ -56,7 +56,6 @@ import org.savapage.core.circuitbreaker.CircuitDamagingException;
 import org.savapage.core.circuitbreaker.CircuitStateEnum;
 import org.savapage.core.circuitbreaker.CircuitTrippingException;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.CircuitBreakerEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
@@ -214,7 +213,6 @@ public final class SystemStatusPanel extends Panel {
         final LocaleHelper localeHelper = new LocaleHelper(getLocale());
 
         final ConfigManager cm = ConfigManager.instance();
-        final MemberCard memberCard = MemberCard.instance();
 
         Label labelWrk;
         String cssColor;
@@ -232,11 +230,6 @@ public final class SystemStatusPanel extends Panel {
         } else if (systemStatus == SystemStatusEnum.UNAVAILABLE) {
             cssColor = MarkupHelper.CSS_TXT_WARN;
             msg = getLocalizer().getString("sys-status-not-available", this);
-        } else if (memberCard.isMembershipDesirable()) {
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            msg = MessageFormat.format(getLocalizer()
-                    .getString("sys-status-membercard-missing", this),
-                    CommunityDictEnum.MEMBER_CARD.getWord());
         } else {
             cssColor = MarkupHelper.CSS_TXT_VALID;
             msg = getLocalizer().getString("sys-status-ready", this);
@@ -518,127 +511,6 @@ public final class SystemStatusPanel extends Panel {
         add(new Label("client-sessions", String.format("%s (%s) • web (client)",
                 helper.localizedNumber(UserEventService.getUserWebAppCount()),
                 helper.localizedNumber(UserEventService.getClientAppCount()))));
-
-        /*
-         * Community Membership
-         */
-        add(new Label("membership-status-prompt",
-                CommunityDictEnum.MEMBERSHIP.getWord()));
-
-        cssColor = MarkupHelper.CSS_TXT_COMMUNITY;
-
-        final String memberStat;
-
-        switch (memberCard.getStatus()) {
-
-        case EXCEEDED:
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            memberStat = getLocalizer().getString("membership-status-exceeded",
-                    this);
-            break;
-
-        case EXPIRED:
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            memberStat =
-                    getLocalizer().getString("membership-status-expired", this);
-            break;
-
-        case VISITOR:
-            cssColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            memberStat = CommunityDictEnum.VISITOR.getWord();
-            break;
-
-        case VISITOR_EXPIRED:
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            memberStat = String.format("%s (%s)",
-                    CommunityDictEnum.VISITOR.getWord(), getLocalizer()
-                            .getString("membership-status-expired", this));
-
-            break;
-
-        case VISITOR_EDITION:
-            cssColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            memberStat = CommunityDictEnum.VISITING_GUEST.getWord();
-            break;
-
-        case VALID:
-            cssColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            if (memberCard.isVisitorCard()) {
-                memberStat = CommunityDictEnum.VISITOR.getWord();
-            } else {
-                memberStat = CommunityDictEnum.CARD_HOLDER.getWord(getLocale());
-            }
-            break;
-
-        case WRONG_MODULE:
-            cssColor = MarkupHelper.CSS_TXT_ERROR;
-            memberStat =
-                    getLocalizer().getString("membership-status-wrong", this);
-            break;
-
-        case WRONG_COMMUNITY:
-            cssColor = MarkupHelper.CSS_TXT_ERROR;
-            memberStat =
-                    getLocalizer().getString("membership-status-wrong", this);
-            break;
-
-        case WRONG_VERSION:
-            cssColor = MarkupHelper.CSS_TXT_WARN;
-            memberStat = getLocalizer()
-                    .getString("membership-status-wrong-version", this);
-            break;
-
-        default:
-            throw new SpException(CommunityDictEnum.MEMBERSHIP.getWord()
-                    + " status [" + memberCard.getStatus() + "] not handled");
-        }
-
-        //
-        add(new Label("membership-org-prompt",
-                String.format("%s %s", CommunityDictEnum.COMMUNITY.getWord(),
-                        CommunityDictEnum.MEMBER.getWord().toLowerCase())));
-        labelWrk =
-                new Label("membership-org", memberCard.getMemberOrganisation());
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
-
-        //
-        labelWrk = new Label("membership-status", memberStat);
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
-
-        //
-        labelWrk = new Label("membership-participants",
-                helper.localizedNumber(memberCard.getMemberParticipants()));
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
-
-        //
-        String enclosedValue = null;
-
-        if (memberCard.getExpirationDate() != null) {
-            enclosedValue =
-                    helper.localizedDate(memberCard.getExpirationDate());
-        }
-        labelWrk = MarkupHelper.createEncloseLabel("membership-valid-till",
-                enclosedValue, enclosedValue != null);
-
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
-
-        //
-        if (memberCard.getDaysTillExpiry() != null) {
-            enclosedValue = helper.localizedNumber(
-                    memberCard.getDaysTillExpiry().longValue());
-            if (memberCard.isDaysTillExpiryWarning()) {
-                cssColor = MarkupHelper.CSS_TXT_WARN;
-            }
-        }
-        labelWrk = MarkupHelper.createEncloseLabel(
-                "membership-valid-days-remaining", enclosedValue,
-                enclosedValue != null);
-        labelWrk.add(new AttributeModifier(MarkupHelper.ATTR_CLASS, cssColor));
-        add(labelWrk);
 
         /*
          * Errors.

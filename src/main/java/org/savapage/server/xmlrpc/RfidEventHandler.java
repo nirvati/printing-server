@@ -35,7 +35,6 @@ import org.savapage.core.PerformanceLogger;
 import org.savapage.core.cometd.AdminPublisher;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.concurrent.ReadWriteLockEnum;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
@@ -148,14 +147,15 @@ public class RfidEventHandler implements ServiceEntryPoint {
             /*
              * NOTE: when apiId/Key is invalid an exception is thrown.
              */
-            MemberCard.instance().validateContent(apiId, apiKey);
+            //MemberCard.instance().validateContent(apiId, apiKey);
+            throw new Exception("This API is not implemented yet!");
 
-            final String clientIpAddress = SpXmlRpcServlet.getClientIpAddress();
+            /*final String clientIpAddress = SpXmlRpcServlet.getClientIpAddress();
 
             /*
              * Find the card reader.
              */
-            final Device cardReader = deviceDao.findByHostDeviceType(
+            /*final Device cardReader = deviceDao.findByHostDeviceType(
                     clientIpAddress, DeviceTypeEnum.CARD_READER);
 
             if (cardReader == null) {
@@ -171,7 +171,7 @@ public class RfidEventHandler implements ServiceEntryPoint {
                         cardReader);
             } else {
                 rc = onCardSwipeAuth(map, clientIpAddress, cardNumber);
-            }
+            }*/
 
         } catch (ProxyPrintException ex) {
 

@@ -41,7 +41,6 @@ import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.eclipse.jetty.server.Server;
 import org.savapage.common.SystemPropertyEnum;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.dao.UserDao;
 import org.savapage.core.dao.enums.ACLOidEnum;
@@ -92,8 +91,6 @@ public final class About extends AbstractAdminPage {
 
         final boolean hasEditorAccess =
                 this.probePermissionToEdit(ACLOidEnum.A_ABOUT);
-
-        final MemberCard memberCard = MemberCard.instance();
 
         final MarkupHelper helper = new MarkupHelper(this);
 
@@ -325,201 +322,9 @@ public final class About extends AbstractAdminPage {
             }
         });
 
-        //
-        add(new Label("cat-membership",
-                CommunityDictEnum.COMMUNITY.getWord(getLocale())));
-
-        // ---------
-        String validDays = null;
-        Long validDaysLeft = 0L;
-        String txtStatus = null;
-        String signalColor = null;
-
-        final Date refDate = ServiceContext.getTransactionDate();
-
-        switch (memberCard.getStatus()) {
-
-        case WRONG_MODULE:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
-            txtStatus = localized("membership-status-wrong-module",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            break;
-
-        case WRONG_COMMUNITY:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
-            txtStatus = localized("membership-status-wrong-product",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    memberCard.getProduct(),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            break;
-
-        case WRONG_VERSION:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus = localized("membership-status-wrong-version",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            break;
-
-        case VALID:
-
-            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
-
-            if (memberCard.isVisitorCard()) {
-                txtStatus = CommunityDictEnum.VISITOR.getWord(getLocale());
-            } else {
-                txtStatus = CommunityDictEnum.CARD_HOLDER.getWord(getLocale());
-            }
-
-            if (memberCard.getExpirationDate() != null) {
-                validDaysLeft = memberCard.getDaysTillExpiry();
-                validDays = localized("membership-valid-till-msg",
-                        localizedDate(memberCard.getExpirationDate()),
-                        validDaysLeft);
-            }
-            break;
-
-        case EXCEEDED:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus = localized("membership-status-users-exceeded",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            break;
-
-        case EXPIRED:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-            txtStatus = localized("membership-status-expired",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()));
-            validDaysLeft = memberCard.getDaysTillExpiry();
-            validDays = localized("membership-expired-msg",
-                    localizedDate(memberCard.getExpirationDate()),
-                    validDaysLeft);
-            break;
-
-        case VISITOR_EDITION:
-            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            txtStatus = CommunityDictEnum.VISITING_GUEST.getWord(getLocale());
-            break;
-
-        case VISITOR:
-            signalColor = MarkupHelper.CSS_TXT_COMMUNITY;
-            txtStatus = localized("membership-status-visit",
-                    CommunityDictEnum.VISITING_GUEST.getWord(getLocale()),
-                    memberCard.getDaysLeftInVisitorPeriod(refDate));
-            break;
-
-        case VISITOR_EXPIRED:
-            signalColor = MarkupHelper.CSS_TXT_WARN;
-
-            txtStatus = localized("membership-status-visit-expired",
-                    CommunityDictEnum.VISITING_GUEST.getWord(getLocale()),
-                    localizedDate(DateUtils.addDays(new Date(), memberCard
-                            .getDaysLeftInVisitorPeriod(refDate).intValue())));
-            break;
-
-        default:
-            signalColor = MarkupHelper.CSS_TXT_ERROR;
-            txtStatus = "???";
-            break;
-        }
-
         // -------------
-        final String styleInfo = String.format("class=\"%s %s\"",
-                MarkupHelper.CSS_TXT_WRAP, signalColor);
-
-        final String styleInfoWarn = String.format("class=\"%s %s\"",
-                MarkupHelper.CSS_TXT_WRAP, MarkupHelper.CSS_TXT_WARN);
-
-        final String styleInfoValid = String.format("class=\"%s %s\"",
-                MarkupHelper.CSS_TXT_WRAP, MarkupHelper.CSS_TXT_COMMUNITY);
-
         final String liFormat = "<li><h3>%s</h3><div %s>%s</div></li>";
 
-        String htmlMembership = null;
-
-        if (memberCard.hasMemberCardFile()) {
-
-            //
-            htmlMembership = String.format(liFormat,
-                    CommunityDictEnum.MEMBER.getWord(getLocale()), styleInfo,
-                    StringUtils.defaultString(
-                            memberCard.getMemberOrganisation(), "-"));
-
-            //
-            htmlMembership += String.format(liFormat,
-                    localized("membership-status"), styleInfo, txtStatus);
-
-            //
-            htmlMembership +=
-                    String.format(liFormat, localized("membership-issuer"),
-                            styleInfoValid, memberCard.getMembershipIssuer());
-
-            //
-            final String issueDate;
-
-            if (memberCard.getMembershipIssueDate() != null) {
-                issueDate = localizedDate(memberCard.getMembershipIssueDate());
-            } else {
-                issueDate = "";
-            }
-
-            htmlMembership +=
-                    String.format(liFormat, localized("membership-issue-date"),
-                            styleInfoValid, issueDate);
-
-            //
-            if (validDays != null) {
-                final String styleWlk;
-                if (validDaysLeft
-                        .longValue() > MemberCard.DAYS_WARN_BEFORE_EXPIRE) {
-                    styleWlk = styleInfo;
-                } else {
-                    styleWlk = styleInfoWarn;
-                }
-                htmlMembership += String.format(liFormat,
-                        localized("membership-valid-till"), styleWlk,
-                        validDays);
-            }
-            //
-            htmlMembership +=
-                    String.format(liFormat, localized("membership-version"),
-                            styleInfo, memberCard.getMembershipVersion());
-
-        } else {
-            //
-            htmlMembership = String.format(liFormat,
-                    localized("membership-status"), styleInfo, txtStatus);
-
-        }
-
-        add(new Label("membership-details", htmlMembership)
-                .setEscapeModelStrings(false));
-
-        //
-        labelWrk = new Label("membership-participants",
-                helper.localizedNumber(memberCard.getMemberParticipants()));
-        labelWrk.add(
-                new AttributeModifier(MarkupHelper.ATTR_CLASS, signalColor));
-        add(labelWrk);
-
-        //
-        final UserDao userDAO = ServiceContext.getDaoContext().getUserDao();
-
-        if (signalColor.equals(MarkupHelper.CSS_TXT_COMMUNITY)) {
-            signalColor = MarkupHelper.CSS_TXT_VALID;
-        }
-
-        labelWrk = new Label("membership-users",
-                helper.localizedNumber(userDAO.countActiveUsers()));
-        labelWrk.add(
-                new AttributeModifier(MarkupHelper.ATTR_CLASS, signalColor));
-        add(labelWrk);
-
-        helper.encloseLabel("button-import-membercard",
-                localized("button-import-membercard",
-                        CommunityDictEnum.MEMBER_CARD.getWord(getLocale())),
-                hasEditorAccess);
-        //
         final String urlWiki = CommunityDictEnum.SAVAPAGE_WIKI_URL.getWord();
         helper.addAppendLabelAttr("savapage-wiki-url", urlWiki,
                 MarkupHelper.ATTR_HREF, urlWiki);

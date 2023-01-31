@@ -45,7 +45,6 @@ import org.savapage.core.cometd.CometdClientMixin;
 import org.savapage.core.cometd.PubLevelEnum;
 import org.savapage.core.cometd.PubTopicEnum;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp;
 import org.savapage.core.config.IConfigProp.Key;
@@ -206,8 +205,6 @@ public final class ReqLogin extends ApiRequestMixin {
         } else {
             authMode = UserAuthModeEnum.fromDbValue(dtoReq.getAuthMode());
         }
-
-        MemberCard.instance().recalcStatus(new Date());
 
         // Sanitize.
         if (authMode == UserAuthModeEnum.EMAIL) {
@@ -1146,7 +1143,7 @@ public final class ReqLogin extends ApiRequestMixin {
                 this.setApiResult(ApiResultCodeEnum.WARN,
                         "msg-change-internal-admin-password");
             } else {
-                this.setApiResultMembershipMsg();
+                this.setApiResultOk();
             }
 
         } else {
@@ -1890,68 +1887,4 @@ public final class ReqLogin extends ApiRequestMixin {
 
         return isAuthenticated;
     }
-
-    /**
-     * Sets the userData message with an error or warning depending on the
-     * Membership position. If the membership is ok, the OK message is applied.
-     *
-     * @throws NumberFormatException
-     *             If number error.
-     */
-    private void setApiResultMembershipMsg() throws NumberFormatException {
-
-        final MemberCard memberCard = MemberCard.instance();
-
-        final Long daysLeft = memberCard.getDaysLeftInVisitorPeriod(
-                ServiceContext.getTransactionDate());
-
-        switch (memberCard.getStatus()) {
-        case EXCEEDED:
-            this.setApiResult(ApiResultCodeEnum.INFO,
-                    "msg-membership-exceeded-user-limit",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-            break;
-        case EXPIRED:
-            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-expired",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-
-            break;
-        case VISITOR:
-            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-visit",
-                    daysLeft.toString(),
-                    CommunityDictEnum.VISITOR.getWord(getLocale()));
-            break;
-        case VISITOR_EXPIRED:
-            this.setApiResult(ApiResultCodeEnum.INFO,
-                    "msg-membership-visit-expired",
-                    CommunityDictEnum.VISITOR.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-            break;
-        case WRONG_MODULE:
-        case WRONG_COMMUNITY:
-            this.setApiResult(ApiResultCodeEnum.INFO,
-                    "msg-membership-wrong-product",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-            break;
-        case WRONG_VERSION:
-            this.setApiResult(ApiResultCodeEnum.INFO, "msg-membership-version",
-                    CommunityDictEnum.MEMBERSHIP.getWord(getLocale()),
-                    CommunityDictEnum.SAVAPAGE_SUPPORT.getWord(getLocale()),
-                    CommunityDictEnum.MEMBER_CARD.getWord(getLocale()));
-            break;
-        case VISITOR_EDITION:
-        case VALID:
-        default:
-            this.setApiResultOk();
-            break;
-        }
-    }
-
 }

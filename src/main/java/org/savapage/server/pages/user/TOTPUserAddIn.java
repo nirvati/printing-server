@@ -27,7 +27,6 @@ package org.savapage.server.pages.user;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.savapage.core.community.CommunityDictEnum;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.config.IConfigProp.Key;
 import org.savapage.core.crypto.CryptoUser;
@@ -137,9 +136,9 @@ public final class TOTPUserAddIn extends AbstractAuthPage {
         final ConfigManager cm = ConfigManager.instance();
 
         String issuer = cm.getConfigValue(Key.USER_TOTP_ISSUER);
-        if (StringUtils.isBlank(issuer)) {
+        /*if (StringUtils.isBlank(issuer)) {
             issuer = MemberCard.instance().getMemberOrganisation();
-        }
+        }*/
         if (StringUtils.isBlank(issuer)) {
             issuer = CommunityDictEnum.SAVAPAGE.getWord();
         }

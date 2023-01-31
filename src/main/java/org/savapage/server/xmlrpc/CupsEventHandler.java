@@ -27,7 +27,6 @@ package org.savapage.server.xmlrpc;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.ConfigManager;
 import org.savapage.core.ipp.IppJobStateEnum;
 import org.savapage.core.ipp.IppPrinterStateEnum;
@@ -137,7 +136,8 @@ public final class CupsEventHandler implements ServiceEntryPoint {
             /*
              * NOTE: when apiId/Key is invalid an exception is thrown.
              */
-            MemberCard.instance().validateContent(apiId, apiKey);
+            //MemberCard.instance().validateContent(apiId, apiKey);
+            throw new Exception("This API is not implemented yet!");
 
             /*
              * IMPORTANT: CUPS notifies job state CHANGES, but it continuously
@@ -145,7 +145,7 @@ public final class CupsEventHandler implements ServiceEntryPoint {
              * processed.
              */
 
-            String printerStateTxt = null;
+            /*String printerStateTxt = null;
             try {
                 printerStateTxt =
                         IppPrinterStateEnum.asEnum(printerState).asLogText();
@@ -217,10 +217,10 @@ public final class CupsEventHandler implements ServiceEntryPoint {
                  * We pass the job status to the monitor who detect and handle
                  * state changes.
                  */
-                ProxyPrintJobStatusMonitor.notify(jobStatus);
+                /*ProxyPrintJobStatusMonitor.notify(jobStatus);
             }
 
-            rc = 0;
+            rc = 0;*/
 
         } catch (Exception ex) {
 
@@ -277,11 +277,12 @@ public final class CupsEventHandler implements ServiceEntryPoint {
             /*
              * NOTE: when apiId/Key is invalid an exception is thrown.
              */
-            MemberCard.instance().validateContent(apiId, apiKey);
-            rc = 0;
+            //MemberCard.instance().validateContent(apiId, apiKey);
+            throw new Exception("This API is not implemented yet!");
+            /*rc = 0;
 
             PROXY_PRINT_SERVICE.notificationRecipient().onPrinterEvent(event,
-                    printer_name, printer_state);
+                    printer_name, printer_state);*/
 
         } catch (Exception ex) {
 
@@ -330,10 +331,11 @@ public final class CupsEventHandler implements ServiceEntryPoint {
             /*
              * NOTE: when apiId/Key is invalid an exception is thrown.
              */
-            MemberCard.instance().validateContent(apiId, apiKey);
-            rc = 0;
+            //MemberCard.instance().validateContent(apiId, apiKey);
+            throw new Exception("This API is not implemented yet!");
+            /*rc = 0;
 
-            PROXY_PRINT_SERVICE.notificationRecipient().onServerEvent(event);
+            PROXY_PRINT_SERVICE.notificationRecipient().onServerEvent(event);*/
 
         } catch (Exception ex) {
 

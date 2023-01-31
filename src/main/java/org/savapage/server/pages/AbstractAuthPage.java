@@ -27,9 +27,7 @@ package org.savapage.server.pages;
 import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.savapage.core.community.MemberCard;
 import org.savapage.core.config.WebAppTypeEnum;
-import org.savapage.server.pages.admin.MembershipMsg;
 import org.savapage.server.session.SpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -120,16 +118,9 @@ public abstract class AbstractAuthPage extends AbstractPage {
 
         if (webAppTypeAuth == WebAppTypeEnum.ADMIN) {
             /*
-             * Check admin authentication (including the need for a valid
-             * Membership).
+             * Check admin authentication
              */
-            if (this.adminUser) {
-                if (needMembership()
-                        && MemberCard.instance().isMembershipDesirable()) {
-
-                    throw new RestartResponseException(MembershipMsg.class);
-                }
-            } else {
+            if (!this.adminUser) {
                 LOGGER.error("User [{}] is not authorized.",
                         session.getUserId());
 

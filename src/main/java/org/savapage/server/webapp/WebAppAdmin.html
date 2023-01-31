@@ -117,42 +117,6 @@ If no sizes attribute is set, the element’s size defaults to 57 x 57.
 		<div id="ppde-file-browser-addin" class="ui-content" />
 	</div>
 
-	<div data-role="dialog" data-theme="a" id="page-membercard-upload"
-		style="display: none;" class="sp-initial-hidden">
-
-		<div data-role="header" data-theme="b">
-			<h1 id="membercard-import-title" />
-		</div>
-
-		<div class="ui-content">
-			<div wicket:id="memberCardUploadFeedback"
-				id="membercard-import-feedback" class="ui-body ui-body-a" />
-			<p>
-			<form wicket:id="memberCardUploadForm" enctype="multipart/form-data">
-				<label for="membercard-import-file"
-					id="membercard-import-file-label" />
-				<input id="membercard-import-file" wicket:id="memberCardUpload"
-					style="font-size: 110%;" type="file" size="50" />
-				<p>
-					<input wicket:id="ajaxSubmit" type="button" data-inline="true"
-						data-icon="check" value="button-membercard-import"
-						data-corners="false" id="button-membercard-import-submit" />
-
-					<input type="reset" data-inline="true" data-icon="delete"
-						data-corners="false" id="button-membercard-import-reset"
-						value="button-membercard-import-clear" />
-
-					<a href="#"
-						class="ui-btn ui-btn-inline ui-btn-icon-left ui-icon-back"
-						data-rel="back" data-direction="reverse"
-						id="button-membercard-import-back" />
-				</p>
-			</form>
-			</p>
-		</div>
-
-	</div>
-
 	<wicket:remove>
 		<!-- ==============================================================  
      See FileDownloadApiPanel     
