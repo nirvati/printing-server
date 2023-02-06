@@ -62,7 +62,7 @@ public final class AppAbout extends AbstractPage {
         final MarkupHelper helper = new MarkupHelper(this);
 
         final String appName =
-                CommunityDictEnum.SAVAPAGE.getWord(Locale.getDefault());
+                CommunityDictEnum.BRAND_NAME.getWord(Locale.getDefault());
 
         final WebAppTypeEnum webAppType = this.getWebAppTypeEnum(parameters);
 
@@ -71,7 +71,7 @@ public final class AppAbout extends AbstractPage {
             add(new AppAboutPanel("savapage-info-after-inject", webAppType));
             add(new Label("app-product-name", appName));
             add(new Label("app-product-slogan",
-                    CommunityDictEnum.SAVAPAGE_SLOGAN.getWord()));
+                    CommunityDictEnum.BRAND_SLOGAN.getWord()));
             add(new Label("app-product-version",
                     ConfigManager.getAppVersion()));
         } else {
@@ -79,7 +79,7 @@ public final class AppAbout extends AbstractPage {
             helper.encloseLabel("app-version",
                     ConfigManager.getAppNameVersion(), true);
             add(new Label("app-slogan",
-                    CommunityDictEnum.SAVAPAGE_SLOGAN.getWord()));
+                    CommunityDictEnum.BRAND_SLOGAN.getWord()));
             add(new AppAboutPanel("savapage-info", webAppType));
         }
 

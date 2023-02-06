@@ -25,12 +25,6 @@
  * address: info@datraverse.com
  */
 
-body {
-}
-
-#page-admin {
-}
-
 #page-ppde-file-browser .ui-dialog-contain {
     width: 92.5%;
     max-width: 1920px;
@@ -153,8 +147,6 @@ p.intro strong {
 }
 .footer-docs {
     padding: 10px 0;
-}
-.footer-docs div {
 }
 .type-interior .content-secondary {
     border-right: 0;
